@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, isOnline, sumBy } from "../utils/format";
+import { formatBytes, formatDuration, isOnline, sumBy } from "../utils/format";
 
 describe("format helpers", () => {
   it("formats bytes", () => {
@@ -11,6 +11,11 @@ describe("format helpers", () => {
     expect(isOnline("online")).toBe(true);
     expect(isOnline("running")).toBe(true);
     expect(isOnline("online", true)).toBe(false);
+  });
+
+  it("formats connection duration", () => {
+    expect(formatDuration(65)).toBe("1m");
+    expect(formatDuration(90061)).toBe("1d 1h");
   });
 
   it("sums selected values", () => {

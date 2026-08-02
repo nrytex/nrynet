@@ -18,6 +18,7 @@ type runtimeSpy struct {
 	started      []string
 	stopped      []string
 	disconnected []string
+	connectedAt  map[string]time.Time
 }
 
 func (r *runtimeSpy) StartTunnel(ctx context.Context, id string) error {
@@ -34,6 +35,11 @@ func (r *runtimeSpy) SyncClient(context.Context, string) error { return nil }
 
 func (r *runtimeSpy) DisconnectClient(id string) {
 	r.disconnected = append(r.disconnected, id)
+}
+
+func (r *runtimeSpy) ClientConnectedAt(id string) (time.Time, bool) {
+	connectedAt, ok := r.connectedAt[id]
+	return connectedAt, ok
 }
 
 func TestClientManagementAndTokenReset(t *testing.T) {
@@ -59,6 +65,45 @@ func TestClientManagementAndTokenReset(t *testing.T) {
 	}
 	if _, err := service.AuthenticateAgent(context.Background(), cleartext); err == nil {
 		t.Fatal("old token remained valid after reset")
+	}
+}
+
+func TestClientDetailIncludesConnectionAndTraffic(t *testing.T) {
+	store, service, router, session, runtime := managementRouter(t)
+	token, _, err := service.CreateAgentToken(context.Background(), "detail-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := store.UpsertClient(context.Background(), token.ID, storage.ClientHello{
+		Name: "detail", DeviceID: "detail-device", IP: "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tunnel, err := store.CreateTunnel(context.Background(), model.Tunnel{
+		Name: "detail-tunnel", ClientID: client.ID, Protocol: "tcp",
+		LocalHost: "127.0.0.1", LocalPort: 80, RemotePort: 6080,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordTraffic(context.Background(), tunnel.ID, 100, 250); err != nil {
+		t.Fatal(err)
+	}
+	runtime.connectedAt = map[string]time.Time{client.ID: time.Now().Add(-5 * time.Minute)}
+	response := requestJSON(t, router, http.MethodGet, "/api/clients/"+client.ID, session, nil)
+	if response.Code != http.StatusOK {
+		t.Fatalf("detail status=%d body=%s", response.Code, response.Body.String())
+	}
+	var detail struct {
+		ConnectedSeconds int64          `json:"connected_seconds"`
+		Traffic          clientTraffic  `json:"traffic"`
+		Tunnels          []model.Tunnel `json:"tunnels"`
+	}
+	decodeJSON(t, response, &detail)
+	if detail.ConnectedSeconds < 299 || detail.Traffic.Today.Upload != 100 ||
+		detail.Traffic.Month.Download != 250 || len(detail.Tunnels) != 1 {
+		t.Fatalf("unexpected client detail: %+v", detail)
 	}
 }
 

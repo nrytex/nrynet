@@ -15,6 +15,18 @@ export function formatRate(bytesPerSecond = 0) {
   return `${formatBytes(bytesPerSecond)}/s`;
 }
 
+export function formatDuration(seconds = 0) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "-";
+  const whole = Math.floor(seconds);
+  const days = Math.floor(whole / 86400);
+  const hours = Math.floor((whole % 86400) / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${whole}s`;
+}
+
 export function isOnline(status: string, disabled?: boolean) {
   if (disabled) return false;
   return ["online", "running", "active"].includes(status.toLowerCase());

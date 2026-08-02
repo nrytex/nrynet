@@ -28,6 +28,7 @@ type Hub struct {
 
 	mu         sync.RWMutex
 	conns      map[string]ControlTransport
+	connected  map[string]time.Time
 	udpHandler func(string, protocol.ControlMessage)
 }
 
@@ -42,7 +43,8 @@ func NewHub(store *storage.Store, authService *auth.Service, timeout time.Durati
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(*http.Request) bool { return true },
 		},
-		conns: make(map[string]ControlTransport),
+		conns:     make(map[string]ControlTransport),
+		connected: make(map[string]time.Time),
 	}
 }
 
@@ -111,10 +113,18 @@ func (h *Hub) Disconnect(clientID string) {
 	h.mu.Lock()
 	conn := h.conns[clientID]
 	delete(h.conns, clientID)
+	delete(h.connected, clientID)
 	h.mu.Unlock()
 	if conn != nil {
 		_ = conn.Close()
 	}
+}
+
+func (h *Hub) ConnectedAt(clientID string) (time.Time, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	connectedAt, ok := h.connected[clientID]
+	return connectedAt, ok
 }
 
 func (h *Hub) OnlineCount() int {
@@ -214,6 +224,7 @@ func (h *Hub) register(clientID string, conn ControlTransport) {
 	h.mu.Lock()
 	old := h.conns[clientID]
 	h.conns[clientID] = conn
+	h.connected[clientID] = time.Now().UTC()
 	h.mu.Unlock()
 	if old != nil {
 		_ = old.Close()
@@ -225,6 +236,7 @@ func (h *Hub) unregister(clientID string, conn ControlTransport) {
 	isCurrent := h.conns[clientID] == conn
 	if isCurrent {
 		delete(h.conns, clientID)
+		delete(h.connected, clientID)
 	}
 	h.mu.Unlock()
 	if !isCurrent {

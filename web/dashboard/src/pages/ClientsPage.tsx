@@ -1,22 +1,30 @@
 import { App, Button, Descriptions, Drawer, Form, Input, Modal, Space, Switch, Table, Typography } from "antd";
 import { Eye, KeyRound, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api/client";
 import { Page } from "../components/Page";
 import { useAsync } from "../hooks/useAsync";
-import type { Client, Tunnel } from "../types";
-import { formatDate } from "../utils/format";
+import type { Client, ClientDetail, Tunnel } from "../types";
+import { formatBytes, formatDate, formatDuration } from "../utils/format";
 import { StatusTag } from "./OverviewPage";
 
 export function ClientsPage() {
   const { message, modal } = App.useApp();
   const state = useAsync(api.listClients, []);
-  const [detail, setDetail] = useState<{ client: Client; tunnels: Tunnel[] }>();
+  const [detail, setDetail] = useState<ClientDetail>();
   const [editing, setEditing] = useState<Client>();
   const [tokenValue, setTokenValue] = useState<string>();
+  const detailRequest = useRef(0);
 
   async function loadDetail(client: Client) {
-    setDetail(await api.getClient(client.id));
+    const request = ++detailRequest.current;
+    const next = await api.getClient(client.id);
+    if (request === detailRequest.current) setDetail(next);
+  }
+
+  function closeDetail() {
+    detailRequest.current++;
+    setDetail(undefined);
   }
 
   async function saveEdit(values: { name: string; disabled: boolean }) {
@@ -53,7 +61,7 @@ export function ClientsPage() {
           { title: "操作", render: (_, c) => <RowActions client={c} onView={loadDetail} onEdit={setEditing} onReset={async () => setTokenValue((await api.resetClientToken(c.id)).value)} onRemove={remove} /> },
         ]}
       />
-      <ClientDrawer detail={detail} onClose={() => setDetail(undefined)} />
+      <ClientDrawer detail={detail} onClose={closeDetail} />
       <ClientEditor client={editing} onCancel={() => setEditing(undefined)} onSave={saveEdit} />
       <Modal title="新 Token" open={!!tokenValue} onCancel={() => setTokenValue(undefined)} footer={null}>
         <Typography.Text copyable code>{tokenValue}</Typography.Text>
@@ -73,10 +81,30 @@ function RowActions(props: { client: Client; onView: (c: Client) => void; onEdit
   );
 }
 
-function ClientDrawer({ detail, onClose }: { detail?: { client: Client; tunnels: Tunnel[] }; onClose: () => void }) {
+function ClientDrawer({ detail, onClose }: { detail?: ClientDetail; onClose: () => void }) {
+  const trafficTotal = (value: { upload: number; download: number }) => formatBytes(value.upload + value.download);
   return (
     <Drawer title="Client 详情" open={!!detail} onClose={onClose} width={560}>
-      {detail && <Descriptions column={1} bordered items={Object.entries(detail.client).map(([key, value]) => ({ key, label: key, children: String(value) }))} />}
+      {detail && <>
+        <Descriptions column={1} bordered items={[
+          { key: "id", label: "ID", children: detail.client.id },
+          { key: "device", label: "Device ID", children: detail.client.device_id },
+          { key: "status", label: "Status", children: <StatusTag value={detail.client.disabled ? "disabled" : detail.client.status} /> },
+          { key: "system", label: "System", children: `${detail.client.os || "-"} / ${detail.client.version || "-"}` },
+          { key: "ip", label: "IP", children: detail.client.ip || "-" },
+          { key: "connected", label: "Connected", children: detail.connected_at ? formatDuration(detail.connected_seconds) : "Offline" },
+          { key: "today", label: "Traffic today", children: trafficTotal(detail.traffic.today) },
+          { key: "month", label: "Traffic this month", children: trafficTotal(detail.traffic.month) },
+          { key: "last", label: "Last online", children: formatDate(detail.client.last_online) },
+        ]} />
+        <Typography.Title level={5} style={{ marginTop: 20 }}>Tunnels</Typography.Title>
+        <Table<Tunnel> size="small" rowKey="id" pagination={false} dataSource={detail.tunnels} columns={[
+          { title: "Name", dataIndex: "name" },
+          { title: "Protocol", dataIndex: "protocol" },
+          { title: "Local", render: (_, tunnel) => `${tunnel.local_host}:${tunnel.local_port}` },
+          { title: "Status", render: (_, tunnel) => <StatusTag value={tunnel.status} /> },
+        ]} />
+      </>}
     </Drawer>
   );
 }

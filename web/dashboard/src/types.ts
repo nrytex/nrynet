@@ -30,6 +30,22 @@ export interface Client {
   created_at: string;
 }
 
+export interface TrafficSummary {
+  upload: number;
+  download: number;
+}
+
+export interface ClientDetail {
+  client: Client;
+  tunnels: Tunnel[];
+  connected_at?: string;
+  connected_seconds: number;
+  traffic: {
+    today: TrafficSummary;
+    month: TrafficSummary;
+  };
+}
+
 export interface Tunnel {
   id: string;
   client_id: string;
@@ -61,7 +77,7 @@ export interface TrafficTarget {
 }
 
 export interface TrafficResponse {
-  summary: { upload: number; download: number };
+  summary: TrafficSummary;
   clients: TrafficTarget[];
   tunnels: TrafficTarget[];
   since: string;

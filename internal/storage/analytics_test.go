@@ -26,6 +26,10 @@ func TestTrafficAndEventManagement(t *testing.T) {
 	if err != nil || len(byClient) != 1 || byClient[0].Download != 250 {
 		t.Fatalf("client traffic=%+v err=%v", byClient, err)
 	}
+	clientSummary, err := store.TrafficForClient(ctx, byClient[0].ID, time.Now().Add(-time.Hour))
+	if err != nil || clientSummary.Upload != 100 || clientSummary.Download != 250 {
+		t.Fatalf("client summary=%+v err=%v", clientSummary, err)
+	}
 	if err := store.RecordEvent(ctx, "info", "test.event", "searchable message", map[string]any{"id": 1}); err != nil {
 		t.Fatal(err)
 	}

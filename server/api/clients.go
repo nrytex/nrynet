@@ -2,10 +2,12 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/nat-link/nat-link/internal/auth"
+	"github.com/nat-link/nat-link/internal/model"
 	"github.com/nat-link/nat-link/internal/storage"
 )
 
@@ -18,6 +20,11 @@ type clientHandler struct {
 type updateClientRequest struct {
 	Name     string `json:"name"`
 	Disabled *bool  `json:"disabled"`
+}
+
+type clientTraffic struct {
+	Today model.TrafficSummary `json:"today"`
+	Month model.TrafficSummary `json:"month"`
 }
 
 func (h clientHandler) list(c *gin.Context) {
@@ -40,7 +47,34 @@ func (h clientHandler) get(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"client": client, "tunnels": tunnels})
+	traffic, err := h.clientTraffic(c, client.ID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	connectedAt, connected := h.runtime.ClientConnectedAt(client.ID)
+	var connectedValue any
+	connectedSeconds := int64(0)
+	if connected {
+		connectedValue = connectedAt
+		connectedSeconds = max(0, int64(time.Since(connectedAt).Seconds()))
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"client": client, "tunnels": tunnels, "traffic": traffic,
+		"connected_at": connectedValue, "connected_seconds": connectedSeconds,
+	})
+}
+
+func (h clientHandler) clientTraffic(c *gin.Context, clientID string) (clientTraffic, error) {
+	now := time.Now().UTC()
+	todayStart, _ := storage.RangeStart("today", now)
+	monthStart, _ := storage.RangeStart("month", now)
+	today, err := h.store.TrafficForClient(c.Request.Context(), clientID, todayStart)
+	if err != nil {
+		return clientTraffic{}, err
+	}
+	month, err := h.store.TrafficForClient(c.Request.Context(), clientID, monthStart)
+	return clientTraffic{Today: today, Month: month}, err
 }
 
 func (h clientHandler) update(c *gin.Context) {

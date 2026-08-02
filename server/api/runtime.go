@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 type Runtime interface {
@@ -10,6 +11,7 @@ type Runtime interface {
 	StopTunnel(context.Context, string) error
 	SyncClient(context.Context, string) error
 	DisconnectClient(string)
+	ClientConnectedAt(string) (time.Time, bool)
 }
 
 type unavailableRuntime struct{}
@@ -24,3 +26,6 @@ func (unavailableRuntime) StopTunnel(context.Context, string) error {
 
 func (unavailableRuntime) SyncClient(context.Context, string) error { return nil }
 func (unavailableRuntime) DisconnectClient(string)                  {}
+func (unavailableRuntime) ClientConnectedAt(string) (time.Time, bool) {
+	return time.Time{}, false
+}

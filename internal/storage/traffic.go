@@ -27,6 +27,16 @@ func (s *Store) TrafficSummary(ctx context.Context, since time.Time) (model.Traf
 	return summary, err
 }
 
+func (s *Store) TrafficForClient(ctx context.Context, clientID string, since time.Time) (model.TrafficSummary, error) {
+	var summary model.TrafficSummary
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(l.upload), 0), COALESCE(SUM(l.download), 0)
+		FROM traffic_logs l JOIN tunnels t ON t.id = l.tunnel_id
+		WHERE t.client_id = ? AND l.created_at >= ?`, clientID, since.UTC()).Scan(
+		&summary.Upload, &summary.Download,
+	)
+	return summary, err
+}
+
 func (s *Store) TrafficByTunnel(ctx context.Context, since time.Time) ([]model.TrafficTarget, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT t.id, t.name, COALESCE(SUM(l.upload), 0),
         COALESCE(SUM(l.download), 0) FROM tunnels t LEFT JOIN traffic_logs l

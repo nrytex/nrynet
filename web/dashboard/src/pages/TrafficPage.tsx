@@ -1,4 +1,4 @@
-import { Col, Row, Segmented, Statistic, Table } from "antd";
+import { Col, Row, Segmented, Statistic, Table, Tabs } from "antd";
 import { useState } from "react";
 import { api } from "../api/client";
 import { Page } from "../components/Page";
@@ -10,7 +10,8 @@ export function TrafficPage() {
   const [range, setRange] = useState<"today" | "month">("today");
   const state = useAsync(() => api.traffic(range), [range]);
   const summary = state.data?.summary ?? { upload: 0, download: 0 };
-  const rows = state.data?.tunnels ?? [];
+  const clients = state.data?.clients ?? [];
+  const tunnels = state.data?.tunnels ?? [];
 
   return (
     <Page title="Traffic" loading={state.loading} error={state.error} onReload={state.reload}
@@ -20,17 +21,26 @@ export function TrafficPage() {
         <Col xs={12} md={8}><div className="metric"><Statistic title="Download" value={formatBytes(summary.download)} /></div></Col>
         <Col xs={12} md={8}><div className="metric"><Statistic title="Total" value={formatBytes(summary.upload + summary.download)} /></div></Col>
       </Row>
-      <Table<TrafficTarget>
-        rowKey="id"
-        dataSource={rows}
-        locale={{ emptyText: "No tunnel traffic in this range" }}
-        columns={[
-          { title: "Tunnel", dataIndex: "name" },
-          { title: "Upload", dataIndex: "upload", render: formatBytes },
-          { title: "Download", dataIndex: "download", render: formatBytes },
-          { title: "Total", render: (_, row) => formatBytes(row.upload + row.download) },
-        ]}
-      />
+      <Tabs items={[
+        { key: "clients", label: "By Client", children: <TrafficTable label="Client" rows={clients} /> },
+        { key: "tunnels", label: "By Tunnel", children: <TrafficTable label="Tunnel" rows={tunnels} /> },
+      ]} />
     </Page>
+  );
+}
+
+function TrafficTable({ label, rows }: { label: string; rows: TrafficTarget[] }) {
+  return (
+    <Table<TrafficTarget>
+      rowKey="id"
+      dataSource={rows}
+      locale={{ emptyText: `No ${label.toLowerCase()} traffic in this range` }}
+      columns={[
+        { title: label, dataIndex: "name" },
+        { title: "Upload", dataIndex: "upload", render: formatBytes },
+        { title: "Download", dataIndex: "download", render: formatBytes },
+        { title: "Total", render: (_, row) => formatBytes(row.upload + row.download) },
+      ]}
+    />
   );
 }

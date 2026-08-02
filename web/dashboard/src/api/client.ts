@@ -1,5 +1,5 @@
 import { authHeader, clearSession, saveSession } from "./session";
-import type { Client, LogEntry, Overview, RelayAssignment, RelayNode, SessionUser, SettingItem, Token, TrafficResponse, Tunnel } from "../types";
+import type { Client, ClientDetail, LogEntry, Overview, RelayAssignment, RelayNode, SessionUser, SettingItem, Token, TrafficResponse, Tunnel } from "../types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -66,7 +66,7 @@ export const api = {
     request<void>(`/api/tokens/${id}`, { method: "PATCH", body: JSON.stringify({ disabled }) }),
   deleteToken: (id: string) => request<void>(`/api/tokens/${id}`, { method: "DELETE" }),
   listClients: () => request<{ items: Client[] }>("/api/clients").then(items),
-  getClient: (id: string) => request<{ client: Client; tunnels: Tunnel[] }>(`/api/clients/${id}`),
+  getClient: (id: string) => request<ClientDetail>(`/api/clients/${id}`),
   updateClient: (id: string, body: Partial<Pick<Client, "name" | "disabled">>) =>
     request<void>(`/api/clients/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteClient: (id: string) => request<void>(`/api/clients/${id}`, { method: "DELETE" }),

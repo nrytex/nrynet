@@ -39,6 +39,10 @@ func TestHubAcceptsAgentAndSendsCommands(t *testing.T) {
 	if client.TokenID != token.ID || hub.OnlineCount() != 1 {
 		t.Fatalf("agent not registered: %#v online=%d", client, hub.OnlineCount())
 	}
+	connectedAt, connected := hub.ConnectedAt(client.ID)
+	if !connected || time.Since(connectedAt) > time.Second {
+		t.Fatalf("client connection time was not tracked: %v %v", connectedAt, connected)
+	}
 
 	tunnel := model.Tunnel{ID: "tun-1", LocalHost: "127.0.0.1", LocalPort: 8080}
 	if err := hub.OpenConnection(client.ID, tunnel, "req-1"); err != nil {
