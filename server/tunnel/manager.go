@@ -54,9 +54,6 @@ func (m *Manager) StartTunnel(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if tunnel.Protocol != "tcp" {
-		return fmt.Errorf("%s tunnel runtime is not available yet", tunnel.Protocol)
-	}
 	if err := m.start(tunnel); err != nil {
 		_ = m.store.SetTunnelStatus(ctx, id, "error")
 		return err
@@ -72,6 +69,12 @@ func (m *Manager) StartTunnel(ctx context.Context, id string) error {
 }
 
 func (m *Manager) start(tunnel model.Tunnel) error {
+	if tunnel.Protocol == "http" || tunnel.Protocol == "https" {
+		return nil
+	}
+	if tunnel.Protocol != "tcp" {
+		return fmt.Errorf("%s tunnel runtime is not available yet", tunnel.Protocol)
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, exists := m.listeners[tunnel.ID]; exists {
@@ -83,6 +86,21 @@ func (m *Manager) start(tunnel model.Tunnel) error {
 	}
 	m.listeners[tunnel.ID] = listener
 	go m.acceptLoop(tunnel, listener)
+	return nil
+}
+
+func (m *Manager) RouteVisitor(tunnelID string, visitor net.Conn) error {
+	tunnel, err := m.store.GetTunnel(context.Background(), tunnelID)
+	if err != nil {
+		return err
+	}
+	if tunnel.Status != "running" {
+		return errors.New("tunnel is not running")
+	}
+	if !visitorAllowed(visitor.RemoteAddr(), tunnel.IPAllowlist) {
+		return errors.New("visitor is not in the tunnel IP allowlist")
+	}
+	m.handleVisitor(tunnel, visitor)
 	return nil
 }
 

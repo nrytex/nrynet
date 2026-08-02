@@ -57,6 +57,13 @@ func (s *Store) GetTunnel(ctx context.Context, id string) (model.Tunnel, error) 
 	return scanTunnel(row)
 }
 
+func (s *Store) FindDomainTunnel(ctx context.Context, protocol, domain string) (model.Tunnel, error) {
+	domain = strings.ToLower(strings.TrimSuffix(domain, "."))
+	row := s.db.QueryRowContext(ctx, tunnelSelect+
+		" WHERE protocol = ? AND lower(domain) = ? AND status = 'running'", protocol, domain)
+	return scanTunnel(row)
+}
+
 func (s *Store) ListTunnels(ctx context.Context) ([]model.Tunnel, error) {
 	rows, err := s.db.QueryContext(ctx, tunnelSelect+" ORDER BY created_at DESC")
 	if err != nil {

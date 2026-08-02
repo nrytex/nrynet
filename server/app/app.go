@@ -14,6 +14,7 @@ import (
 	"github.com/nat-link/nat-link/internal/storage"
 	"github.com/nat-link/nat-link/server/api"
 	clienthub "github.com/nat-link/nat-link/server/client"
+	"github.com/nat-link/nat-link/server/gateway"
 	"github.com/nat-link/nat-link/server/relay"
 	"github.com/nat-link/nat-link/server/tunnel"
 )
@@ -23,7 +24,9 @@ type App struct {
 	store   *storage.Store
 	server  *http.Server
 	data    net.Listener
+	web     net.Listener
 	broker  *relay.Broker
+	gateway *gateway.Gateway
 	tunnels *tunnel.Manager
 }
 
@@ -50,11 +53,18 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		store.Close()
 		return nil, auth.BootstrapResult{}, fmt.Errorf("listen for data connections: %w", err)
 	}
+	webListener, err := net.Listen("tcp", cfg.Server.HTTPListen)
+	if err != nil {
+		_ = dataListener.Close()
+		store.Close()
+		return nil, auth.BootstrapResult{}, fmt.Errorf("listen for HTTP tunnels: %w", err)
+	}
+	webGateway := gateway.New(store, tunnelManager)
 	router := api.NewRouter(store, authService, time.Now(), tunnelManager)
 	router.GET("/agent/connect", hub.Handle)
 	server := &http.Server{Addr: cfg.Server.Listen, Handler: router, ReadHeaderTimeout: 10 * time.Second}
-	return &App{config: cfg, store: store, server: server, data: dataListener,
-		broker: broker, tunnels: tunnelManager}, bootstrap, nil
+	return &App{config: cfg, store: store, server: server, data: dataListener, web: webListener,
+		broker: broker, gateway: webGateway, tunnels: tunnelManager}, bootstrap, nil
 }
 
 func listenData(cfg config.ServerConfig) (net.Listener, error) {
@@ -79,6 +89,7 @@ func (a *App) Run() error {
 		fmt.Printf("restore tunnels: %v\n", err)
 	}
 	go func() { _ = a.broker.Run(a.data) }()
+	go func() { _ = a.gateway.Run(a.web) }()
 	var err error
 	if a.config.Server.TLS.Enabled {
 		err = a.server.ListenAndServeTLS(a.config.Server.TLS.CertFile, a.config.Server.TLS.KeyFile)
@@ -94,9 +105,10 @@ func (a *App) Run() error {
 func (a *App) Shutdown(ctx context.Context) error {
 	serverErr := a.server.Shutdown(ctx)
 	dataErr := a.data.Close()
+	webErr := a.web.Close()
 	tunnelErr := a.tunnels.Close()
 	storeErr := a.store.Close()
-	return errors.Join(serverErr, dataErr, tunnelErr, storeErr)
+	return errors.Join(serverErr, dataErr, webErr, tunnelErr, storeErr)
 }
 
 func (a *App) Address() string {

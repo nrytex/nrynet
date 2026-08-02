@@ -34,6 +34,8 @@ var migrations = []string{
         FOREIGN KEY(tunnel_id) REFERENCES tunnels(id)
     )`,
 	`CREATE INDEX IF NOT EXISTS idx_traffic_tunnel_date ON traffic_logs(tunnel_id, created_at)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_tunnels_protocol_domain
+        ON tunnels(protocol, domain) WHERE domain <> ''`,
 	`CREATE TABLE IF NOT EXISTS event_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT, level TEXT NOT NULL,
         event TEXT NOT NULL, message TEXT NOT NULL, fields TEXT NOT NULL,

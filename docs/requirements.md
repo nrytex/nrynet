@@ -26,9 +26,9 @@ end-to-end verification.
 
 ## V1.1 HTTP capabilities
 
-- [ ] HTTP host routing maps a domain to an agent's local service.
-- [ ] WebSocket upgrades pass through without protocol corruption.
-- [ ] HTTPS SNI routing passes encrypted TLS streams through unchanged.
+- [x] HTTP host routing maps a domain to an agent's local service.
+- [x] WebSocket upgrades pass through without protocol corruption.
+- [x] HTTPS SNI routing passes encrypted TLS streams through unchanged.
 
 ## V1.2 desktop agent
 
