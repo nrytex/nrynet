@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "NAT-Link",
+			"FileDescription": "NAT-Link desktop client",
+			"LegalCopyright": "(c) 2026 NAT-Link",
+			"ProductName": "NAT-Link",
+			"Comments": "Self-hosted private network tunnel client"
+		}
+	}
+}

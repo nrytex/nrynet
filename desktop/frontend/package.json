@@ -1,0 +1,29 @@
+{
+  "name": "react-ts-latest",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build:dev": "tsc && vite build --minify false --mode development",
+    "build": "tsc && vite build --mode production",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@wailsio/runtime": "latest",
+    "antd": "^5.21.6",
+    "lucide-react": "^0.468.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^6.0.0",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.2.2",
+    "vite": "^8.0.5",
+    "vitest": "^2.1.4"
+  }
+}

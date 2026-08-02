@@ -1,0 +1,73 @@
+package main
+
+import (
+	"time"
+
+	"github.com/nat-link/nat-link/internal/config"
+	"github.com/nat-link/nat-link/internal/model"
+)
+
+const appVersion = "0.1.0"
+
+type AppConfig struct {
+	ServerURL          string `json:"serverUrl"`
+	DataAddress        string `json:"dataAddress"`
+	Transport          string `json:"transport"`
+	QUICAddress        string `json:"quicAddress"`
+	Token              string `json:"token"`
+	Name               string `json:"name"`
+	DeviceID           string `json:"deviceId"`
+	InsecureSkipVerify bool   `json:"insecureSkipVerify"`
+	UpdateManifestURL  string `json:"updateManifestUrl"`
+	UpdatePublicKey    string `json:"updatePublicKey"`
+	UpdateChannel      string `json:"updateChannel"`
+	AutoStart          bool   `json:"autoStart"`
+}
+
+type RuntimeStatus struct {
+	Connected     bool      `json:"connected"`
+	State         string    `json:"state"`
+	Message       string    `json:"message"`
+	Version       string    `json:"version"`
+	UploadBytes   int64     `json:"uploadBytes"`
+	DownloadBytes int64     `json:"downloadBytes"`
+	LastStartedAt time.Time `json:"lastStartedAt,omitempty"`
+	LastStoppedAt time.Time `json:"lastStoppedAt,omitempty"`
+}
+
+type LogEntry struct {
+	Time    time.Time      `json:"time"`
+	Level   string         `json:"level"`
+	Message string         `json:"message"`
+	Fields  map[string]any `json:"fields"`
+}
+
+type UpdateResult struct {
+	Started bool   `json:"started"`
+	Message string `json:"message"`
+}
+
+type DesktopSnapshot struct {
+	Config  AppConfig      `json:"config"`
+	Status  RuntimeStatus  `json:"status"`
+	Tunnels []model.Tunnel `json:"tunnels"`
+	Logs    []LogEntry     `json:"logs"`
+}
+
+func (c AppConfig) toClientConfig() config.ClientConfig {
+	return config.ClientConfig{
+		ServerURL: c.ServerURL, DataAddress: c.DataAddress,
+		Transport: c.Transport, QUICAddress: c.QUICAddress,
+		Token: c.Token, Name: c.Name, DeviceID: c.DeviceID,
+		InsecureSkipVerify: c.InsecureSkipVerify,
+	}
+}
+
+func configFromClient(c config.ClientConfig) AppConfig {
+	return AppConfig{
+		ServerURL: c.ServerURL, DataAddress: c.DataAddress,
+		Transport: c.Transport, QUICAddress: c.QUICAddress,
+		Token: c.Token, Name: c.Name, DeviceID: c.DeviceID,
+		InsecureSkipVerify: c.InsecureSkipVerify,
+	}
+}
