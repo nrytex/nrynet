@@ -1,0 +1,21 @@
+[Unit]
+Description=NAT-Link private network agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nat-link
+Group=nat-link
+WorkingDirectory=/opt/nat-link-client
+ExecStart=/opt/nat-link-client/nat-link-client -config /opt/nat-link-client/config.yaml
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/nat-link-client/logs
+
+[Install]
+WantedBy=multi-user.target

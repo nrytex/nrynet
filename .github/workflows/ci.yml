@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/dashboard/package-lock.json
+      - run: go test ./...
+      - working-directory: web/dashboard
+        run: npm ci && npm test && npm run build
+      - run: git diff --exit-code -- server/dashboard/assets
+
+  cross-build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [linux/amd64, linux/arm64, windows/amd64, darwin/amd64, darwin/arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+      - shell: bash
+        run: |
+          os="${{ matrix.target }}"; os="${os%/*}"
+          arch="${{ matrix.target }}"; arch="${arch#*/}"
+          extension=""; if [ "$os" = windows ]; then extension=".exe"; fi
+          CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -o "nat-link-server$extension" ./server
+          CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -o "nat-link-client$extension" ./client
+          CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -o "nat-link-relay$extension" ./relay
+
+  desktop-build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: desktop/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - working-directory: desktop/frontend
+        run: npm ci && npm test && npm run build
+      - working-directory: desktop
+        run: go test ./...
+      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.120
+      - working-directory: desktop
+        run: wails3 build
