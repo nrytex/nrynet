@@ -52,6 +52,41 @@ func TestAuthenticationAndTokenLifecycle(t *testing.T) {
 	}
 }
 
+func TestSettingsUpdatePersistsRestartOverride(t *testing.T) {
+	ctx := context.Background()
+	store, err := storage.Open(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	service, err := auth.New(ctx, store, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Bootstrap(ctx, "admin", "test-password"); err != nil {
+		t.Fatal(err)
+	}
+	router := NewRouterWithOptions(store, service, time.Now(), RouterOptions{Settings: []SettingItem{
+		{Key: "server.listen", Value: "0.0.0.0:7000", Mutable: true},
+	}})
+	login := requestJSON(t, router, http.MethodPost, "/api/auth/login", "", map[string]any{
+		"username": "admin", "password": "test-password",
+	})
+	var session struct {
+		Token string `json:"token"`
+	}
+	decodeJSON(t, login, &session)
+	updated := requestJSON(t, router, http.MethodPatch, "/api/settings/server.listen", session.Token,
+		map[string]any{"value": "127.0.0.1:7100"})
+	if updated.Code != http.StatusOK {
+		t.Fatalf("update status=%d body=%s", updated.Code, updated.Body.String())
+	}
+	value, err := store.GetSetting(ctx, "config.server.listen")
+	if err != nil || value != "127.0.0.1:7100" {
+		t.Fatalf("persisted value=%q err=%v", value, err)
+	}
+}
+
 func testRouter(t *testing.T) (http.Handler, func()) {
 	t.Helper()
 	store, err := storage.Open(filepath.Join(t.TempDir(), "api.db"))

@@ -3,6 +3,8 @@
 data/
 logs/
 tmp/
+output/
+.playwright-cli/
 dist/
 bin/
 web/dashboard/node_modules/
@@ -12,4 +14,3 @@ desktop/frontend/dist/
 *.db
 *.db-shm
 *.db-wal
-

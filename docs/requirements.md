@@ -8,12 +8,12 @@ end-to-end verification.
 
 - [ ] The server runs on Linux and Windows from YAML configuration.
 - [x] First start creates a local administrator, a one-time password, and a server secret.
-- [ ] An administrator can log in to the dashboard without a cloud account.
+- [x] An administrator can log in to the dashboard without a cloud account.
 - [x] Tokens authenticate agents and can be created, disabled, and deleted.
 - [ ] A Go agent runs on Windows, Linux, and macOS and maintains a heartbeat.
 - [x] A TCP tunnel exposes a configured public port and relays bidirectional bytes.
 - [ ] Agent/server communication supports TLS and rejects invalid credentials.
-- [ ] The dashboard shows server health, online clients, tunnels, connections, bandwidth, and daily traffic.
+- [x] The dashboard shows server health, online clients, tunnels, connections, bandwidth, and daily traffic.
 
 ## V1.1 management
 

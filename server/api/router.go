@@ -10,10 +10,23 @@ import (
 	"github.com/nat-link/nat-link/internal/storage"
 )
 
+type RouterOptions struct {
+	Runtime  Runtime
+	Settings []SettingItem
+}
+
 func NewRouter(store *storage.Store, authService *auth.Service, startedAt time.Time, runtimes ...Runtime) *gin.Engine {
-	runtime := Runtime(unavailableRuntime{})
-	if len(runtimes) > 0 && runtimes[0] != nil {
-		runtime = runtimes[0]
+	options := RouterOptions{}
+	if len(runtimes) > 0 {
+		options.Runtime = runtimes[0]
+	}
+	return NewRouterWithOptions(store, authService, startedAt, options)
+}
+
+func NewRouterWithOptions(store *storage.Store, authService *auth.Service, startedAt time.Time, options RouterOptions) *gin.Engine {
+	runtime := options.Runtime
+	if runtime == nil {
+		runtime = unavailableRuntime{}
 	}
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
@@ -24,6 +37,7 @@ func NewRouter(store *storage.Store, authService *auth.Service, startedAt time.T
 	overviewAPI := overviewHandler{store: store, runtime: runtime, startedAt: startedAt}
 	trafficAPI := trafficHandler{store: store}
 	logAPI := logHandler{store: store}
+	settingsAPI := newSettingsHandler(store, options.Settings)
 	router.GET("/health", func(c *gin.Context) {
 		if err := store.Ping(c.Request.Context()); err != nil {
 			respondError(c, http.StatusServiceUnavailable, "database unavailable")
@@ -34,6 +48,7 @@ func NewRouter(store *storage.Store, authService *auth.Service, startedAt time.T
 	router.POST("/api/auth/login", authAPI.login)
 	secured := router.Group("/api", requireSession(authService))
 	secured.GET("/me", me)
+	secured.GET("/auth/me", me)
 	secured.GET("/tokens", tokenAPI.list)
 	secured.POST("/tokens", tokenAPI.create)
 	secured.PATCH("/tokens/:id", tokenAPI.update)
@@ -54,5 +69,7 @@ func NewRouter(store *storage.Store, authService *auth.Service, startedAt time.T
 	secured.GET("/logs", logAPI.list)
 	secured.GET("/logs/download", logAPI.download)
 	secured.DELETE("/logs", logAPI.clear)
+	secured.GET("/settings", settingsAPI.list)
+	secured.PATCH("/settings/:key", settingsAPI.update)
 	return router
 }

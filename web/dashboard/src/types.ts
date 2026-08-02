@@ -1,0 +1,97 @@
+export type Status = "online" | "offline" | "running" | "stopped" | string;
+
+export interface SessionUser {
+  sub?: string;
+  username?: string;
+  exp?: number;
+  [key: string]: unknown;
+}
+
+export interface Token {
+  id: string;
+  name: string;
+  prefix: string;
+  disabled: boolean;
+  last_used?: string;
+  created_at: string;
+}
+
+export interface Client {
+  id: string;
+  name: string;
+  device_id: string;
+  token_id: string;
+  status: Status;
+  disabled: boolean;
+  ip: string;
+  os: string;
+  version: string;
+  last_online: string;
+  created_at: string;
+}
+
+export interface Tunnel {
+  id: string;
+  client_id: string;
+  name: string;
+  protocol: "tcp" | "http" | "https" | "udp" | string;
+  local_host: string;
+  local_port: number;
+  remote_port: number;
+  domain: string;
+  status: Status;
+  ip_allowlist: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TrafficPoint {
+  tunnel_id?: string;
+  upload: number;
+  download: number;
+  created_at?: string;
+  at?: string;
+}
+
+export interface TrafficTarget {
+  id: string;
+  name: string;
+  upload: number;
+  download: number;
+}
+
+export interface TrafficResponse {
+  summary: { upload: number; download: number };
+  clients: TrafficTarget[];
+  tunnels: TrafficTarget[];
+  since: string;
+}
+
+export interface Overview {
+  status: string;
+  uptime_seconds: number;
+  online_clients: number;
+  total_clients: number;
+  active_tunnels: number;
+  total_tunnels: number;
+  connections: number;
+  bandwidth_bps: number;
+  today_upload: number;
+  today_download: number;
+}
+
+export interface LogEntry {
+  id?: string | number;
+  level: string;
+  event?: string;
+  message: string;
+  source?: string;
+  created_at?: string;
+}
+
+export interface SettingItem {
+  key: string;
+  value: string | number | boolean;
+  description?: string;
+  mutable?: boolean;
+}
