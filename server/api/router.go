@@ -10,11 +10,20 @@ import (
 	"github.com/nat-link/nat-link/internal/storage"
 )
 
-func NewRouter(store *storage.Store, authService *auth.Service, startedAt time.Time) *gin.Engine {
+func NewRouter(store *storage.Store, authService *auth.Service, startedAt time.Time, runtimes ...Runtime) *gin.Engine {
+	runtime := Runtime(unavailableRuntime{})
+	if len(runtimes) > 0 && runtimes[0] != nil {
+		runtime = runtimes[0]
+	}
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 	authAPI := authHandler{service: authService}
 	tokenAPI := tokenHandler{store: store, auth: authService}
+	clientAPI := clientHandler{store: store, auth: authService, runtime: runtime}
+	tunnelAPI := tunnelHandler{store: store, runtime: runtime}
+	overviewAPI := overviewHandler{store: store, runtime: runtime, startedAt: startedAt}
+	trafficAPI := trafficHandler{store: store}
+	logAPI := logHandler{store: store}
 	router.GET("/health", func(c *gin.Context) {
 		if err := store.Ping(c.Request.Context()); err != nil {
 			respondError(c, http.StatusServiceUnavailable, "database unavailable")
@@ -29,5 +38,21 @@ func NewRouter(store *storage.Store, authService *auth.Service, startedAt time.T
 	secured.POST("/tokens", tokenAPI.create)
 	secured.PATCH("/tokens/:id", tokenAPI.update)
 	secured.DELETE("/tokens/:id", tokenAPI.delete)
+	secured.GET("/clients", clientAPI.list)
+	secured.GET("/clients/:id", clientAPI.get)
+	secured.PATCH("/clients/:id", clientAPI.update)
+	secured.DELETE("/clients/:id", clientAPI.delete)
+	secured.POST("/clients/:id/reset-token", clientAPI.resetToken)
+	secured.GET("/tunnels", tunnelAPI.list)
+	secured.POST("/tunnels", tunnelAPI.create)
+	secured.PUT("/tunnels/:id", tunnelAPI.update)
+	secured.DELETE("/tunnels/:id", tunnelAPI.delete)
+	secured.POST("/tunnels/:id/start", tunnelAPI.start)
+	secured.POST("/tunnels/:id/stop", tunnelAPI.stop)
+	secured.GET("/overview", overviewAPI.get)
+	secured.GET("/traffic/summary", trafficAPI.summary)
+	secured.GET("/logs", logAPI.list)
+	secured.GET("/logs/download", logAPI.download)
+	secured.DELETE("/logs", logAPI.clear)
 	return router
 }

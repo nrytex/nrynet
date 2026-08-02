@@ -46,3 +46,24 @@ type Traffic struct {
 	Download int64     `json:"download"`
 	At       time.Time `json:"created_at"`
 }
+
+type TrafficSummary struct {
+	Upload   int64 `json:"upload"`
+	Download int64 `json:"download"`
+}
+
+type TrafficTarget struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Upload   int64  `json:"upload"`
+	Download int64  `json:"download"`
+}
+
+type Event struct {
+	ID        int64          `json:"id"`
+	Level     string         `json:"level"`
+	Event     string         `json:"event"`
+	Message   string         `json:"message"`
+	Fields    map[string]any `json:"fields"`
+	CreatedAt time.Time      `json:"created_at"`
+}
