@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
@@ -13,11 +14,16 @@ import (
 	"github.com/nat-link/nat-link/internal/config"
 )
 
-const version = "0.1.0"
+var version = "0.1.0"
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to YAML configuration")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatal(err)

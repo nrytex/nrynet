@@ -22,7 +22,8 @@ module.
 - Wails updater backed by a self-hosted Wails endpoint manifest. It compares
   versions, downloads to the Wails staging area, verifies SHA-256 digest and
   Ed25519 signatures using the configured public key, then uses the Wails
-  updater helper for replacement/restart.
+  updater helper for replacement/restart. A configured updater checks every
+  six hours in the background; the Update button remains available on demand.
 
 ## Development
 
@@ -58,6 +59,7 @@ Windows local build:
 
 ```powershell
 cd desktop
+$env:APP_VERSION = "1.0.0"
 wails3 build
 ```
 
@@ -65,8 +67,12 @@ macOS build on a macOS host:
 
 ```bash
 cd desktop
-wails3 build GOOS=darwin
+APP_VERSION=1.0.0 wails3 build GOOS=darwin
 ```
+
+`APP_VERSION` is injected into `main.appVersion` and is the authoritative
+version used by update comparison and the status UI. Keep the native package
+version in `build/config.yml` aligned for signed production releases.
 
 Wails desktop builds rely on each platform's native WebView/toolchain, so
 production Windows and macOS artifacts should be produced on their matching

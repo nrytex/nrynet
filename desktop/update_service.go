@@ -10,10 +10,13 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/updater"
 	"github.com/wailsapp/wails/v3/pkg/updater/providers/endpoint"
 )
+
+const automaticUpdateInterval = 6 * time.Hour
 
 type UpdateService struct {
 	mu        sync.Mutex
@@ -30,6 +33,13 @@ type updateRunner interface {
 
 func NewUpdateService(runner updateRunner) *UpdateService {
 	return &UpdateService{runner: runner}
+}
+
+func (s *UpdateService) ConfigureAutomatic(cfg AppConfig) error {
+	if strings.TrimSpace(cfg.UpdateManifestURL) == "" && strings.TrimSpace(cfg.UpdatePublicKey) == "" {
+		return nil
+	}
+	return s.ensureConfigured(cfg)
 }
 
 func (s *UpdateService) CheckAndInstall(cfg AppConfig) (UpdateResult, error) {
@@ -80,6 +90,7 @@ func (s *UpdateService) ensureConfigured(cfg AppConfig) error {
 		CurrentVersion: appVersion,
 		Providers:      []updater.Provider{provider},
 		PublicKey:      publicKey,
+		CheckInterval:  automaticUpdateInterval,
 	})
 	if err != nil && !errors.Is(err, updater.ErrAlreadyConfigured) {
 		return err

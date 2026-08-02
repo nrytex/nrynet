@@ -36,6 +36,9 @@ func NewDesktopService(store *fileStore, logs *memoryLogHandler, updater *Update
 	if err != nil {
 		return nil, err
 	}
+	if err := updater.ConfigureAutomatic(cfg); err != nil {
+		return nil, fmt.Errorf("configure automatic updates: %w", err)
+	}
 	return &DesktopService{
 		store: store, cfg: cfg, logs: logs, updater: updater,
 		status:  RuntimeStatus{State: "disconnected", Version: appVersion},

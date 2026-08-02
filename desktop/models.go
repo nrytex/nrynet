@@ -7,7 +7,7 @@ import (
 	"github.com/nat-link/nat-link/internal/model"
 )
 
-const appVersion = "0.1.0"
+var appVersion = "0.1.0"
 
 type AppConfig struct {
 	ServerURL          string `json:"serverUrl"`

@@ -85,10 +85,24 @@ func TestUpdateServiceConfiguresEndpointOnce(t *testing.T) {
 	if runner.initCalls != 1 {
 		t.Fatalf("init calls = %d", runner.initCalls)
 	}
+	if runner.cfg.CurrentVersion != appVersion || runner.cfg.CheckInterval != automaticUpdateInterval {
+		t.Fatalf("unexpected updater config: version=%q interval=%v", runner.cfg.CurrentVersion, runner.cfg.CheckInterval)
+	}
 	changed := cfg
 	changed.UpdateManifestURL = "https://updates.example.com/next.json"
 	if _, err := svc.CheckAndInstall(changed); err == nil {
 		t.Fatal("expected changed update settings to require restart")
+	}
+}
+
+func TestAutomaticUpdateConfigurationIsOptional(t *testing.T) {
+	runner := &fakeRunner{}
+	svc := NewUpdateService(runner)
+	if err := svc.ConfigureAutomatic(AppConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	if runner.initCalls != 0 {
+		t.Fatalf("empty update configuration initialized runner %d times", runner.initCalls)
 	}
 }
 

@@ -21,7 +21,7 @@ foreach ($target in $targets) {
     $extension = if ($target.OS -eq "windows") { ".exe" } else { "" }
     go build -trimpath -ldflags "-s -w" -o (Join-Path $directory "nat-link-server$extension") ./server
     if ($LASTEXITCODE -ne 0) { throw "server build failed for $($target.OS)/$($target.Arch)" }
-    go build -trimpath -ldflags "-s -w" -o (Join-Path $directory "nat-link-client$extension") ./client
+    go build -trimpath -ldflags "-s -w -X main.version=$Version" -o (Join-Path $directory "nat-link-client$extension") ./client
     if ($LASTEXITCODE -ne 0) { throw "client build failed for $($target.OS)/$($target.Arch)" }
     go build -trimpath -ldflags "-s -w" -o (Join-Path $directory "nat-link-relay$extension") ./relay
     if ($LASTEXITCODE -ne 0) { throw "relay build failed for $($target.OS)/$($target.Arch)" }
