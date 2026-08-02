@@ -1,0 +1,24 @@
+server:
+  listen: "0.0.0.0:7000"
+  data_listen: "0.0.0.0:7001"
+  public_data_address: "127.0.0.1:7001"
+  http_listen: "0.0.0.0:8080"
+  database: "data/nat-link.db"
+  log_directory: "logs"
+  jwt_ttl: "12h"
+  heartbeat_timeout: "45s"
+  tls:
+    enabled: false
+    cert_file: ""
+    key_file: ""
+  bootstrap:
+    admin_username: "admin"
+    admin_password: ""
+client:
+  server_url: "ws://127.0.0.1:7000/agent/connect"
+  data_address: "127.0.0.1:7001"
+  token: ""
+  name: ""
+  device_id: ""
+  insecure_skip_verify: false
+

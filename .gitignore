@@ -1,0 +1,15 @@
+.codegraph/
+.env
+data/
+logs/
+tmp/
+dist/
+bin/
+web/dashboard/node_modules/
+web/dashboard/dist/
+desktop/frontend/node_modules/
+desktop/frontend/dist/
+*.db
+*.db-shm
+*.db-wal
+
