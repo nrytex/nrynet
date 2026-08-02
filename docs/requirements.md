@@ -38,7 +38,7 @@ end-to-end verification.
 
 ## V2.0 advanced networking
 
-- [ ] UDP tunnels relay independent visitor datagrams and replies.
+- [x] UDP tunnels relay independent visitor datagrams and replies.
 - [ ] QUIC can carry authenticated agent control and data traffic over TLS 1.3.
 - [ ] A rendezvous service discovers public endpoints and coordinates UDP hole punching.
 - [ ] Agents fall back to the relay when a direct peer path cannot be established.

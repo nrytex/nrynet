@@ -26,8 +26,9 @@ type Hub struct {
 	timeout  time.Duration
 	upgrader websocket.Upgrader
 
-	mu    sync.RWMutex
-	conns map[string]*controlConn
+	mu         sync.RWMutex
+	conns      map[string]*controlConn
+	udpHandler func(string, protocol.ControlMessage)
 }
 
 func NewHub(store *storage.Store, authService *auth.Service, timeout time.Duration) *Hub {
@@ -77,6 +78,25 @@ func (h *Hub) OpenConnection(clientID string, tunnel model.Tunnel, requestID str
 		return err
 	}
 	return h.send(clientID, message)
+}
+
+func (h *Hub) SendUDPPacket(clientID string, tunnel model.Tunnel, requestID string, payload []byte) error {
+	packet := protocol.UDPPacketPayload{
+		LocalHost: tunnel.LocalHost,
+		LocalPort: tunnel.LocalPort,
+		Payload:   payload,
+	}
+	message, err := protocol.NewMessage(protocol.TypeUDPPacket, requestID, tunnel.ID, packet)
+	if err != nil {
+		return err
+	}
+	return h.send(clientID, message)
+}
+
+func (h *Hub) SetUDPPacketHandler(handler func(string, protocol.ControlMessage)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.udpHandler = handler
 }
 
 func (h *Hub) Disconnect(clientID string) {
@@ -212,7 +232,20 @@ func (h *Hub) readLoop(ctx context.Context, conn *controlConn, clientID string) 
 		if message.Type == protocol.TypeHeartbeat {
 			_ = h.store.SetClientStatus(ctx, clientID, "online")
 			_ = conn.ws.SetReadDeadline(time.Now().Add(h.timeout))
+			continue
 		}
+		if message.Type == protocol.TypeUDPPacket {
+			h.handleUDPPacket(clientID, message)
+		}
+	}
+}
+
+func (h *Hub) handleUDPPacket(clientID string, message protocol.ControlMessage) {
+	h.mu.RLock()
+	handler := h.udpHandler
+	h.mu.RUnlock()
+	if handler != nil {
+		handler(clientID, message)
 	}
 }
 

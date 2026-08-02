@@ -22,13 +22,22 @@ type Manager struct {
 	hub    *clienthub.Hub
 	broker *relay.Broker
 
-	mu        sync.Mutex
-	listeners map[string]net.Listener
-	active    atomic.Int64
+	mu          sync.Mutex
+	listeners   map[string]net.Listener
+	udpRuntimes map[string]*udpRuntime
+	active      atomic.Int64
 }
 
 func NewManager(store *storage.Store, hub *clienthub.Hub, broker *relay.Broker) *Manager {
-	return &Manager{store: store, hub: hub, broker: broker, listeners: make(map[string]net.Listener)}
+	manager := &Manager{
+		store:       store,
+		hub:         hub,
+		broker:      broker,
+		listeners:   make(map[string]net.Listener),
+		udpRuntimes: make(map[string]*udpRuntime),
+	}
+	hub.SetUDPPacketHandler(manager.HandleUDPPacket)
+	return manager
 }
 
 func (m *Manager) Restore(ctx context.Context) error {
@@ -71,6 +80,9 @@ func (m *Manager) StartTunnel(ctx context.Context, id string) error {
 func (m *Manager) start(tunnel model.Tunnel) error {
 	if tunnel.Protocol == "http" || tunnel.Protocol == "https" {
 		return nil
+	}
+	if tunnel.Protocol == "udp" {
+		return m.startUDP(tunnel)
 	}
 	if tunnel.Protocol != "tcp" {
 		return fmt.Errorf("%s tunnel runtime is not available yet", tunnel.Protocol)
@@ -125,7 +137,12 @@ func (m *Manager) stop(id string) error {
 	m.mu.Lock()
 	listener := m.listeners[id]
 	delete(m.listeners, id)
+	udp := m.udpRuntimes[id]
+	delete(m.udpRuntimes, id)
 	m.mu.Unlock()
+	if udp != nil {
+		return udp.close()
+	}
 	if listener == nil {
 		return nil
 	}
@@ -149,17 +166,29 @@ func (m *Manager) ActiveConnections() int64 {
 	return m.active.Load()
 }
 
+func (m *Manager) BandwidthBPS() int64 {
+	return m.broker.BandwidthBPS()
+}
+
 func (m *Manager) Close() error {
 	m.mu.Lock()
 	listeners := make([]net.Listener, 0, len(m.listeners))
 	for _, listener := range m.listeners {
 		listeners = append(listeners, listener)
 	}
+	udpRuntimes := make([]*udpRuntime, 0, len(m.udpRuntimes))
+	for _, runtime := range m.udpRuntimes {
+		udpRuntimes = append(udpRuntimes, runtime)
+	}
 	m.listeners = make(map[string]net.Listener)
+	m.udpRuntimes = make(map[string]*udpRuntime)
 	m.mu.Unlock()
 	var errs []error
 	for _, listener := range listeners {
 		errs = append(errs, listener.Close())
+	}
+	for _, runtime := range udpRuntimes {
+		errs = append(errs, runtime.close())
 	}
 	return errors.Join(errs...)
 }

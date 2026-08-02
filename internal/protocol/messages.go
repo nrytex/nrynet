@@ -11,6 +11,7 @@ const (
 	TypeHeartbeat      = "heartbeat"
 	TypeTunnelSnapshot = "tunnel_snapshot"
 	TypeOpenConnection = "open_connection"
+	TypeUDPPacket      = "udp_packet"
 	TypeError          = "error"
 )
 
@@ -35,6 +36,12 @@ type TunnelSnapshotPayload struct {
 type OpenConnectionPayload struct {
 	LocalHost string `json:"local_host"`
 	LocalPort int    `json:"local_port"`
+}
+
+type UDPPacketPayload struct {
+	LocalHost string `json:"local_host,omitempty"`
+	LocalPort int    `json:"local_port,omitempty"`
+	Payload   []byte `json:"payload"`
 }
 
 type ErrorPayload struct {

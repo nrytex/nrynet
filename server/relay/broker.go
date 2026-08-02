@@ -31,6 +31,7 @@ type Broker struct {
 
 	mu      sync.Mutex
 	pending map[string]*pendingConn
+	meter   *bandwidthMeter
 }
 
 func NewBroker(authService *auth.Service, store *storage.Store, timeout time.Duration) *Broker {
@@ -42,7 +43,16 @@ func NewBroker(authService *auth.Service, store *storage.Store, timeout time.Dur
 		store:   store,
 		timeout: timeout,
 		pending: make(map[string]*pendingConn),
+		meter:   newBandwidthMeter(),
 	}
+}
+
+func (b *Broker) BandwidthBPS() int64 {
+	return b.meter.BytesPerSecond()
+}
+
+func (b *Broker) RecordBytes(bytes int64) {
+	b.meter.Add(bytes)
 }
 
 func (b *Broker) Run(listener net.Listener) error {
@@ -117,7 +127,7 @@ func (b *Broker) handleDataConn(conn net.Conn) {
 		_ = dataConn.Close()
 		return
 	}
-	err = relay(dataConn, pending.visitor, pending.onComplete)
+	err = b.relay(dataConn, pending.visitor, pending.onComplete)
 	pending.done <- err
 }
 
@@ -191,13 +201,13 @@ func (c bufferedConn) Read(p []byte) (int, error) {
 	return c.reader.Read(p)
 }
 
-func relay(dataConn, visitor net.Conn, onComplete CompleteFunc) error {
+func (b *Broker) relay(dataConn, visitor net.Conn, onComplete CompleteFunc) error {
 	defer dataConn.Close()
 	defer visitor.Close()
 	uploadCh := make(chan copyResult, 1)
 	downloadCh := make(chan copyResult, 1)
-	go copyMeasured(dataConn, visitor, uploadCh)
-	go copyMeasured(visitor, dataConn, downloadCh)
+	go copyMeasured(dataConn, visitor, uploadCh, b.meter)
+	go copyMeasured(visitor, dataConn, downloadCh, b.meter)
 	upload, download, err := waitCopies(dataConn, visitor, uploadCh, downloadCh)
 	if onComplete != nil {
 		onComplete(upload, download)
@@ -233,9 +243,20 @@ func waitCopies(
 	return upload.n, download.n, firstErr
 }
 
-func copyMeasured(dst net.Conn, src net.Conn, ch chan<- copyResult) {
-	n, err := io.Copy(dst, src)
+func copyMeasured(dst net.Conn, src net.Conn, ch chan<- copyResult, meter *bandwidthMeter) {
+	n, err := io.Copy(countingWriter{Writer: dst, meter: meter}, src)
 	ch <- copyResult{n: n, err: err}
+}
+
+type countingWriter struct {
+	io.Writer
+	meter *bandwidthMeter
+}
+
+func (w countingWriter) Write(data []byte) (int, error) {
+	written, err := w.Writer.Write(data)
+	w.meter.Add(int64(written))
+	return written, err
 }
 
 func normalizeCopyError(err error) error {

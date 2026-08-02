@@ -18,6 +18,7 @@ import (
 type Agent struct {
 	options Options
 	logger  *slog.Logger
+	udp     *udpRelay
 }
 
 type controlConn struct {
@@ -32,7 +33,7 @@ func New(options Options, logger *slog.Logger) (*Agent, error) {
 	if err := options.Validate(); err != nil {
 		return nil, err
 	}
-	return &Agent{options: options, logger: logger}, nil
+	return &Agent{options: options, logger: logger, udp: newUDPRelay(2 * time.Minute)}, nil
 }
 
 func (a *Agent) Run(ctx context.Context) error {
@@ -62,7 +63,7 @@ func (a *Agent) runSession(ctx context.Context) error {
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go func() { errCh <- a.heartbeat(sessionCtx, conn) }()
-	go func() { errCh <- a.readLoop(sessionCtx, conn.conn) }()
+	go func() { errCh <- a.readLoop(sessionCtx, conn) }()
 	err = <-errCh
 	cancel()
 	return err
@@ -83,26 +84,32 @@ func (a *Agent) dialControl(ctx context.Context) (*controlConn, error) {
 	return &controlConn{conn: conn}, nil
 }
 
-func (a *Agent) readLoop(ctx context.Context, conn *websocket.Conn) error {
+func (a *Agent) readLoop(ctx context.Context, conn *controlConn) error {
 	for ctx.Err() == nil {
 		var message protocol.ControlMessage
-		if err := conn.ReadJSON(&message); err != nil {
+		if err := conn.conn.ReadJSON(&message); err != nil {
 			return fmt.Errorf("read control message: %w", err)
 		}
-		if err := a.handleControlMessage(ctx, message); err != nil {
+		if err := a.handleControlMessage(ctx, conn, message); err != nil {
 			a.logger.Warn("control message failed", "type", message.Type, "error", err)
 		}
 	}
 	return nil
 }
 
-func (a *Agent) handleControlMessage(ctx context.Context, message protocol.ControlMessage) error {
+func (a *Agent) handleControlMessage(
+	ctx context.Context,
+	conn *controlConn,
+	message protocol.ControlMessage,
+) error {
 	switch message.Type {
 	case protocol.TypeTunnelSnapshot:
 		return a.handleTunnelSnapshot(message)
 	case protocol.TypeOpenConnection:
 		go a.handleOpenConnection(ctx, message)
 		return nil
+	case protocol.TypeUDPPacket:
+		return a.handleUDPPacket(ctx, conn, message)
 	case protocol.TypeError:
 		payload, err := protocol.DecodePayload[protocol.ErrorPayload](message)
 		if err != nil {
