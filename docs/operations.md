@@ -2,9 +2,7 @@
 
 ## Network ports
 
-The production TLS deployment exposes these server listeners. The general
-`config.example.yaml` intentionally binds control/data listeners to loopback
-for safe local development.
+The example configuration exposes these server listeners:
 
 | Port | Transport | Purpose |
 | --- | --- | --- |
@@ -126,24 +124,17 @@ Install an agent with `deploy/nat-link-client.service` under
 
 ## Docker
 
-Create the Docker configuration and provide a certificate before running
-Compose. Container listeners must remain on `0.0.0.0`; set every `public_*`
-address and client URL to the Docker host's reachable DNS name. The certificate
-must contain that DNS name.
+Create `config.yaml` before running Compose. Set public addresses to the Docker
+host's reachable DNS name, not `127.0.0.1`.
 
 ```sh
-cp config.docker.example.yaml config.docker.yaml
-mkdir -p tls
-cp /path/to/fullchain.pem tls/fullchain.pem
-cp /path/to/privkey.pem tls/privkey.pem
-# Edit nat-link.example.com in config.docker.yaml before starting.
+cp config.example.yaml config.yaml
 docker compose up -d --build
 docker compose logs -f nat-link-server
 ```
 
-SQLite and logs are stored in named volumes. Compose mounts `config.docker.yaml`
-and `tls/` read-only. The dedicated Docker example enables TLS because NAT-Link
-rejects plaintext control and data listeners on non-loopback addresses.
+SQLite and logs are stored in named volumes. Mount certificate files read-only
+and use their container paths in YAML when TLS is enabled.
 
 ## Cross-platform builds
 
@@ -161,10 +152,7 @@ VERSION=1.0.0 ./scripts/build.sh
 
 Both scripts produce Linux amd64/arm64, Windows amd64, and macOS amd64/arm64
 server, CLI agent, and relay node binaries under `bin/`. Desktop artifacts use the build
-instructions in `desktop/README.md`. The requested version is injected into
-the CLI binary; verify it with `nat-link-client -version`. Desktop release
-builds inject the same value through `APP_VERSION`, which drives update
-comparison and the version displayed in the GUI.
+instructions in `desktop/README.md`.
 
 ## Backup and recovery
 

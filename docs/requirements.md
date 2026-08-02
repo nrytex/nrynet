@@ -50,7 +50,6 @@ end-to-end verification.
 
 - [x] Server and agent binaries have reproducible cross-platform build commands.
 - [x] A systemd unit and documented directory layout support `/opt/nat-link`.
-- [x] Docker Compose uses container-reachable listeners with required TLS certificate mounts.
 - [x] SQLite persists configuration and metrics across server restarts.
 - [x] Automated tests cover authentication, storage, protocol framing, and TCP/HTTP/UDP end-to-end paths.
 
