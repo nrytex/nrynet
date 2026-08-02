@@ -105,11 +105,26 @@ func (s *Store) setClientDisabled(ctx context.Context, id string, disabled bool)
 }
 
 func (s *Store) DeleteClient(ctx context.Context, id string) error {
-	result, err := s.db.ExecContext(ctx, "DELETE FROM clients WHERE id = ?", id)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	return requireChanged(result)
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM traffic_logs WHERE tunnel_id IN
+        (SELECT id FROM tunnels WHERE client_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM tunnels WHERE client_id = ?", id); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, "DELETE FROM clients WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+	if err := requireChanged(result); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) UpdateClientToken(ctx context.Context, id, tokenID string) error {

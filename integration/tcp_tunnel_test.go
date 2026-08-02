@@ -68,6 +68,21 @@ func TestTCPTunnelEndToEnd(t *testing.T) {
 	if string(got) != string(want) {
 		t.Fatalf("relay response=%q want=%q", got, want)
 	}
+	_ = visitor.Close()
+	waitForTraffic(t, store, int64(len(want)*2))
+}
+
+func waitForTraffic(t *testing.T, store *storage.Store, minimum int64) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		summary, err := store.TrafficSummary(context.Background(), time.Now().Add(-time.Hour))
+		if err == nil && summary.Upload+summary.Download >= minimum {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("relay traffic was not persisted")
 }
 
 func testServices(t *testing.T) (*storage.Store, *auth.Service) {

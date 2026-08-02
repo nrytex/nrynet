@@ -26,7 +26,7 @@ func (h logHandler) list(c *gin.Context) {
 
 func (h logHandler) download(c *gin.Context) {
 	filter := eventFilter(c)
-	filter.Limit = 500
+	filter.Limit = 0
 	events, err := h.store.ListEvents(c.Request.Context(), filter)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())

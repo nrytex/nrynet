@@ -109,6 +109,10 @@ body {
   gap: 0 16px;
 }
 
+.password-settings .ant-form {
+  gap: 8px;
+}
+
 .full-width {
   width: 100%;
 }

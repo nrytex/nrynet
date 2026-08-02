@@ -42,6 +42,9 @@ func (h tunnelHandler) create(c *gin.Context) {
 		}
 		created, _ = h.store.GetTunnel(c.Request.Context(), created.ID)
 	}
+	_ = h.store.RecordEvent(c.Request.Context(), "info", "tunnel.created", "Tunnel created", map[string]any{
+		"tunnel_id": created.ID, "name": created.Name, "protocol": created.Protocol,
+	})
 	c.JSON(http.StatusCreated, created)
 }
 
@@ -73,6 +76,9 @@ func (h tunnelHandler) update(c *gin.Context) {
 		respondError(c, http.StatusConflict, err.Error())
 		return
 	}
+	_ = h.store.RecordEvent(c.Request.Context(), "info", "tunnel.updated", "Tunnel updated", map[string]any{
+		"tunnel_id": updated.ID, "name": updated.Name,
+	})
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -99,5 +105,7 @@ func (h tunnelHandler) delete(c *gin.Context) {
 		respondError(c, http.StatusNotFound, err.Error())
 		return
 	}
+	_ = h.store.RecordEvent(c.Request.Context(), "info", "tunnel.deleted", "Tunnel deleted",
+		map[string]any{"tunnel_id": id})
 	c.Status(http.StatusNoContent)
 }

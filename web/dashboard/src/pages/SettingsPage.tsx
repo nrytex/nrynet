@@ -1,4 +1,4 @@
-import { Button, Form, Input, message, Switch, Table } from "antd";
+import { Button, Divider, Form, Input, message, Switch, Table, Typography } from "antd";
 import { api } from "../api/client";
 import { Page } from "../components/Page";
 import { useAsync } from "../hooks/useAsync";
@@ -10,6 +10,9 @@ export function SettingsPage() {
 
   return (
     <Page title="Settings" loading={state.loading} error={state.error} empty={!rows.length} onReload={state.reload}>
+      <PasswordForm />
+      <Divider />
+      <Typography.Title level={4}>Server configuration</Typography.Title>
       <Table<SettingItem>
         rowKey="key"
         dataSource={rows}
@@ -21,6 +24,25 @@ export function SettingsPage() {
         ]}
       />
     </Page>
+  );
+}
+
+function PasswordForm() {
+  const [form] = Form.useForm();
+  const submit = async (values: { current: string; password: string }) => {
+    await api.changePassword(values.current, values.password);
+    message.success("Administrator password changed");
+    form.resetFields();
+  };
+  return (
+    <section className="password-settings">
+      <Typography.Title level={4}>Administrator password</Typography.Title>
+      <Form form={form} layout="inline" onFinish={submit}>
+        <Form.Item name="current" rules={[{ required: true }]}><Input.Password placeholder="Current password" /></Form.Item>
+        <Form.Item name="password" rules={[{ required: true, min: 12 }]}><Input.Password placeholder="New password" /></Form.Item>
+        <Button type="primary" htmlType="submit">Change</Button>
+      </Form>
+    </section>
   );
 }
 

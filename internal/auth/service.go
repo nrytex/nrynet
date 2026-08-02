@@ -94,6 +94,23 @@ func (s *Service) Login(ctx context.Context, username, password string) (string,
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.secret)
 }
 
+func (s *Service) ChangePassword(ctx context.Context, adminID, currentPassword, newPassword string) error {
+	if len(newPassword) < 12 {
+		return errors.New("new password must be at least 12 characters")
+	}
+	var currentHash string
+	err := s.store.DB().QueryRowContext(ctx, "SELECT password_hash FROM admins WHERE id = ?", adminID).Scan(&currentHash)
+	if err != nil || bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(currentPassword)) != nil {
+		return errors.New("current password is invalid")
+	}
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	_, err = s.store.DB().ExecContext(ctx, "UPDATE admins SET password_hash = ? WHERE id = ?", string(newHash), adminID)
+	return err
+}
+
 func (s *Service) VerifyJWT(value string) (jwt.MapClaims, error) {
 	token, err := jwt.Parse(value, func(token *jwt.Token) (any, error) {
 		if token.Method != jwt.SigningMethodHS256 {

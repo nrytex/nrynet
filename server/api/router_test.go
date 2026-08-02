@@ -27,6 +27,18 @@ func TestAuthenticationAndTokenLifecycle(t *testing.T) {
 		Token string `json:"token"`
 	}
 	decodeJSON(t, login, &session)
+	changed := requestJSON(t, router, http.MethodPost, "/api/auth/password", session.Token, map[string]any{
+		"current_password": "test-password", "new_password": "a-new-password-123",
+	})
+	if changed.Code != http.StatusNoContent {
+		t.Fatalf("password change status=%d body=%s", changed.Code, changed.Body.String())
+	}
+	newLogin := requestJSON(t, router, http.MethodPost, "/api/auth/login", "", map[string]any{
+		"username": "admin", "password": "a-new-password-123",
+	})
+	if newLogin.Code != http.StatusOK {
+		t.Fatalf("new password login status=%d", newLogin.Code)
+	}
 	created := requestJSON(t, router, http.MethodPost, "/api/tokens", session.Token, map[string]any{"name": "home"})
 	if created.Code != http.StatusCreated {
 		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())

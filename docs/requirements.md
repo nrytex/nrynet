@@ -17,12 +17,12 @@ end-to-end verification.
 
 ## V1.1 management
 
-- [ ] Administrators can inspect, rename, disable, delete, and reset a client token.
-- [ ] Administrators can create, edit, start, stop, and delete tunnels.
-- [ ] Tunnel changes reach an online agent without restarting it.
-- [ ] Traffic is tracked for server, client, and tunnel over today and current month.
-- [ ] Server logs can be searched, downloaded, and cleared.
-- [ ] IP allowlists are enforced before relaying a visitor.
+- [x] Administrators can inspect, rename, disable, delete, and reset a client token.
+- [x] Administrators can create, edit, start, stop, and delete tunnels.
+- [x] Tunnel changes reach an online agent without restarting it.
+- [x] Traffic is tracked for server, client, and tunnel over today and current month.
+- [x] Server logs can be searched, downloaded, and cleared.
+- [x] IP allowlists are enforced before relaying a visitor.
 
 ## V1.1 HTTP capabilities
 

@@ -226,5 +226,12 @@ func (m *Manager) handleVisitor(tunnel model.Tunnel, visitor net.Conn) {
 	}
 	m.active.Add(1)
 	defer m.active.Add(-1)
-	_ = m.broker.Wait(requestID, pending)
+	err = m.broker.Wait(requestID, pending)
+	level := "info"
+	if err != nil {
+		level = "warn"
+	}
+	_ = m.store.RecordEvent(context.Background(), level, "connection.closed", "Connection closed", map[string]any{
+		"tunnel_id": tunnel.ID, "request_id": requestID, "error": fmt.Sprint(err),
+	})
 }

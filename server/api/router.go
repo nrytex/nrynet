@@ -49,6 +49,7 @@ func NewRouterWithOptions(store *storage.Store, authService *auth.Service, start
 	secured := router.Group("/api", requireSession(authService))
 	secured.GET("/me", me)
 	secured.GET("/auth/me", me)
+	secured.POST("/auth/password", authAPI.changePassword)
 	secured.GET("/tokens", tokenAPI.list)
 	secured.POST("/tokens", tokenAPI.create)
 	secured.PATCH("/tokens/:id", tokenAPI.update)

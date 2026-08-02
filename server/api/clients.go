@@ -62,6 +62,17 @@ func (h clientHandler) update(c *gin.Context) {
 func (h clientHandler) delete(c *gin.Context) {
 	id := c.Param("id")
 	h.runtime.DisconnectClient(id)
+	tunnels, err := h.store.ListClientTunnels(c.Request.Context(), id)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, tunnel := range tunnels {
+		if err := h.runtime.StopTunnel(c.Request.Context(), tunnel.ID); err != nil {
+			respondError(c, http.StatusConflict, err.Error())
+			return
+		}
+	}
 	if err := h.store.DeleteClient(c.Request.Context(), id); err != nil {
 		respondError(c, http.StatusConflict, err.Error())
 		return

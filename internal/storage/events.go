@@ -26,14 +26,18 @@ func (s *Store) RecordEvent(ctx context.Context, level, event, message string, f
 }
 
 func (s *Store) ListEvents(ctx context.Context, filter EventFilter) ([]model.Event, error) {
-	if filter.Limit < 1 || filter.Limit > 500 {
+	if filter.Limit < 0 || filter.Limit > 500 {
 		filter.Limit = 100
 	}
 	query := `SELECT id, level, event, message, fields, created_at FROM event_logs
         WHERE (? = '' OR level = ?) AND (? = '' OR message LIKE '%' || ? || '%' OR event LIKE '%' || ? || '%')
-        ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	rows, err := s.db.QueryContext(ctx, query, filter.Level, filter.Level, filter.Keyword,
-		filter.Keyword, filter.Keyword, filter.Limit, filter.Offset)
+		ORDER BY created_at DESC`
+	args := []any{filter.Level, filter.Level, filter.Keyword, filter.Keyword, filter.Keyword}
+	if filter.Limit > 0 {
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, filter.Limit, filter.Offset)
+	}
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

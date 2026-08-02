@@ -54,6 +54,10 @@ export const api = {
     saveSession(res.token, res.token_type || "Bearer");
   },
   me: () => request<SessionUser>("/api/auth/me"),
+  changePassword: (currentPassword: string, newPassword: string) => request<void>("/api/auth/password", {
+    method: "POST",
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  }),
   overview: () => request<Overview>("/api/overview"),
   listTokens: () => request<{ items: Token[] }>("/api/tokens").then(items),
   createToken: (name: string) =>
