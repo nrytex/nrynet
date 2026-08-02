@@ -29,12 +29,26 @@ func TestOpenAndRelayConnectsLocalServiceThroughDataChannel(t *testing.T) {
 	message := openMessage(t, "req-1", localAddress)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := agent.openAndRelay(ctx, message); err != nil {
+	if err := agent.openAndRelay(ctx, testControl{agent: agent}, message); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
+}
+
+type testControl struct {
+	agent *Agent
+}
+
+func (c testControl) readJSON(any) error { return nil }
+
+func (c testControl) writeJSON(any) error { return nil }
+
+func (c testControl) close() error { return nil }
+
+func (c testControl) openData(ctx context.Context, _ string) (dataConn, error) {
+	return c.agent.dialLegacyData(ctx)
 }
 
 func startLocalEcho(t *testing.T) string {

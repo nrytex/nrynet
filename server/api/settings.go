@@ -1,8 +1,12 @@
 package api
 
 import (
+	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -50,13 +54,38 @@ func (h *settingsHandler) update(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "value is required")
 		return
 	}
-	if err := h.store.SetSetting(c.Request.Context(), "config."+item.Key, settingText(request.Value)); err != nil {
+	text, err := validateSetting(item.Key, request.Value)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.store.SetSetting(c.Request.Context(), "config."+item.Key, text); err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 	item.Value = request.Value
 	h.items[item.Key] = item
 	c.JSON(http.StatusOK, item)
+}
+
+func validateSetting(key string, value any) (string, error) {
+	text := settingText(value)
+	if text == "" {
+		return "", errors.New("setting value cannot be empty")
+	}
+	switch key {
+	case "server.listen", "server.data_listen", "server.quic_listen",
+		"server.rendezvous_listen", "server.http_listen":
+		if _, _, err := net.SplitHostPort(text); err != nil {
+			return "", fmt.Errorf("setting must be a host:port address: %w", err)
+		}
+	case "server.heartbeat_timeout":
+		duration, err := time.ParseDuration(text)
+		if err != nil || duration <= 0 {
+			return "", errors.New("heartbeat timeout must be a positive duration")
+		}
+	}
+	return text, nil
 }
 
 func settingText(value any) string {

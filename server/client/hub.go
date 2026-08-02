@@ -27,7 +27,7 @@ type Hub struct {
 	upgrader websocket.Upgrader
 
 	mu         sync.RWMutex
-	conns      map[string]*controlConn
+	conns      map[string]ControlTransport
 	udpHandler func(string, protocol.ControlMessage)
 }
 
@@ -42,7 +42,7 @@ func NewHub(store *storage.Store, authService *auth.Service, timeout time.Durati
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(*http.Request) bool { return true },
 		},
-		conns: make(map[string]*controlConn),
+		conns: make(map[string]ControlTransport),
 	}
 }
 
@@ -61,6 +61,10 @@ func (h *Hub) Handle(c *gin.Context) {
 		return
 	}
 	h.serve(c.Request.Context(), conn, token.ID, c.ClientIP())
+}
+
+func (h *Hub) ServeTransport(ctx context.Context, conn ControlTransport, tokenID, ip string) {
+	h.serveTransport(ctx, conn, tokenID, ip)
 }
 
 func (h *Hub) SendSnapshot(clientID string, tunnels []model.Tunnel) error {
@@ -93,6 +97,10 @@ func (h *Hub) SendUDPPacket(clientID string, tunnel model.Tunnel, requestID stri
 	return h.send(clientID, message)
 }
 
+func (h *Hub) SendControl(clientID string, message protocol.ControlMessage) error {
+	return h.send(clientID, message)
+}
+
 func (h *Hub) SetUDPPacketHandler(handler func(string, protocol.ControlMessage)) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -105,7 +113,7 @@ func (h *Hub) Disconnect(clientID string) {
 	delete(h.conns, clientID)
 	h.mu.Unlock()
 	if conn != nil {
-		_ = conn.close()
+		_ = conn.Close()
 	}
 }
 
@@ -122,7 +130,7 @@ func (h *Hub) send(clientID string, message protocol.ControlMessage) error {
 	if conn == nil {
 		return errClientOffline
 	}
-	return conn.writeJSON(message)
+	return conn.WriteJSON(message)
 }
 
 func (h *Hub) authenticate(c *gin.Context) (model.Token, error) {
@@ -134,10 +142,14 @@ func (h *Hub) authenticate(c *gin.Context) (model.Token, error) {
 }
 
 func (h *Hub) serve(ctx context.Context, ws *websocket.Conn, tokenID, ip string) {
-	conn, client, err := h.acceptHello(ctx, ws, tokenID, ip)
+	h.serveTransport(ctx, &websocketControl{ws: ws}, tokenID, ip)
+}
+
+func (h *Hub) serveTransport(ctx context.Context, conn ControlTransport, tokenID, ip string) {
+	client, err := h.acceptHello(ctx, conn, tokenID, ip)
 	if err != nil {
-		_ = ws.WriteJSON(errorMessage(err.Error()))
-		_ = ws.Close()
+		_ = conn.WriteJSON(errorMessage(err.Error()))
+		_ = conn.Close()
 		return
 	}
 	h.register(client.ID, conn)
@@ -149,10 +161,10 @@ func (h *Hub) serve(ctx context.Context, ws *websocket.Conn, tokenID, ip string)
 	h.readLoop(ctx, conn, client.ID)
 }
 
-func (h *Hub) sendInitialSnapshot(ctx context.Context, conn *controlConn, clientID string) {
+func (h *Hub) sendInitialSnapshot(ctx context.Context, conn ControlTransport, clientID string) {
 	tunnels, err := h.store.ListClientTunnels(ctx, clientID)
 	if err != nil {
-		_ = conn.writeJSON(errorMessage(err.Error()))
+		_ = conn.WriteJSON(errorMessage(err.Error()))
 		return
 	}
 	message, err := protocol.NewMessage(
@@ -162,53 +174,53 @@ func (h *Hub) sendInitialSnapshot(ctx context.Context, conn *controlConn, client
 		protocol.TunnelSnapshotPayload{Tunnels: tunnels},
 	)
 	if err != nil {
-		_ = conn.writeJSON(errorMessage(err.Error()))
+		_ = conn.WriteJSON(errorMessage(err.Error()))
 		return
 	}
-	_ = conn.writeJSON(message)
+	_ = conn.WriteJSON(message)
 }
 
-func (h *Hub) acceptHello(ctx context.Context, ws *websocket.Conn, tokenID, ip string) (*controlConn, model.Client, error) {
-	_ = ws.SetReadDeadline(time.Now().Add(h.timeout))
+func (h *Hub) acceptHello(ctx context.Context, conn ControlTransport, tokenID, ip string) (model.Client, error) {
+	_ = conn.SetReadDeadline(time.Now().Add(h.timeout))
 	var message protocol.ControlMessage
-	if err := ws.ReadJSON(&message); err != nil {
-		return nil, model.Client{}, err
+	if err := conn.ReadJSON(&message); err != nil {
+		return model.Client{}, err
 	}
 	if message.Type != protocol.TypeHello {
-		return nil, model.Client{}, errors.New("first message must be hello")
+		return model.Client{}, errors.New("first message must be hello")
 	}
 	payload, err := protocol.DecodePayload[protocol.HelloPayload](message)
 	if err != nil {
-		return nil, model.Client{}, err
+		return model.Client{}, err
 	}
 	if payload.DeviceID == "" || payload.Name == "" {
-		return nil, model.Client{}, errors.New("device_id and name are required")
+		return model.Client{}, errors.New("device_id and name are required")
 	}
 	client, err := h.store.UpsertClient(ctx, tokenID, storage.ClientHello{
 		Name: payload.Name, DeviceID: payload.DeviceID, IP: ip, OS: payload.OS, Version: payload.Version,
 	})
 	if err != nil {
-		return nil, model.Client{}, err
+		return model.Client{}, err
 	}
 	if client.Disabled {
 		_ = h.store.SetClientStatus(ctx, client.ID, "offline")
-		return nil, model.Client{}, errors.New("client is disabled")
+		return model.Client{}, errors.New("client is disabled")
 	}
-	_ = ws.SetReadDeadline(time.Now().Add(h.timeout))
-	return &controlConn{ws: ws}, client, nil
+	_ = conn.SetReadDeadline(time.Now().Add(h.timeout))
+	return client, nil
 }
 
-func (h *Hub) register(clientID string, conn *controlConn) {
+func (h *Hub) register(clientID string, conn ControlTransport) {
 	h.mu.Lock()
 	old := h.conns[clientID]
 	h.conns[clientID] = conn
 	h.mu.Unlock()
 	if old != nil {
-		_ = old.close()
+		_ = old.Close()
 	}
 }
 
-func (h *Hub) unregister(clientID string, conn *controlConn) {
+func (h *Hub) unregister(clientID string, conn ControlTransport) {
 	h.mu.Lock()
 	isCurrent := h.conns[clientID] == conn
 	if isCurrent {
@@ -223,15 +235,15 @@ func (h *Hub) unregister(clientID string, conn *controlConn) {
 		"Client disconnected", map[string]any{"client_id": clientID})
 }
 
-func (h *Hub) readLoop(ctx context.Context, conn *controlConn, clientID string) {
+func (h *Hub) readLoop(ctx context.Context, conn ControlTransport, clientID string) {
 	for ctx.Err() == nil {
 		var message protocol.ControlMessage
-		if err := conn.ws.ReadJSON(&message); err != nil {
+		if err := conn.ReadJSON(&message); err != nil {
 			return
 		}
 		if message.Type == protocol.TypeHeartbeat {
 			_ = h.store.SetClientStatus(ctx, clientID, "online")
-			_ = conn.ws.SetReadDeadline(time.Now().Add(h.timeout))
+			_ = conn.SetReadDeadline(time.Now().Add(h.timeout))
 			continue
 		}
 		if message.Type == protocol.TypeUDPPacket {
@@ -254,19 +266,34 @@ func errorMessage(text string) protocol.ControlMessage {
 	return protocol.ControlMessage{Type: protocol.TypeError, Payload: payload}
 }
 
-type controlConn struct {
+type ControlTransport interface {
+	ReadJSON(value any) error
+	WriteJSON(value any) error
+	Close() error
+	SetReadDeadline(time.Time) error
+}
+
+type websocketControl struct {
 	ws *websocket.Conn
 	mu sync.Mutex
 }
 
-func (c *controlConn) writeJSON(value any) error {
+func (c *websocketControl) ReadJSON(value any) error {
+	return c.ws.ReadJSON(value)
+}
+
+func (c *websocketControl) WriteJSON(value any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.ws.WriteJSON(value)
 }
 
-func (c *controlConn) close() error {
+func (c *websocketControl) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.ws.Close()
+}
+
+func (c *websocketControl) SetReadDeadline(deadline time.Time) error {
+	return c.ws.SetReadDeadline(deadline)
 }

@@ -3,7 +3,7 @@ import { api } from "../api/client";
 import { Page } from "../components/Page";
 import { useAsync } from "../hooks/useAsync";
 import type { Client, Tunnel } from "../types";
-import { formatBytes, formatDate } from "../utils/format";
+import { formatBytes, formatDate, formatRate } from "../utils/format";
 
 export function OverviewPage() {
   const state = useAsync(async () => {
@@ -17,9 +17,11 @@ export function OverviewPage() {
   return (
     <Page title="概览" loading={state.loading} error={state.error} onReload={state.reload}>
       <Row gutter={[16, 16]} className="metrics">
+        <Metric title="Server Status" value={overview?.status ?? "unknown"} />
         <Metric title="在线 Clients" value={overview?.online_clients ?? 0} />
         <Metric title="运行中 Tunnels" value={overview?.active_tunnels ?? 0} />
         <Metric title="TCP Connections" value={overview?.connections ?? 0} />
+        <Metric title="Bandwidth" value={formatRate(overview?.bandwidth_bps ?? 0)} />
         <Metric title="今日流量" value={formatBytes((overview?.today_upload ?? 0) + (overview?.today_download ?? 0))} />
       </Row>
       <Row gutter={[16, 16]}>

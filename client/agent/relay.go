@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"strconv"
 	"strings"
@@ -16,13 +15,13 @@ import (
 	"github.com/nat-link/nat-link/internal/protocol"
 )
 
-func (a *Agent) handleOpenConnection(ctx context.Context, message protocol.ControlMessage) {
-	if err := a.openAndRelay(ctx, message); err != nil {
+func (a *Agent) handleOpenConnection(ctx context.Context, conn controlConn, message protocol.ControlMessage) {
+	if err := a.openAndRelay(ctx, conn, message); err != nil {
 		a.logger.Warn("connection relay failed", "request_id", message.RequestID, "error", err)
 	}
 }
 
-func (a *Agent) openAndRelay(ctx context.Context, message protocol.ControlMessage) error {
+func (a *Agent) openAndRelay(ctx context.Context, conn controlConn, message protocol.ControlMessage) error {
 	payload, err := protocol.DecodePayload[protocol.OpenConnectionPayload](message)
 	if err != nil {
 		return err
@@ -33,18 +32,21 @@ func (a *Agent) openAndRelay(ctx context.Context, message protocol.ControlMessag
 		return fmt.Errorf("dial local service: %w", err)
 	}
 	defer localConn.Close()
-	dataConn, err := a.dialData(ctx)
+	dataConn, err := conn.openData(ctx, message.RequestID)
 	if err != nil {
 		return fmt.Errorf("dial data channel: %w", err)
 	}
 	defer dataConn.Close()
-	if err := writeHandshake(dataConn, a.options.Config.Token, a.options.Config.DeviceID, message.RequestID); err != nil {
+	if a.options.Config.Transport != "quic" {
+		err = writeHandshake(dataConn, a.options.Config.Token, a.options.Config.DeviceID, message.RequestID)
+	}
+	if err != nil {
 		return err
 	}
-	return relay(dataConn, localConn, a.logger)
+	return a.relay(message.TunnelID, dataConn, localConn)
 }
 
-func (a *Agent) dialData(ctx context.Context) (net.Conn, error) {
+func (a *Agent) dialLegacyData(ctx context.Context) (dataConn, error) {
 	if !strings.HasPrefix(strings.ToLower(a.options.Config.ServerURL), "wss://") {
 		return dialTCP(ctx, a.options.Config.DataAddress)
 	}
@@ -72,10 +74,14 @@ func writeHandshake(writer io.Writer, token, deviceID, requestID string) error {
 	return buffered.Flush()
 }
 
-func relay(left, right net.Conn, logger *slog.Logger) error {
+func (a *Agent) relay(tunnelID string, left dataConn, right net.Conn) error {
 	errCh := make(chan error, 2)
-	go copyBytes(errCh, left, right)
-	go copyBytes(errCh, right, left)
+	go copyBytes(errCh, left, right, func(n int64) {
+		a.notifyTransfer(tunnelID, DirectionUpload, n)
+	})
+	go copyBytes(errCh, right, left, func(n int64) {
+		a.notifyTransfer(tunnelID, DirectionDownload, n)
+	})
 	firstErr := normalizeCopyError(<-errCh)
 	_ = left.Close()
 	_ = right.Close()
@@ -84,13 +90,14 @@ func relay(left, right net.Conn, logger *slog.Logger) error {
 		return firstErr
 	}
 	if secondErr != nil {
-		logger.Debug("relay peer closed", "error", secondErr)
+		a.logger.Debug("relay peer closed", "error", secondErr)
 	}
 	return nil
 }
 
-func copyBytes(errCh chan<- error, dst net.Conn, src net.Conn) {
-	_, err := io.Copy(dst, src)
+func copyBytes(errCh chan<- error, dst io.Writer, src io.Reader, observe func(int64)) {
+	written, err := io.Copy(dst, src)
+	observe(written)
 	errCh <- err
 }
 

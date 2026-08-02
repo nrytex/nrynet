@@ -29,21 +29,27 @@ func main() {
 		fmt.Fprintf(os.Stderr, "NAT-Link administrator created\nusername: %s\npassword: %s\nserver secret: %s\n",
 			bootstrap.Username, bootstrap.Password, bootstrap.ServerSecret)
 	}
-	go func() {
-		if err := application.Run(); err != nil {
-			log.Printf("server stopped: %v", err)
-		}
-	}()
-	waitForSignal()
+	runError := make(chan error, 1)
+	go func() { runError <- application.Run() }()
+	err = waitForStop(runError)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := application.Shutdown(ctx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
+	if err != nil {
+		log.Fatalf("server stopped: %v", err)
+	}
 }
 
-func waitForSignal() {
+func waitForStop(runError <-chan error) error {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-	<-signals
+	defer signal.Stop(signals)
+	select {
+	case <-signals:
+		return nil
+	case err := <-runError:
+		return err
+	}
 }

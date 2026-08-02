@@ -1,5 +1,5 @@
 import { authHeader, clearSession, saveSession } from "./session";
-import type { Client, LogEntry, Overview, SessionUser, SettingItem, Token, TrafficResponse, Tunnel } from "../types";
+import type { Client, LogEntry, Overview, RelayAssignment, RelayNode, SessionUser, SettingItem, Token, TrafficResponse, Tunnel } from "../types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -94,4 +94,6 @@ export const api = {
   settings: () => request<{ items: SettingItem[] }>("/api/settings").then(items),
   updateSetting: (key: string, value: SettingItem["value"]) =>
     request<SettingItem>(`/api/settings/${encodeURIComponent(key)}`, { method: "PATCH", body: JSON.stringify({ value }) }),
+  relays: () => request<{ nodes: RelayNode[] }>("/api/v2/relays").then((payload) => payload.nodes),
+  relayAssignments: () => request<{ assignments: RelayAssignment[] }>("/api/v2/relays/assignments").then((payload) => payload.assignments),
 };

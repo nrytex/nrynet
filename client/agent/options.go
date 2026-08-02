@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/nat-link/nat-link/internal/config"
@@ -18,6 +19,7 @@ type Options struct {
 	HeartbeatInterval time.Duration
 	ReconnectMin      time.Duration
 	ReconnectMax      time.Duration
+	Observer          Observer
 }
 
 func NewOptions(cfg config.Config, version string) Options {
@@ -34,7 +36,10 @@ func (o Options) Validate() error {
 	if o.Config.ServerURL == "" {
 		return errors.New("client.server_url is required")
 	}
-	if o.Config.DataAddress == "" {
+	if o.Config.Transport == "quic" && o.Config.QUICAddress == "" {
+		return errors.New("client.quic_address is required")
+	}
+	if o.Config.Transport != "quic" && o.Config.DataAddress == "" {
 		return errors.New("client.data_address is required")
 	}
 	if o.Config.Token == "" {
@@ -47,6 +52,10 @@ func (o Options) Validate() error {
 }
 
 func normalizeClientConfig(cfg config.ClientConfig) config.ClientConfig {
+	cfg.Transport = strings.ToLower(cfg.Transport)
+	if cfg.Transport == "" {
+		cfg.Transport = "websocket"
+	}
 	hostname, _ := os.Hostname()
 	if cfg.Name == "" {
 		cfg.Name = hostname

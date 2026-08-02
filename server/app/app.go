@@ -14,9 +14,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	netx "github.com/nat-link/nat-link/internal/advanced"
 	"github.com/nat-link/nat-link/internal/auth"
 	"github.com/nat-link/nat-link/internal/config"
 	"github.com/nat-link/nat-link/internal/storage"
+	serveradvanced "github.com/nat-link/nat-link/server/advanced"
 	"github.com/nat-link/nat-link/server/api"
 	clienthub "github.com/nat-link/nat-link/server/client"
 	"github.com/nat-link/nat-link/server/dashboard"
@@ -26,14 +28,17 @@ import (
 )
 
 type App struct {
-	config  config.Config
-	store   *storage.Store
-	server  *http.Server
-	data    net.Listener
-	web     net.Listener
-	broker  *relay.Broker
-	gateway *gateway.Gateway
-	tunnels *tunnel.Manager
+	config    config.Config
+	store     *storage.Store
+	server    *http.Server
+	data      net.Listener
+	web       net.Listener
+	broker    *relay.Broker
+	gateway   *gateway.Gateway
+	tunnels   *tunnel.Manager
+	quic      *serveradvanced.QUICControlServer
+	rdv       *serveradvanced.RendezvousService
+	relayDone chan struct{}
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, error) {
@@ -58,6 +63,12 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 	hub := clienthub.NewHub(store, authService, cfg.Server.HeartbeatTimeout)
 	broker := relay.NewBroker(authService, store, 30*time.Second)
 	tunnelManager := tunnel.NewManager(store, hub, broker)
+	tunnelManager.SetRendezvousAddress(cfg.Server.PublicRendezvous)
+	registry := netx.NewRelayRegistry(cfg.Server.HeartbeatTimeout)
+	relayToken := cfg.Server.RelayAPIToken
+	binder := &serveradvanced.RemoteRelayNode{Token: relayToken, BrokerAddress: cfg.Server.PublicDataAddress, BrokerTLS: cfg.Server.TLS.Enabled, BrokerServerName: publicDataHostname(cfg.Server.PublicDataAddress), Registry: registry}
+	tunnelManager.SetRelayRegistry(registry, binder)
+	broker.SetRelayVisitorHandler(relayToken, tunnelManager.RouteRelayVisitor)
 	dataListener, err := listenData(cfg.Server)
 	if err != nil {
 		store.Close()
@@ -72,6 +83,7 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 	webGateway := gateway.New(store, tunnelManager)
 	router := api.NewRouterWithOptions(store, authService, time.Now(), api.RouterOptions{
 		Runtime: tunnelManager, Settings: safeSettings(cfg),
+		RelayRegistry: registry, RelayToken: relayToken,
 	})
 	router.GET("/agent/connect", hub.Handle)
 	dashboardHandler := dashboard.Handler()
@@ -83,18 +95,59 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		dashboardHandler.ServeHTTP(c.Writer, c.Request)
 	})
 	server := &http.Server{Addr: cfg.Server.Listen, Handler: router, ReadHeaderTimeout: 10 * time.Second}
+	quicServer, err := listenQUIC(cfg.Server, authService, hub, broker)
+	if err != nil {
+		_ = dataListener.Close()
+		_ = webListener.Close()
+		store.Close()
+		return nil, auth.BootstrapResult{}, err
+	}
+	rdv, err := serveradvanced.ListenRendezvous(cfg.Server.RendezvousListen)
+	if err != nil {
+		_ = dataListener.Close()
+		_ = webListener.Close()
+		_ = quicServer.Close()
+		store.Close()
+		return nil, auth.BootstrapResult{}, err
+	}
 	return &App{config: cfg, store: store, server: server, data: dataListener, web: webListener,
-		broker: broker, gateway: webGateway, tunnels: tunnelManager}, bootstrap, nil
+		broker: broker, gateway: webGateway, tunnels: tunnelManager, quic: quicServer, rdv: rdv, relayDone: make(chan struct{})}, bootstrap, nil
 }
 
 func safeSettings(cfg config.Config) []api.SettingItem {
 	return []api.SettingItem{
 		{Key: "server.listen", Value: cfg.Server.Listen, Description: "Dashboard and control API address; restart required", Mutable: true},
 		{Key: "server.data_listen", Value: cfg.Server.DataListen, Description: "TCP relay data address; restart required", Mutable: true},
+		{Key: "server.quic_listen", Value: cfg.Server.QUICListen, Description: "QUIC control and data stream address; restart required", Mutable: true},
+		{Key: "server.rendezvous_listen", Value: cfg.Server.RendezvousListen, Description: "UDP rendezvous address; restart required", Mutable: true},
 		{Key: "server.http_listen", Value: cfg.Server.HTTPListen, Description: "HTTP and HTTPS gateway; restart required", Mutable: true},
 		{Key: "server.tls.enabled", Value: cfg.Server.TLS.Enabled, Description: "Configured through YAML certificate settings"},
 		{Key: "server.heartbeat_timeout", Value: cfg.Server.HeartbeatText, Description: "Agent offline timeout; restart required", Mutable: true},
 	}
+}
+
+func listenQUIC(
+	cfg config.ServerConfig,
+	authService *auth.Service,
+	hub *clienthub.Hub,
+	broker *relay.Broker,
+) (*serveradvanced.QUICControlServer, error) {
+	certificate, err := quicCertificate(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return serveradvanced.ListenQUIC(cfg.QUICListen, netx.ServerTLSConfig(certificate), authService, hub, broker)
+}
+
+func quicCertificate(cfg config.ServerConfig) (tls.Certificate, error) {
+	if !cfg.TLS.Enabled {
+		return netx.SelfSignedCertificate()
+	}
+	cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("load QUIC TLS certificate: %w", err)
+	}
+	return cert, nil
 }
 
 func applyStoredSettings(ctx context.Context, store *storage.Store, cfg *config.Config) error {
@@ -104,6 +157,8 @@ func applyStoredSettings(ctx context.Context, store *storage.Store, cfg *config.
 	}{
 		{"server.listen", &cfg.Server.Listen},
 		{"server.data_listen", &cfg.Server.DataListen},
+		{"server.quic_listen", &cfg.Server.QUICListen},
+		{"server.rendezvous_listen", &cfg.Server.RendezvousListen},
 		{"server.http_listen", &cfg.Server.HTTPListen},
 		{"server.heartbeat_timeout", &cfg.Server.HeartbeatText},
 	}
@@ -146,12 +201,23 @@ func listenData(cfg config.ServerConfig) (net.Listener, error) {
 	return tls.NewListener(listener, tlsConfig), nil
 }
 
+func publicDataHostname(address string) string {
+	host, _, err := net.SplitHostPort(address)
+	if err == nil {
+		return host
+	}
+	return address
+}
+
 func (a *App) Run() error {
 	if err := a.tunnels.Restore(context.Background()); err != nil {
 		fmt.Printf("restore tunnels: %v\n", err)
 	}
 	go func() { _ = a.broker.Run(a.data) }()
 	go func() { _ = a.gateway.Run(a.web) }()
+	go func() { _ = a.quic.Serve(context.Background()) }()
+	go func() { _ = a.rdv.Run(context.Background()) }()
+	go a.monitorRelays()
 	var err error
 	if a.config.Server.TLS.Enabled {
 		err = a.server.ListenAndServeTLS(a.config.Server.TLS.CertFile, a.config.Server.TLS.KeyFile)
@@ -165,12 +231,33 @@ func (a *App) Run() error {
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
+	select {
+	case <-a.relayDone:
+	default:
+		close(a.relayDone)
+	}
 	serverErr := a.server.Shutdown(ctx)
 	dataErr := a.data.Close()
 	webErr := a.web.Close()
+	quicErr := a.quic.Close()
+	rdvErr := a.rdv.Close()
 	tunnelErr := a.tunnels.Close()
 	storeErr := a.store.Close()
-	return errors.Join(serverErr, dataErr, webErr, tunnelErr, storeErr)
+	return errors.Join(serverErr, dataErr, webErr, quicErr, rdvErr, tunnelErr, storeErr)
+}
+
+func (a *App) monitorRelays() {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-a.relayDone:
+			return
+		case <-ticker.C:
+			a.tunnels.ReassignUnhealthyRelayTunnels(context.Background())
+			a.tunnels.AssignAvailableRelayTunnels(context.Background())
+		}
+	}
 }
 
 func (a *App) Address() string {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
+	netx "github.com/nat-link/nat-link/internal/advanced"
 	"github.com/nat-link/nat-link/internal/model"
 	"github.com/nat-link/nat-link/internal/storage"
 	clienthub "github.com/nat-link/nat-link/server/client"
@@ -25,6 +26,10 @@ type Manager struct {
 	mu          sync.Mutex
 	listeners   map[string]net.Listener
 	udpRuntimes map[string]*udpRuntime
+	relayBinds  map[string]RelayBinding
+	registry    *netx.RelayRegistry
+	binder      RelayBinder
+	rdvAddress  string
 	active      atomic.Int64
 }
 
@@ -35,6 +40,7 @@ func NewManager(store *storage.Store, hub *clienthub.Hub, broker *relay.Broker) 
 		broker:      broker,
 		listeners:   make(map[string]net.Listener),
 		udpRuntimes: make(map[string]*udpRuntime),
+		relayBinds:  make(map[string]RelayBinding),
 	}
 	hub.SetUDPPacketHandler(manager.HandleUDPPacket)
 	return manager
@@ -79,6 +85,9 @@ func (m *Manager) StartTunnel(ctx context.Context, id string) error {
 
 func (m *Manager) start(tunnel model.Tunnel) error {
 	if tunnel.Protocol == "http" || tunnel.Protocol == "https" {
+		return nil
+	}
+	if m.tryRelayStart(tunnel) {
 		return nil
 	}
 	if tunnel.Protocol == "udp" {
@@ -139,7 +148,16 @@ func (m *Manager) stop(id string) error {
 	delete(m.listeners, id)
 	udp := m.udpRuntimes[id]
 	delete(m.udpRuntimes, id)
+	relayBind := m.relayBinds[id]
+	delete(m.relayBinds, id)
+	registry := m.registry
 	m.mu.Unlock()
+	if registry != nil {
+		registry.ReleaseTunnel(id)
+	}
+	if relayBind != nil {
+		return relayBind.Close()
+	}
 	if udp != nil {
 		return udp.close()
 	}
@@ -182,6 +200,11 @@ func (m *Manager) Close() error {
 	}
 	m.listeners = make(map[string]net.Listener)
 	m.udpRuntimes = make(map[string]*udpRuntime)
+	relayBinds := make([]RelayBinding, 0, len(m.relayBinds))
+	for _, binding := range m.relayBinds {
+		relayBinds = append(relayBinds, binding)
+	}
+	m.relayBinds = make(map[string]RelayBinding)
 	m.mu.Unlock()
 	var errs []error
 	for _, listener := range listeners {
@@ -189,6 +212,9 @@ func (m *Manager) Close() error {
 	}
 	for _, runtime := range udpRuntimes {
 		errs = append(errs, runtime.close())
+	}
+	for _, binding := range relayBinds {
+		errs = append(errs, binding.Close())
 	}
 	return errors.Join(errs...)
 }

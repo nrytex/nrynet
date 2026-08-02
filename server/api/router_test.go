@@ -97,6 +97,11 @@ func TestSettingsUpdatePersistsRestartOverride(t *testing.T) {
 	if err != nil || value != "127.0.0.1:7100" {
 		t.Fatalf("persisted value=%q err=%v", value, err)
 	}
+	invalid := requestJSON(t, router, http.MethodPatch, "/api/settings/server.listen", session.Token,
+		map[string]any{"value": "not-an-address"})
+	if invalid.Code != http.StatusBadRequest {
+		t.Fatalf("invalid setting status=%d", invalid.Code)
+	}
 }
 
 func testRouter(t *testing.T) (http.Handler, func()) {

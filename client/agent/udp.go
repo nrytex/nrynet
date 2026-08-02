@@ -21,8 +21,9 @@ type udpRelay struct {
 type udpSession struct {
 	key    string
 	conn   *net.UDPConn
-	writer *controlConn
+	writer controlConn
 	relay  *udpRelay
+	agent  *Agent
 }
 
 func newUDPRelay(idle time.Duration) *udpRelay {
@@ -31,7 +32,7 @@ func newUDPRelay(idle time.Duration) *udpRelay {
 
 func (a *Agent) handleUDPPacket(
 	ctx context.Context,
-	writer *controlConn,
+	writer controlConn,
 	message protocol.ControlMessage,
 ) error {
 	payload, err := protocol.DecodePayload[protocol.UDPPacketPayload](message)
@@ -41,11 +42,14 @@ func (a *Agent) handleUDPPacket(
 	if len(payload.Payload) == 0 {
 		return nil
 	}
-	session, err := a.ensureUDP().session(ctx, writer, message, payload)
+	session, err := a.ensureUDP().session(ctx, a, writer, message, payload)
 	if err != nil {
 		return err
 	}
-	_, err = session.conn.Write(payload.Payload)
+	n, err := session.conn.Write(payload.Payload)
+	if err == nil {
+		a.notifyTransfer(message.TunnelID, DirectionDownload, int64(n))
+	}
 	return err
 }
 
@@ -59,7 +63,8 @@ func (a *Agent) ensureUDP() *udpRelay {
 
 func (r *udpRelay) session(
 	ctx context.Context,
-	writer *controlConn,
+	agent *Agent,
+	writer controlConn,
 	message protocol.ControlMessage,
 	payload protocol.UDPPacketPayload,
 ) (*udpSession, error) {
@@ -70,12 +75,13 @@ func (r *udpRelay) session(
 	if session != nil {
 		return session, nil
 	}
-	return r.createSession(ctx, writer, message, payload, key)
+	return r.createSession(ctx, agent, writer, message, payload, key)
 }
 
 func (r *udpRelay) createSession(
 	ctx context.Context,
-	writer *controlConn,
+	agent *Agent,
+	writer controlConn,
 	message protocol.ControlMessage,
 	payload protocol.UDPPacketPayload,
 	key string,
@@ -89,7 +95,7 @@ func (r *udpRelay) createSession(
 	if err != nil {
 		return nil, fmt.Errorf("dial local udp service: %w", err)
 	}
-	session := &udpSession{key: key, conn: conn, writer: writer, relay: r}
+	session := &udpSession{key: key, conn: conn, writer: writer, relay: r, agent: agent}
 	r.mu.Lock()
 	if existing := r.sessions[key]; existing != nil {
 		r.mu.Unlock()
@@ -123,7 +129,11 @@ func (s *udpSession) send(source protocol.ControlMessage, data []byte) error {
 	if err != nil {
 		return err
 	}
-	return s.writer.writeJSON(message)
+	if err := s.writer.writeJSON(message); err != nil {
+		return err
+	}
+	s.agent.notifyTransfer(source.TunnelID, DirectionUpload, int64(len(data)))
+	return nil
 }
 
 func (s *udpSession) close() {

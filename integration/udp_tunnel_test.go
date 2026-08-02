@@ -7,12 +7,14 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
 	clientagent "github.com/nat-link/nat-link/client/agent"
+	netx "github.com/nat-link/nat-link/internal/advanced"
 	"github.com/nat-link/nat-link/internal/config"
 	"github.com/nat-link/nat-link/internal/model"
 	"github.com/nat-link/nat-link/internal/storage"
@@ -40,6 +42,45 @@ func TestUDPTunnelEndToEnd(t *testing.T) {
 	}
 	if summary.Upload == 0 || summary.Download == 0 {
 		t.Fatalf("udp traffic was not recorded: %#v", summary)
+	}
+	assertEventRecorded(t, env.store, "p2p.fallback")
+}
+
+func TestUDPTunnelUsesP2PDirectPathWithRendezvous(t *testing.T) {
+	env := startUDPIntegration(t)
+	rdv := startRendezvous(t, env.ctx)
+	env.manager.SetRendezvousAddress(rdv.Addr().String())
+	echo := startUDPEcho(t)
+	defer echo.Close()
+	remotePort := reserveUDPPort(t)
+	tunnel := createUDPTunnel(t, env.store, env.client.ID, echo.LocalAddr().(*net.UDPAddr).Port, remotePort)
+	if err := env.manager.StartTunnel(env.ctx, tunnel.ID); err != nil {
+		t.Fatal(err)
+	}
+	visitor := dialUDPVisitor(t, remotePort)
+	defer visitor.Close()
+	assertUDPEcho(t, visitor, "p2p-direct")
+	assertUDPEcho(t, visitor, "p2p-direct-reused")
+	assertEventRecorded(t, env.store, "p2p.direct")
+}
+
+func TestUDPP2PDelayedResponseDoesNotDuplicateRequest(t *testing.T) {
+	env := startUDPIntegration(t)
+	rdv := startRendezvous(t, env.ctx)
+	env.manager.SetRendezvousAddress(rdv.Addr().String())
+	echo, requests := startDelayedUDPEcho(t, 1500*time.Millisecond)
+	defer echo.Close()
+	remotePort := reserveUDPPort(t)
+	tunnel := createUDPTunnel(t, env.store, env.client.ID, echo.LocalAddr().(*net.UDPAddr).Port, remotePort)
+	if err := env.manager.StartTunnel(env.ctx, tunnel.ID); err != nil {
+		t.Fatal(err)
+	}
+	visitor := dialUDPVisitor(t, remotePort)
+	defer visitor.Close()
+	assertUDPEcho(t, visitor, "slow-direct")
+	time.Sleep(200 * time.Millisecond)
+	if count := requests.Load(); count != 1 {
+		t.Fatalf("local UDP service received %d copies of one visitor request", count)
 	}
 }
 
@@ -146,6 +187,26 @@ func startUDPEcho(t *testing.T) *net.UDPConn {
 	return conn
 }
 
+func startDelayedUDPEcho(t *testing.T, delay time.Duration) (*net.UDPConn, *atomic.Int32) {
+	t.Helper()
+	conn := listenUDP(t)
+	requests := &atomic.Int32{}
+	go func() {
+		buffer := make([]byte, 64*1024)
+		for {
+			n, addr, err := conn.ReadFromUDP(buffer)
+			if err != nil {
+				return
+			}
+			requests.Add(1)
+			payload := append([]byte(nil), buffer[:n]...)
+			time.Sleep(delay)
+			_, _ = conn.WriteToUDP(payload, addr)
+		}
+	}()
+	return conn, requests
+}
+
 func dialUDPVisitor(t *testing.T, remotePort int) *net.UDPConn {
 	t.Helper()
 	addr, err := net.ResolveUDPAddr("udp", net.JoinHostPort("127.0.0.1", strconv.Itoa(remotePort)))
@@ -165,7 +226,7 @@ func assertUDPEcho(t *testing.T, conn *net.UDPConn, text string) {
 	if _, err := conn.Write([]byte(text)); err != nil {
 		t.Fatal(err)
 	}
-	buffer := make([]byte, len(text))
+	buffer := make([]byte, 64*1024)
 	n, err := conn.Read(buffer)
 	if err != nil {
 		t.Fatal(err)
@@ -194,4 +255,28 @@ func listenUDP(t *testing.T) *net.UDPConn {
 		t.Fatal(err)
 	}
 	return conn
+}
+
+func startRendezvous(t *testing.T, ctx context.Context) *netx.RendezvousServer {
+	t.Helper()
+	server, err := netx.ListenRendezvous("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = server.Serve(ctx) }()
+	t.Cleanup(func() { _ = server.Close() })
+	return server
+}
+
+func assertEventRecorded(t *testing.T, store *storage.Store, eventName string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		events, err := store.ListEvents(context.Background(), storage.EventFilter{Keyword: eventName})
+		if err == nil && len(events) > 0 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("event %s was not recorded", eventName)
 }

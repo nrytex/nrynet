@@ -3,10 +3,10 @@ package relay
 import (
 	"bufio"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"sync"
 	"time"
@@ -29,9 +29,18 @@ type Broker struct {
 	store   *storage.Store
 	timeout time.Duration
 
-	mu      sync.Mutex
-	pending map[string]*pendingConn
-	meter   *bandwidthMeter
+	mu           sync.Mutex
+	pending      map[string]*pendingConn
+	meter        *bandwidthMeter
+	relayToken   string
+	relayVisitor func(nodeID, tunnelID, visitorAddr string, visitor net.Conn) error
+}
+
+func (b *Broker) SetRelayVisitorHandler(token string, handler func(string, string, string, net.Conn) error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.relayToken = token
+	b.relayVisitor = handler
 }
 
 func NewBroker(authService *auth.Service, store *storage.Store, timeout time.Duration) *Broker {
@@ -74,11 +83,18 @@ func (b *Broker) Pair(requestID string, visitor net.Conn, tunnel model.Tunnel, o
 }
 
 func (b *Broker) Wait(requestID string, pending *Pending) error {
+	timer := time.NewTimer(b.timeout)
+	defer timer.Stop()
 	select {
 	case err := <-pending.Done():
 		return err
-	case <-time.After(b.timeout):
-		b.Cancel(requestID, pending)
+	case <-pending.Paired():
+		return <-pending.Done()
+	case <-timer.C:
+		if !b.cancelPending(requestID, pending.entry) {
+			return <-pending.Done()
+		}
+		_ = pending.entry.visitor.Close()
 		return fmt.Errorf("wait for data channel: %w", context.DeadlineExceeded)
 	}
 }
@@ -87,8 +103,9 @@ func (b *Broker) Cancel(requestID string, pending *Pending) {
 	if pending == nil {
 		return
 	}
-	b.removePending(requestID, pending.entry)
-	_ = pending.entry.visitor.Close()
+	if b.cancelPending(requestID, pending.entry) {
+		_ = pending.entry.visitor.Close()
+	}
 }
 
 func (b *Broker) RegisterPending(
@@ -106,6 +123,7 @@ func (b *Broker) RegisterPending(
 		tunnel:     tunnel,
 		onComplete: onComplete,
 		done:       make(chan error, 1),
+		paired:     make(chan struct{}),
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -117,17 +135,55 @@ func (b *Broker) RegisterPending(
 }
 
 func (b *Broker) handleDataConn(conn net.Conn) {
-	dataConn, handshake, err := readHandshake(conn)
+	dataConn, initial, err := readInitialHandshake(conn)
 	if err != nil {
+		b.recordRejected("data handshake rejected", err)
 		_ = conn.Close()
 		return
 	}
+	if initial.Role == "relay_visitor" {
+		b.handleRelayVisitor(dataConn, initial)
+		return
+	}
+	handshake := protocol.DataHandshake{Token: initial.Token, DeviceID: initial.DeviceID, RequestID: initial.RequestID}
 	pending, err := b.claimPending(handshake)
 	if err != nil {
+		b.recordRejected("agent data channel rejected", err)
 		_ = dataConn.Close()
 		return
 	}
 	err = b.relay(dataConn, pending.visitor, pending.onComplete)
+	pending.done <- err
+}
+
+func (b *Broker) handleRelayVisitor(visitor net.Conn, handshake initialHandshake) {
+	b.mu.Lock()
+	token, handler := b.relayToken, b.relayVisitor
+	b.mu.Unlock()
+	if handler == nil || handshake.NodeID == "" || handshake.TunnelID == "" || handshake.VisitorAddr == "" ||
+		token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(handshake.Token)) != 1 {
+		_ = visitor.Close()
+		return
+	}
+	if err := handler(handshake.NodeID, handshake.TunnelID, handshake.VisitorAddr, visitor); err != nil {
+		b.recordRejected("relay visitor rejected", err)
+		_ = visitor.Close()
+	}
+}
+
+func (b *Broker) recordRejected(message string, err error) {
+	_ = b.store.RecordEvent(context.Background(), "warn", "relay.rejected", message, map[string]any{
+		"error": err.Error(),
+	})
+}
+
+func (b *Broker) HandleAuthenticatedStream(stream dataStream, handshake protocol.DataHandshake) {
+	pending, err := b.claimAuthenticatedPending(handshake.DeviceID, handshake.RequestID)
+	if err != nil {
+		_ = stream.Close()
+		return
+	}
+	err = b.relay(stream, pending.visitor, pending.onComplete)
 	pending.done <- err
 }
 
@@ -153,15 +209,47 @@ func (b *Broker) claimPending(handshake protocol.DataHandshake) (*pendingConn, e
 		return nil, errors.New("request does not belong to client")
 	}
 	delete(b.pending, handshake.RequestID)
+	close(pending.paired)
 	return pending, nil
 }
 
-func (b *Broker) removePending(requestID string, pending *pendingConn) {
+func (b *Broker) claimAuthenticatedPending(deviceID, requestID string) (*pendingConn, error) {
+	if deviceID == "" || requestID == "" {
+		return nil, errors.New("device_id and request_id are required")
+	}
+	client, err := b.store.GetClientByDevice(context.Background(), deviceID)
+	if err != nil {
+		return nil, err
+	}
+	if client.Disabled {
+		return nil, errors.New("client is not authorized")
+	}
+	return b.claimPendingForClient(client.ID, requestID)
+}
+
+func (b *Broker) claimPendingForClient(clientID, requestID string) (*pendingConn, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.pending[requestID] == pending {
-		delete(b.pending, requestID)
+	pending := b.pending[requestID]
+	if pending == nil {
+		return nil, errRequestNotFound
 	}
+	if pending.tunnel.ClientID != clientID {
+		return nil, errors.New("request does not belong to client")
+	}
+	delete(b.pending, requestID)
+	close(pending.paired)
+	return pending, nil
+}
+
+func (b *Broker) cancelPending(requestID string, pending *pendingConn) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.pending[requestID] != pending {
+		return false
+	}
+	delete(b.pending, requestID)
+	return true
 }
 
 type Pending struct {
@@ -172,12 +260,17 @@ func (p *Pending) Done() <-chan error {
 	return p.entry.done
 }
 
+func (p *Pending) Paired() <-chan struct{} {
+	return p.entry.paired
+}
+
 type pendingConn struct {
 	requestID  string
 	visitor    net.Conn
 	tunnel     model.Tunnel
 	onComplete CompleteFunc
 	done       chan error
+	paired     chan struct{}
 }
 
 type bufferedConn struct {
@@ -185,88 +278,35 @@ type bufferedConn struct {
 	reader *bufio.Reader
 }
 
-func readHandshake(conn net.Conn) (net.Conn, protocol.DataHandshake, error) {
-	reader := bufio.NewReader(conn)
-	var handshake protocol.DataHandshake
-	if err := json.NewDecoder(reader).Decode(&handshake); err != nil {
-		return nil, protocol.DataHandshake{}, err
+type initialHandshake struct {
+	Role        string `json:"role"`
+	Token       string `json:"token"`
+	DeviceID    string `json:"device_id"`
+	RequestID   string `json:"request_id"`
+	NodeID      string `json:"node_id"`
+	TunnelID    string `json:"tunnel_id"`
+	VisitorAddr string `json:"visitor_addr"`
+}
+
+func readInitialHandshake(conn net.Conn) (net.Conn, initialHandshake, error) {
+	reader := bufio.NewReaderSize(conn, 4096)
+	line, err := reader.ReadSlice('\n')
+	if err != nil {
+		return nil, initialHandshake{}, err
+	}
+	var handshake initialHandshake
+	if err := json.Unmarshal(line, &handshake); err != nil {
+		return nil, initialHandshake{}, err
+	}
+	if handshake.Role == "relay_visitor" {
+		return bufferedConn{Conn: conn, reader: reader}, handshake, nil
 	}
 	if handshake.Token == "" || handshake.DeviceID == "" || handshake.RequestID == "" {
-		return nil, protocol.DataHandshake{}, errors.New("invalid data handshake")
+		return nil, initialHandshake{}, errors.New("invalid data handshake")
 	}
 	return bufferedConn{Conn: conn, reader: reader}, handshake, nil
 }
 
 func (c bufferedConn) Read(p []byte) (int, error) {
 	return c.reader.Read(p)
-}
-
-func (b *Broker) relay(dataConn, visitor net.Conn, onComplete CompleteFunc) error {
-	defer dataConn.Close()
-	defer visitor.Close()
-	uploadCh := make(chan copyResult, 1)
-	downloadCh := make(chan copyResult, 1)
-	go copyMeasured(dataConn, visitor, uploadCh, b.meter)
-	go copyMeasured(visitor, dataConn, downloadCh, b.meter)
-	upload, download, err := waitCopies(dataConn, visitor, uploadCh, downloadCh)
-	if onComplete != nil {
-		onComplete(upload, download)
-	}
-	return err
-}
-
-func waitCopies(
-	dataConn net.Conn,
-	visitor net.Conn,
-	uploadCh <-chan copyResult,
-	downloadCh <-chan copyResult,
-) (int64, int64, error) {
-	var upload copyResult
-	var download copyResult
-	var firstErr error
-	uploadDone := false
-	select {
-	case upload = <-uploadCh:
-		firstErr = normalizeCopyError(upload.err)
-		uploadDone = true
-	case download = <-downloadCh:
-		firstErr = normalizeCopyError(download.err)
-	}
-	_ = dataConn.Close()
-	_ = visitor.Close()
-	if !uploadDone {
-		upload = <-uploadCh
-	}
-	if uploadDone {
-		download = <-downloadCh
-	}
-	return upload.n, download.n, firstErr
-}
-
-func copyMeasured(dst net.Conn, src net.Conn, ch chan<- copyResult, meter *bandwidthMeter) {
-	n, err := io.Copy(countingWriter{Writer: dst, meter: meter}, src)
-	ch <- copyResult{n: n, err: err}
-}
-
-type countingWriter struct {
-	io.Writer
-	meter *bandwidthMeter
-}
-
-func (w countingWriter) Write(data []byte) (int, error) {
-	written, err := w.Writer.Write(data)
-	w.meter.Add(int64(written))
-	return written, err
-}
-
-func normalizeCopyError(err error) error {
-	if err == nil || err == io.EOF || errors.Is(err, net.ErrClosed) {
-		return nil
-	}
-	return err
-}
-
-type copyResult struct {
-	n   int64
-	err error
 }

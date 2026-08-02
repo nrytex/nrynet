@@ -8,7 +8,7 @@ import (
 	"github.com/nat-link/nat-link/internal/protocol"
 )
 
-func (a *Agent) heartbeat(ctx context.Context, conn *controlConn) error {
+func (a *Agent) heartbeat(ctx context.Context, conn controlConn) error {
 	ticker := time.NewTicker(a.options.HeartbeatInterval)
 	defer ticker.Stop()
 	for {
@@ -32,6 +32,7 @@ func (a *Agent) handleTunnelSnapshot(message protocol.ControlMessage) error {
 	if err != nil {
 		return err
 	}
+	a.notifyTunnelSnapshot(payload.Tunnels)
 	a.logger.Info("received tunnel snapshot", "count", len(payload.Tunnels))
 	return nil
 }

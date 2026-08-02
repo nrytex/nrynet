@@ -27,6 +27,11 @@ type ServerConfig struct {
 	Listen            string          `yaml:"listen"`
 	DataListen        string          `yaml:"data_listen"`
 	PublicDataAddress string          `yaml:"public_data_address"`
+	QUICListen        string          `yaml:"quic_listen"`
+	PublicQUICAddress string          `yaml:"public_quic_address"`
+	RendezvousListen  string          `yaml:"rendezvous_listen"`
+	PublicRendezvous  string          `yaml:"public_rendezvous_address"`
+	RelayAPIToken     string          `yaml:"relay_api_token"`
 	HTTPListen        string          `yaml:"http_listen"`
 	Database          string          `yaml:"database"`
 	LogDirectory      string          `yaml:"log_directory"`
@@ -41,6 +46,9 @@ type ServerConfig struct {
 type ClientConfig struct {
 	ServerURL          string `yaml:"server_url"`
 	DataAddress        string `yaml:"data_address"`
+	Transport          string `yaml:"transport"`
+	QUICAddress        string `yaml:"quic_address"`
+	RendezvousAddress  string `yaml:"rendezvous_address"`
 	Token              string `yaml:"token"`
 	Name               string `yaml:"name"`
 	DeviceID           string `yaml:"device_id"`
@@ -76,6 +84,8 @@ func defaults() Config {
 	return Config{Server: ServerConfig{
 		Listen: "0.0.0.0:7000", DataListen: "0.0.0.0:7001",
 		PublicDataAddress: "127.0.0.1:7001", HTTPListen: "0.0.0.0:8080",
+		QUICListen: "0.0.0.0:7002", PublicQUICAddress: "127.0.0.1:7002",
+		RendezvousListen: "0.0.0.0:7003", PublicRendezvous: "127.0.0.1:7003",
 		Database: "data/nat-link.db", LogDirectory: "logs",
 		JWTTTLText: "12h", HeartbeatText: "45s",
 		Bootstrap: BootstrapConfig{AdminUsername: "admin"},

@@ -2,8 +2,10 @@ package relay
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"testing"
@@ -54,6 +56,54 @@ func TestBrokerPairsDataChannelWithVisitor(t *testing.T) {
 	}
 }
 
+func TestReadInitialHandshakePreservesCoalescedPayload(t *testing.T) {
+	left, right := net.Pipe()
+	defer left.Close()
+	defer right.Close()
+	go func() {
+		data, _ := json.Marshal(protocol.DataHandshake{Token: "token", DeviceID: "device", RequestID: "request"})
+		_, _ = left.Write(append(append(data, '\n'), []byte("payload")...))
+	}()
+	conn, handshake, err := readInitialHandshake(right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if handshake.RequestID != "request" {
+		t.Fatalf("unexpected handshake: %+v", handshake)
+	}
+	buffer := make([]byte, len("payload"))
+	if _, err := io.ReadFull(conn, buffer); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buffer, []byte("payload")) {
+		t.Fatalf("payload=%q", buffer)
+	}
+}
+
+func TestBrokerPairingTimeoutDoesNotCloseActiveStream(t *testing.T) {
+	store, authService, tokenValue, clientID := newBrokerStore(t)
+	broker := NewBroker(authService, store, 100*time.Millisecond)
+	listener := listenLocal(t)
+	go func() { _ = broker.Run(listener) }()
+	visitorPeer, visitorBroker := net.Pipe()
+	defer visitorPeer.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- broker.Pair("long-lived", visitorBroker, model.Tunnel{ID: "tun", ClientID: clientID}, nil)
+	}()
+	dataConn := dialData(t, listener.Addr().String())
+	defer dataConn.Close()
+	writeDataHandshake(t, dataConn, tokenValue, "device-1", "long-lived")
+	time.Sleep(200 * time.Millisecond)
+	go func() { _, _ = visitorPeer.Write([]byte("still-open")) }()
+	assertRead(t, dataConn, "still-open")
+	_ = dataConn.Close()
+	_ = visitorPeer.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBrokerRejectsWrongDeviceForPendingTunnel(t *testing.T) {
 	store, authService, tokenValue, clientID := newBrokerStore(t)
 	other := addOnlineClient(t, store, authService, "device-2")
@@ -75,6 +125,41 @@ func TestBrokerRejectsWrongDeviceForPendingTunnel(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected pair timeout after unauthorized data channel")
 	}
+}
+
+func TestBrokerForwardsAuthenticatedRelayVisitor(t *testing.T) {
+	store, authService, agentToken, clientID := newBrokerStore(t)
+	broker := NewBroker(authService, store, time.Second)
+	listener := listenLocal(t)
+	ready := make(chan struct{})
+	broker.SetRelayVisitorHandler("relay-secret", func(nodeID, tunnelID, visitorAddr string, visitor net.Conn) error {
+		if nodeID != "relay-a" || tunnelID != "tun-relay" || visitorAddr != "198.51.100.7:4321" {
+			return errors.New("unexpected relay binding")
+		}
+		pending, err := broker.RegisterPending("relay-request", visitor, model.Tunnel{ID: tunnelID, ClientID: clientID}, nil)
+		if err != nil {
+			return err
+		}
+		close(ready)
+		return broker.Wait("relay-request", pending)
+	})
+	go func() { _ = broker.Run(listener) }()
+
+	visitor := dialData(t, listener.Addr().String())
+	defer visitor.Close()
+	writeRelayHandshake(t, visitor, "relay-secret", "relay-a", "tun-relay", "198.51.100.7:4321")
+	<-ready
+	agent := dialData(t, listener.Addr().String())
+	defer agent.Close()
+	writeDataHandshake(t, agent, agentToken, "device-1", "relay-request")
+	if _, err := visitor.Write([]byte("relay-ping")); err != nil {
+		t.Fatal(err)
+	}
+	assertRead(t, agent, "relay-ping")
+	if _, err := agent.Write([]byte("agent-pong")); err != nil {
+		t.Fatal(err)
+	}
+	assertRead(t, visitor, "agent-pong")
 }
 
 func newBrokerStore(t *testing.T) (*storage.Store, *auth.Service, string, string) {
@@ -143,6 +228,16 @@ func writeDataHandshake(t *testing.T, conn net.Conn, token, deviceID, requestID 
 		t.Fatal(err)
 	}
 	if err := writer.Flush(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeRelayHandshake(t *testing.T, conn net.Conn, token, nodeID, tunnelID, visitorAddr string) {
+	t.Helper()
+	if err := json.NewEncoder(conn).Encode(protocol.RelayHandshake{
+		Role: "relay_visitor", Token: token, NodeID: nodeID,
+		TunnelID: tunnelID, VisitorAddr: visitorAddr,
+	}); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -6,13 +6,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	netx "github.com/nat-link/nat-link/internal/advanced"
 	"github.com/nat-link/nat-link/internal/auth"
 	"github.com/nat-link/nat-link/internal/storage"
 )
 
 type RouterOptions struct {
-	Runtime  Runtime
-	Settings []SettingItem
+	Runtime       Runtime
+	Settings      []SettingItem
+	RelayRegistry *netx.RelayRegistry
+	RelayToken    string
 }
 
 func NewRouter(store *storage.Store, authService *auth.Service, startedAt time.Time, runtimes ...Runtime) *gin.Engine {
@@ -38,6 +41,7 @@ func NewRouterWithOptions(store *storage.Store, authService *auth.Service, start
 	trafficAPI := trafficHandler{store: store}
 	logAPI := logHandler{store: store}
 	settingsAPI := newSettingsHandler(store, options.Settings)
+	relayAPI := relayHandler{registry: options.RelayRegistry, token: options.RelayToken}
 	router.GET("/health", func(c *gin.Context) {
 		if err := store.Ping(c.Request.Context()); err != nil {
 			respondError(c, http.StatusServiceUnavailable, "database unavailable")
@@ -46,6 +50,8 @@ func NewRouterWithOptions(store *storage.Store, authService *auth.Service, start
 		c.JSON(http.StatusOK, gin.H{"status": "running", "uptime_seconds": int(time.Since(startedAt).Seconds())})
 	})
 	router.POST("/api/auth/login", authAPI.login)
+	router.POST("/api/v2/relays/register", relayAPI.requireRelaySecret, relayAPI.register)
+	router.POST("/api/v2/relays/:id/heartbeat", relayAPI.requireRelaySecret, relayAPI.heartbeat)
 	secured := router.Group("/api", requireSession(authService))
 	secured.GET("/me", me)
 	secured.GET("/auth/me", me)
@@ -72,5 +78,9 @@ func NewRouterWithOptions(store *storage.Store, authService *auth.Service, start
 	secured.DELETE("/logs", logAPI.clear)
 	secured.GET("/settings", settingsAPI.list)
 	secured.PATCH("/settings/:key", settingsAPI.update)
+	secured.GET("/v2/relays", relayAPI.list)
+	secured.GET("/v2/relays/assignments", relayAPI.assignments)
+	secured.POST("/v2/relays/assignments/:tunnel_id", relayAPI.assign)
+	secured.PATCH("/v2/relays/assignments/:tunnel_id", relayAPI.reassign)
 	return router
 }

@@ -95,3 +95,18 @@ export interface SettingItem {
   description?: string;
   mutable?: boolean;
 }
+
+export interface RelayNode {
+	id: string;
+	address: string;
+	control_address?: string;
+	connections: number;
+	healthy: boolean;
+	last_seen: string;
+}
+
+export interface RelayAssignment {
+	tunnel_id: string;
+	node_id: string;
+	address: string;
+}

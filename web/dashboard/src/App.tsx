@@ -7,6 +7,7 @@ import {
   KeyRound,
   MonitorSmartphone,
   Network,
+  RadioTower,
   Settings,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -19,12 +20,14 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { TokensPage } from "./pages/TokensPage";
 import { TrafficPage } from "./pages/TrafficPage";
 import { TunnelsPage } from "./pages/TunnelsPage";
+import { RelaysPage } from "./pages/RelaysPage";
 
 const pages = [
   { key: "overview", label: "概览", icon: <Gauge size={17} />, component: <OverviewPage /> },
   { key: "clients", label: "Clients", icon: <MonitorSmartphone size={17} />, component: <ClientsPage /> },
   { key: "tokens", label: "Tokens", icon: <KeyRound size={17} />, component: <TokensPage /> },
   { key: "tunnels", label: "Tunnels", icon: <Network size={17} />, component: <TunnelsPage /> },
+  { key: "relays", label: "Relays", icon: <RadioTower size={17} />, component: <RelaysPage /> },
   { key: "traffic", label: "Traffic", icon: <ChartNoAxesCombined size={17} />, component: <TrafficPage /> },
   { key: "logs", label: "Logs", icon: <FileText size={17} />, component: <LogsPage /> },
   { key: "settings", label: "Settings", icon: <Settings size={17} />, component: <SettingsPage /> },
