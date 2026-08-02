@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestServerPlaintextIsLimitedToLoopback(t *testing.T) {
 	local := ServerConfig{Listen: "127.0.0.1:7000", DataListen: "[::1]:7001"}
@@ -30,5 +33,18 @@ func TestRemoteClientAndControlURLsRequireTLS(t *testing.T) {
 	}
 	if err := ValidateSecureHTTPURL("http://relay.example:7100"); err == nil {
 		t.Fatal("remote plaintext control URL was accepted")
+	}
+}
+
+func TestDockerExampleUsesReachableTLSListeners(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "config.docker.example.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.Listen != "0.0.0.0:7000" || cfg.Server.DataListen != "0.0.0.0:7001" {
+		t.Fatalf("docker listeners are not container reachable: %+v", cfg.Server)
+	}
+	if err := ValidateServerTransport(cfg.Server); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -11,10 +11,10 @@ RUN addgroup -S -g 10001 natlink && adduser -S -D -H -u 10001 -G natlink natlink
     && chown -R natlink:natlink /opt/nat-link
 WORKDIR /opt/nat-link
 COPY --from=build /out/nat-link-server ./nat-link-server
-COPY config.example.yaml ./config.yaml
+COPY config.docker.example.yaml ./config.yaml
 RUN chown natlink:natlink ./nat-link-server ./config.yaml
 USER natlink
-VOLUME ["/opt/nat-link/data", "/opt/nat-link/logs"]
+VOLUME ["/opt/nat-link/data", "/opt/nat-link/logs", "/opt/nat-link/tls"]
 EXPOSE 7000 7001 8080
 EXPOSE 7002/udp 7003/udp
 ENTRYPOINT ["/opt/nat-link/nat-link-server", "-config", "/opt/nat-link/config.yaml"]

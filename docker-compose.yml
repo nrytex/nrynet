@@ -11,7 +11,8 @@ services:
     volumes:
       - nat-link-data:/opt/nat-link/data
       - nat-link-logs:/opt/nat-link/logs
-      - ./config.yaml:/opt/nat-link/config.yaml:ro
+      - ./config.docker.yaml:/opt/nat-link/config.yaml:ro
+      - ./tls:/opt/nat-link/tls:ro
 
 volumes:
   nat-link-data:
