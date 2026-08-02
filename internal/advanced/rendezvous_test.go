@@ -45,6 +45,25 @@ func TestRendezvousCoordinatesUDPHolePunching(t *testing.T) {
 	}
 }
 
+func TestPunchHandshakeWaitsForReciprocalAcknowledgement(t *testing.T) {
+	left := listenUDP(t)
+	right := listenUDP(t)
+	defer left.Close()
+	defer right.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	leftPeer := endpointFromAddr(right.LocalAddr())
+	rightPeer := endpointFromAddr(left.LocalAddr())
+	errors := make(chan error, 2)
+	go func() { errors <- PunchHandshake(ctx, left, leftPeer, "left") }()
+	go func() { errors <- PunchHandshake(ctx, right, rightPeer, "right") }()
+	for range 2 {
+		if err := <-errors; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestRendezvousCapsUnmatchedRegistrations(t *testing.T) {
 	conn := listenUDP(t)
 	defer conn.Close()

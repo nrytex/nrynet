@@ -84,13 +84,9 @@ func (c PeerConnector) PunchOrRelay(
 	}
 	punchCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	errCh := make(chan error, 1)
-	go func() { errCh <- netx.Punch(punchCtx, conn, peer, selfID) }()
-	_, err := netx.AwaitPunch(punchCtx, conn)
-	if err == nil {
+	if err := netx.PunchHandshake(punchCtx, conn, peer, selfID); err == nil {
 		return DirectConnectResult{Peer: peer}
 	}
-	<-errCh
 	return DirectConnectResult{
 		Peer:        peer,
 		UseRelay:    true,

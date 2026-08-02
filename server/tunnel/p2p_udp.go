@@ -170,11 +170,7 @@ func p2pRegister(payload protocol.P2PConnectPayload) netx.RendezvousPacket {
 func punchPeer(ctx context.Context, conn net.PacketConn, peer netx.Endpoint, selfID string) error {
 	punchCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
-	errCh := make(chan error, 1)
-	go func() { errCh <- netx.Punch(punchCtx, conn, peer, selfID) }()
-	_, err := netx.AwaitPunch(punchCtx, conn)
-	if err != nil {
-		<-errCh
+	if err := netx.PunchHandshake(punchCtx, conn, peer, selfID); err != nil {
 		return fmt.Errorf("p2p punch: %w", err)
 	}
 	return nil

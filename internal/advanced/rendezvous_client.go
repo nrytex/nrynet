@@ -56,6 +56,62 @@ func Punch(
 	return ctx.Err()
 }
 
+// PunchHandshake completes only after both peers have received a punch.
+// This keeps the first application datagram out of the peer's punch reader.
+func PunchHandshake(
+	ctx context.Context,
+	conn net.PacketConn,
+	peer Endpoint,
+	selfID string,
+) error {
+	addr, err := peer.UDPAddr()
+	if err != nil {
+		return err
+	}
+	buffer := make([]byte, 1024)
+	for ctx.Err() == nil {
+		if err := writePacket(conn, addr, punchPacket(selfID)); err != nil {
+			return err
+		}
+		acknowledged, err := awaitPunchAcknowledgement(ctx, conn, addr, buffer)
+		if err != nil {
+			return err
+		}
+		if acknowledged {
+			return nil
+		}
+	}
+	return ctx.Err()
+}
+
+func awaitPunchAcknowledgement(
+	ctx context.Context,
+	conn net.PacketConn,
+	peer *net.UDPAddr,
+	buffer []byte,
+) (bool, error) {
+	_ = conn.SetReadDeadline(time.Now().Add(20 * time.Millisecond))
+	n, source, err := conn.ReadFrom(buffer)
+	if err != nil {
+		if isTimeout(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !IsExpectedUDPPeer(source, peer) {
+		return false, nil
+	}
+	packet, err := decodePacket(buffer[:n])
+	if err != nil {
+		return false, nil
+	}
+	if packet.Type == PacketPunch {
+		_ = writePacket(conn, source, RendezvousPacket{Type: PacketPunchAck})
+		return false, nil
+	}
+	return packet.Type == PacketPunchAck, nil
+}
+
 func AwaitPunch(ctx context.Context, conn net.PacketConn) (Endpoint, error) {
 	buffer := make([]byte, 1024)
 	for ctx.Err() == nil {
