@@ -46,6 +46,7 @@ func (s *udpVisitorSession) closeP2P() {
 	s.p2pMu.Lock()
 	direct := s.p2p
 	s.p2p = nil
+	s.closed = true
 	s.p2pMu.Unlock()
 	direct.close()
 }
@@ -63,6 +64,9 @@ func (m *Manager) tryP2PUDPPacket(tunnel model.Tunnel, session *udpVisitorSessio
 	}
 	session.p2pMu.Lock()
 	defer session.p2pMu.Unlock()
+	if session.closed {
+		return false
+	}
 	if session.p2p == nil {
 		runtime := m.udpRuntimeFor("", tunnel.ID)
 		if runtime == nil || !runtime.acquireP2P() {

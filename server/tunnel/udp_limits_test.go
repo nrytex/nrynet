@@ -47,3 +47,21 @@ func TestDisconnectUDPClientClearsOnlyItsSessions(t *testing.T) {
 		t.Fatalf("unexpected session counts: first=%d second=%d", len(first.sessions), len(second.sessions))
 	}
 }
+
+func TestClosedUDPSessionCannotOpenP2P(t *testing.T) {
+	tunnel := model.Tunnel{ID: "closed", ClientID: "client"}
+	manager := &Manager{
+		udpRuntimes: make(map[string]*udpRuntime),
+		rdvAddress:  "127.0.0.1:7003",
+	}
+	runtime := newUDPRuntime(manager, tunnel, nil)
+	manager.udpRuntimes[tunnel.ID] = runtime
+	session := runtime.session(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1003})
+	session.closeP2P()
+	if manager.tryP2PUDPPacket(tunnel, session, []byte("blocked")) {
+		t.Fatal("closed UDP session opened a P2P path")
+	}
+	if runtime.p2pCount != 0 {
+		t.Fatalf("closed session consumed P2P capacity: %d", runtime.p2pCount)
+	}
+}

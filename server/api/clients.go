@@ -100,6 +100,10 @@ func (h clientHandler) delete(c *gin.Context) {
 		respondError(c, http.StatusNotFound, "client not found")
 		return
 	}
+	if err := h.store.RevokeClientDevice(c.Request.Context(), client.ID); err != nil {
+		respondError(c, http.StatusConflict, err.Error())
+		return
+	}
 	h.runtime.DisconnectClient(client.ID)
 	tunnels, err := h.store.ListClientTunnels(c.Request.Context(), id)
 	if err != nil {

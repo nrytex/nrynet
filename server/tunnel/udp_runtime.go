@@ -48,6 +48,7 @@ type udpVisitorSession struct {
 	path     string
 	p2pMu    sync.Mutex
 	p2p      *p2pDirectSession
+	closed   bool
 }
 
 func (m *Manager) startUDP(tunnel model.Tunnel) error {

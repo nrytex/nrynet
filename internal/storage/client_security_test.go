@@ -87,6 +87,12 @@ func TestDeleteClientRevokesOnlyItsDevice(t *testing.T) {
 	if _, err := store.UpsertClient(ctx, tokenID, secondHello); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.RevokeClientDevice(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpsertClient(ctx, tokenID, firstHello); err == nil {
+		t.Fatal("revoked device reconnected before deletion completed")
+	}
 	if err := store.DeleteClient(ctx, first.ID); err != nil {
 		t.Fatal(err)
 	}

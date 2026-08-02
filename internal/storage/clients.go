@@ -134,12 +134,9 @@ func (s *Store) DeleteClient(ctx context.Context, id string) error {
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `INSERT INTO revoked_devices(device_id, revoked_at)
+	_, err = tx.ExecContext(ctx, `INSERT INTO revoked_devices(device_id, revoked_at)
         SELECT device_id, ? FROM clients WHERE id = ? ON CONFLICT(device_id) DO NOTHING`, time.Now().UTC(), id)
 	if err != nil {
-		return err
-	}
-	if err := requireChanged(result); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM traffic_logs WHERE tunnel_id IN
@@ -149,7 +146,7 @@ func (s *Store) DeleteClient(ctx context.Context, id string) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM tunnels WHERE client_id = ?", id); err != nil {
 		return err
 	}
-	result, err = tx.ExecContext(ctx, "DELETE FROM clients WHERE id = ?", id)
+	result, err := tx.ExecContext(ctx, "DELETE FROM clients WHERE id = ?", id)
 	if err != nil {
 		return err
 	}
@@ -157,6 +154,16 @@ func (s *Store) DeleteClient(ctx context.Context, id string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (s *Store) RevokeClientDevice(ctx context.Context, id string) error {
+	result, err := s.db.ExecContext(ctx, `INSERT INTO revoked_devices(device_id, revoked_at)
+        SELECT device_id, ? FROM clients WHERE id = ?
+        ON CONFLICT(device_id) DO UPDATE SET revoked_at = excluded.revoked_at`, time.Now().UTC(), id)
+	if err != nil {
+		return err
+	}
+	return requireChanged(result)
 }
 
 func (s *Store) UpdateClientToken(ctx context.Context, id, tokenID string) error {
