@@ -27,6 +27,14 @@ func (s *Store) ListTokens(ctx context.Context) ([]model.Token, error) {
 	return tokens, rows.Err()
 }
 
+func (s *Store) GetToken(ctx context.Context, id string) (model.Token, error) {
+	var token model.Token
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, prefix, disabled, last_used, created_at
+        FROM tokens WHERE id = ?`, id).Scan(&token.ID, &token.Name, &token.Prefix,
+		&token.Disabled, &token.LastUsed, &token.CreatedAt)
+	return token, err
+}
+
 func (s *Store) SetTokenDisabled(ctx context.Context, id string, disabled bool) error {
 	result, err := s.db.ExecContext(ctx, "UPDATE tokens SET disabled = ? WHERE id = ?", disabled, id)
 	if err != nil {
@@ -36,11 +44,30 @@ func (s *Store) SetTokenDisabled(ctx context.Context, id string, disabled bool) 
 }
 
 func (s *Store) DeleteToken(ctx context.Context, id string) error {
-	result, err := s.db.ExecContext(ctx, "DELETE FROM tokens WHERE id = ?", id)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	return requireChanged(result)
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM traffic_logs WHERE tunnel_id IN
+        (SELECT tunnels.id FROM tunnels JOIN clients ON clients.id = tunnels.client_id WHERE clients.token_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tunnels WHERE client_id IN
+        (SELECT id FROM clients WHERE token_id = ?)`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM clients WHERE token_id = ?", id); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, "DELETE FROM tokens WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+	if err := requireChanged(result); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func requireChanged(result sql.Result) error {

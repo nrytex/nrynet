@@ -22,15 +22,18 @@ type ClientHello struct {
 func (s *Store) UpsertClient(ctx context.Context, tokenID string, hello ClientHello) (model.Client, error) {
 	now := time.Now().UTC()
 	id := uuid.NewString()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO clients
+	result, err := s.db.ExecContext(ctx, `INSERT INTO clients
         (id, name, device_id, token_id, status, disabled, ip, os, version, last_online, created_at)
         VALUES(?, ?, ?, ?, 'online', 0, ?, ?, ?, ?, ?)
-        ON CONFLICT(device_id) DO UPDATE SET name=excluded.name, token_id=excluded.token_id,
+        ON CONFLICT(device_id) DO UPDATE SET name=excluded.name,
         status='online', ip=excluded.ip, os=excluded.os, version=excluded.version,
-        last_online=excluded.last_online`, id, hello.Name, hello.DeviceID, tokenID,
+		last_online=excluded.last_online WHERE clients.token_id=excluded.token_id`, id, hello.Name, hello.DeviceID, tokenID,
 		hello.IP, hello.OS, hello.Version, now, now)
 	if err != nil {
 		return model.Client{}, err
+	}
+	if err := requireChanged(result); err != nil {
+		return model.Client{}, errors.New("device_id is already bound to another token")
 	}
 	return s.GetClientByDevice(ctx, hello.DeviceID)
 }
@@ -55,6 +58,26 @@ func scanClient(row *sql.Row) (model.Client, error) {
 func (s *Store) ListClients(ctx context.Context) ([]model.Client, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, name, device_id, token_id, status, disabled,
         ip, os, version, last_online, created_at FROM clients ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	clients := make([]model.Client, 0)
+	for rows.Next() {
+		var client model.Client
+		if err := rows.Scan(&client.ID, &client.Name, &client.DeviceID, &client.TokenID,
+			&client.Status, &client.Disabled, &client.IP, &client.OS, &client.Version,
+			&client.LastOnline, &client.CreatedAt); err != nil {
+			return nil, err
+		}
+		clients = append(clients, client)
+	}
+	return clients, rows.Err()
+}
+
+func (s *Store) ListClientsByToken(ctx context.Context, tokenID string) ([]model.Client, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, device_id, token_id, status, disabled,
+        ip, os, version, last_online, created_at FROM clients WHERE token_id = ? ORDER BY created_at DESC`, tokenID)
 	if err != nil {
 		return nil, err
 	}

@@ -10,8 +10,9 @@ import (
 )
 
 type tokenHandler struct {
-	store *storage.Store
-	auth  *auth.Service
+	store   *storage.Store
+	auth    *auth.Service
+	runtime Runtime
 }
 
 type createTokenRequest struct {
@@ -55,10 +56,32 @@ func (h tokenHandler) update(c *gin.Context) {
 		respondError(c, http.StatusNotFound, err.Error())
 		return
 	}
+	if *request.Disabled {
+		clients, err := clientsUsingToken(c.Request.Context(), h.store, c.Param("id"))
+		if err != nil {
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+		disconnectClients(h.runtime, clients)
+	}
 	c.Status(http.StatusNoContent)
 }
 
 func (h tokenHandler) delete(c *gin.Context) {
+	clients, err := clientsUsingToken(c.Request.Context(), h.store, c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := h.store.SetTokenDisabled(c.Request.Context(), c.Param("id"), true); err != nil {
+		respondError(c, http.StatusNotFound, err.Error())
+		return
+	}
+	disconnectClients(h.runtime, clients)
+	if err := stopClientTunnels(c.Request.Context(), h.store, h.runtime, clients); err != nil {
+		respondError(c, http.StatusConflict, err.Error())
+		return
+	}
 	if err := h.store.DeleteToken(c.Request.Context(), c.Param("id")); err != nil {
 		respondError(c, http.StatusConflict, err.Error())
 		return

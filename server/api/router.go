@@ -34,7 +34,7 @@ func NewRouterWithOptions(store *storage.Store, authService *auth.Service, start
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 	authAPI := authHandler{service: authService}
-	tokenAPI := tokenHandler{store: store, auth: authService}
+	tokenAPI := tokenHandler{store: store, auth: authService, runtime: runtime}
 	clientAPI := clientHandler{store: store, auth: authService, runtime: runtime}
 	tunnelAPI := tunnelHandler{store: store, runtime: runtime}
 	overviewAPI := overviewHandler{store: store, runtime: runtime, startedAt: startedAt}

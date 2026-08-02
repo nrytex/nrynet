@@ -80,13 +80,13 @@ func (s *QUICControlServer) handleStream(
 	switch stream.Kind {
 	case netx.FrameControl:
 		ip := hostOnly(session.RemoteAddr())
-		s.hub.ServeTransport(ctx, &quicControl{stream: stream}, tokenID, ip)
+		s.hub.ServeTransport(ctx, &quicControl{stream: stream, session: session}, tokenID, ip)
 	case netx.FrameData:
 		handshake := protocol.DataHandshake{
 			DeviceID:  session.Auth.DeviceID,
 			RequestID: stream.Initial.RequestID,
 		}
-		go s.broker.HandleAuthenticatedStream(stream, handshake)
+		go s.broker.HandleAuthenticatedStream(stream, handshake, tokenID)
 	default:
 		_ = stream.Close()
 	}
@@ -108,8 +108,9 @@ func hostOnly(addr net.Addr) string {
 }
 
 type quicControl struct {
-	stream *netx.QUICStream
-	mu     sync.Mutex
+	stream  *netx.QUICStream
+	session *netx.QUICSession
+	mu      sync.Mutex
 }
 
 func (c *quicControl) ReadJSON(value any) error {
@@ -133,7 +134,7 @@ func (c *quicControl) WriteJSON(value any) error {
 func (c *quicControl) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.stream.Close()
+	return c.session.Close()
 }
 
 func (c *quicControl) SetReadDeadline(deadline time.Time) error {

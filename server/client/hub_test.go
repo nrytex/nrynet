@@ -94,6 +94,38 @@ func TestHubRejectsDisabledClient(t *testing.T) {
 	}
 }
 
+func TestHubRejectsDeviceTakeoverByDifferentToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store, authService := newHubStore(t)
+	first, firstValue, err := authService.CreateAgentToken(context.Background(), "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, secondValue, err := authService.CreateAgentToken(context.Background(), "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := NewHub(store, authService, time.Second)
+	server := httptest.NewServer(routerWithHub(hub))
+	defer server.Close()
+
+	original := dialHub(t, server.URL, firstValue)
+	defer original.Close()
+	writeHello(t, original, "owned-device")
+	expectMessageType(t, original, protocol.TypeTunnelSnapshot)
+	attacker := dialHub(t, server.URL, secondValue)
+	defer attacker.Close()
+	writeHello(t, attacker, "owned-device")
+	expectMessageType(t, attacker, protocol.TypeError)
+	client, err := store.GetClientByDevice(context.Background(), "owned-device")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.TokenID != first.ID || hub.OnlineCount() != 1 {
+		t.Fatalf("device ownership changed: client=%+v online=%d", client, hub.OnlineCount())
+	}
+}
+
 func expectMessageType(t *testing.T, ws *websocket.Conn, want string) {
 	t.Helper()
 	var got protocol.ControlMessage

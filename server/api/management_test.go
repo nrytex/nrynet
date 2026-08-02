@@ -68,6 +68,86 @@ func TestClientManagementAndTokenReset(t *testing.T) {
 	}
 }
 
+func TestTokenDisableDisconnectsBoundClient(t *testing.T) {
+	store, service, router, session, runtime := managementRouter(t)
+	token, _, err := service.CreateAgentToken(context.Background(), "disable-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := store.UpsertClient(context.Background(), token.ID, storage.ClientHello{
+		Name: "disable", DeviceID: "disable-device",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := requestJSON(t, router, http.MethodPatch, "/api/tokens/"+token.ID, session,
+		map[string]any{"disabled": true})
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("disable status=%d body=%s", response.Code, response.Body.String())
+	}
+	if len(runtime.disconnected) != 1 || runtime.disconnected[0] != client.ID {
+		t.Fatalf("bound client was not disconnected: %v", runtime.disconnected)
+	}
+}
+
+func TestTokenDeleteRemovesBoundClientAndTunnel(t *testing.T) {
+	store, service, router, session, runtime := managementRouter(t)
+	token, _, err := service.CreateAgentToken(context.Background(), "delete-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := store.UpsertClient(context.Background(), token.ID, storage.ClientHello{
+		Name: "delete", DeviceID: "delete-device",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tunnel, err := store.CreateTunnel(context.Background(), model.Tunnel{
+		Name: "delete", ClientID: client.ID, Protocol: "tcp", LocalHost: "127.0.0.1",
+		LocalPort: 80, RemotePort: 6081, Status: "running",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetTunnelStatus(context.Background(), tunnel.ID, "running"); err != nil {
+		t.Fatal(err)
+	}
+	response := requestJSON(t, router, http.MethodDelete, "/api/tokens/"+token.ID, session, nil)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("delete status=%d body=%s", response.Code, response.Body.String())
+	}
+	if len(runtime.stopped) != 1 || runtime.stopped[0] != tunnel.ID || len(runtime.disconnected) != 1 {
+		t.Fatalf("runtime cleanup missing: stopped=%v disconnected=%v", runtime.stopped, runtime.disconnected)
+	}
+	if _, err := store.GetClient(context.Background(), client.ID); err == nil {
+		t.Fatal("bound client remains after token deletion")
+	}
+}
+
+func TestClientDeleteRevokesItsToken(t *testing.T) {
+	store, service, router, session, runtime := managementRouter(t)
+	token, cleartext, err := service.CreateAgentToken(context.Background(), "client-delete")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := store.UpsertClient(context.Background(), token.ID, storage.ClientHello{
+		Name: "delete", DeviceID: "client-delete-device",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := requestJSON(t, router, http.MethodDelete, "/api/clients/"+client.ID, session, nil)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("delete status=%d body=%s", response.Code, response.Body.String())
+	}
+	if _, err := service.AuthenticateAgent(context.Background(), cleartext); err == nil {
+		t.Fatal("deleted client token remains usable")
+	}
+	if len(runtime.disconnected) != 1 || runtime.disconnected[0] != client.ID {
+		t.Fatalf("client was not disconnected: %v", runtime.disconnected)
+	}
+}
+
 func TestClientDetailIncludesConnectionAndTraffic(t *testing.T) {
 	store, service, router, session, runtime := managementRouter(t)
 	token, _, err := service.CreateAgentToken(context.Background(), "detail-token")

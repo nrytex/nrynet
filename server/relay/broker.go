@@ -177,8 +177,8 @@ func (b *Broker) recordRejected(message string, err error) {
 	})
 }
 
-func (b *Broker) HandleAuthenticatedStream(stream dataStream, handshake protocol.DataHandshake) {
-	pending, err := b.claimAuthenticatedPending(handshake.DeviceID, handshake.RequestID)
+func (b *Broker) HandleAuthenticatedStream(stream dataStream, handshake protocol.DataHandshake, tokenID string) {
+	pending, err := b.claimAuthenticatedPending(tokenID, handshake.DeviceID, handshake.RequestID)
 	if err != nil {
 		_ = stream.Close()
 		return
@@ -213,15 +213,19 @@ func (b *Broker) claimPending(handshake protocol.DataHandshake) (*pendingConn, e
 	return pending, nil
 }
 
-func (b *Broker) claimAuthenticatedPending(deviceID, requestID string) (*pendingConn, error) {
-	if deviceID == "" || requestID == "" {
-		return nil, errors.New("device_id and request_id are required")
+func (b *Broker) claimAuthenticatedPending(tokenID, deviceID, requestID string) (*pendingConn, error) {
+	if tokenID == "" || deviceID == "" || requestID == "" {
+		return nil, errors.New("token_id, device_id and request_id are required")
 	}
 	client, err := b.store.GetClientByDevice(context.Background(), deviceID)
 	if err != nil {
 		return nil, err
 	}
-	if client.Disabled {
+	token, err := b.store.GetToken(context.Background(), tokenID)
+	if err != nil {
+		return nil, err
+	}
+	if client.Disabled || token.Disabled || client.TokenID != tokenID {
 		return nil, errors.New("client is not authorized")
 	}
 	return b.claimPendingForClient(client.ID, requestID)

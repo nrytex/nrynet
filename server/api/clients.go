@@ -95,7 +95,21 @@ func (h clientHandler) update(c *gin.Context) {
 
 func (h clientHandler) delete(c *gin.Context) {
 	id := c.Param("id")
-	h.runtime.DisconnectClient(id)
+	client, err := h.store.GetClient(c.Request.Context(), id)
+	if err != nil {
+		respondError(c, http.StatusNotFound, "client not found")
+		return
+	}
+	if err := h.store.SetTokenDisabled(c.Request.Context(), client.TokenID, true); err != nil {
+		respondError(c, http.StatusConflict, err.Error())
+		return
+	}
+	clients, err := clientsUsingToken(c.Request.Context(), h.store, client.TokenID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	disconnectClients(h.runtime, clients)
 	tunnels, err := h.store.ListClientTunnels(c.Request.Context(), id)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
@@ -129,6 +143,11 @@ func (h clientHandler) resetToken(c *gin.Context) {
 		return
 	}
 	_ = h.store.SetTokenDisabled(c.Request.Context(), client.TokenID, true)
-	h.runtime.DisconnectClient(client.ID)
+	clients, listErr := clientsUsingToken(c.Request.Context(), h.store, client.TokenID)
+	if listErr == nil {
+		disconnectClients(h.runtime, clients)
+	} else {
+		h.runtime.DisconnectClient(client.ID)
+	}
 	c.JSON(http.StatusCreated, gin.H{"token": token, "value": cleartext})
 }

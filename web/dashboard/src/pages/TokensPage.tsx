@@ -26,7 +26,7 @@ export function TokensPage() {
   async function remove(token: Token) {
     modal.confirm({
       title: `删除 ${token.name}?`,
-      content: "删除后使用该 Token 的 Client 将无法继续认证。",
+      content: "这会断开并删除使用该 Token 的 Client、Tunnel 和关联流量记录。",
       okButtonProps: { danger: true },
       onOk: async () => {
         await api.deleteToken(token.id);
