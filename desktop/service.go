@@ -61,6 +61,9 @@ func (s *DesktopService) Snapshot() DesktopSnapshot {
 }
 
 func (s *DesktopService) SaveConfig(cfg AppConfig) (DesktopSnapshot, error) {
+	if err := s.updater.ConfigureAutomatic(cfg); err != nil {
+		return DesktopSnapshot{}, fmt.Errorf("configure automatic updates: %w", err)
+	}
 	if err := s.store.Save(cfg); err != nil {
 		return DesktopSnapshot{}, err
 	}
