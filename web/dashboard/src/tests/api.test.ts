@@ -29,6 +29,16 @@ describe("api client", () => {
     await expect(api.listClients()).rejects.toBeInstanceOf(ApiError);
     expect(getSession()).toBeNull();
   });
+
+  it("sends server-side log filters", async () => {
+    const fetchMock = mockFetch({ items: [], total: 0, limit: 100, offset: 200 });
+    await api.logs({ keyword: "closed", level: "warn", page: 3 });
+    const call = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const path = String(call[0]);
+    expect(path).toContain("keyword=closed");
+    expect(path).toContain("level=warn");
+    expect(path).toContain("page=3");
+  });
 });
 
 function mockFetch(body: unknown, status = 200) {

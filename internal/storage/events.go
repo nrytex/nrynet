@@ -53,6 +53,14 @@ func (s *Store) ListEvents(ctx context.Context, filter EventFilter) ([]model.Eve
 	return events, rows.Err()
 }
 
+func (s *Store) CountEvents(ctx context.Context, filter EventFilter) (int64, error) {
+	var count int64
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM event_logs
+        WHERE (? = '' OR level = ?) AND (? = '' OR message LIKE '%' || ? || '%' OR event LIKE '%' || ? || '%')`,
+		filter.Level, filter.Level, filter.Keyword, filter.Keyword, filter.Keyword).Scan(&count)
+	return count, err
+}
+
 func scanEvent(row scanner) (model.Event, error) {
 	var event model.Event
 	var fields string

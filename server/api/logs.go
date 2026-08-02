@@ -16,12 +16,18 @@ type logHandler struct {
 }
 
 func (h logHandler) list(c *gin.Context) {
-	events, err := h.store.ListEvents(c.Request.Context(), eventFilter(c))
+	filter := eventFilter(c)
+	events, err := h.store.ListEvents(c.Request.Context(), filter)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": events})
+	total, err := h.store.CountEvents(c.Request.Context(), filter)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": events, "total": total, "limit": filter.Limit, "offset": filter.Offset})
 }
 
 func (h logHandler) download(c *gin.Context) {
@@ -62,6 +68,12 @@ func (h logHandler) clear(c *gin.Context) {
 
 func eventFilter(c *gin.Context) storage.EventFilter {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+	if limit < 1 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	if page < 1 {
 		page = 1

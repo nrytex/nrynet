@@ -79,10 +79,20 @@ export const api = {
   startTunnel: (id: string) => request<void>(`/api/tunnels/${id}/start`, { method: "POST" }),
   stopTunnel: (id: string) => request<void>(`/api/tunnels/${id}/stop`, { method: "POST" }),
   traffic: (range: "today" | "month" = "today") => request<TrafficResponse>(`/api/traffic/summary?range=${range}`),
-  logs: () => request<{ items: LogEntry[] }>("/api/logs").then(items),
+  logs: (filter: { keyword?: string; level?: string; page?: number; limit?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (filter.keyword) query.set("keyword", filter.keyword);
+    if (filter.level) query.set("level", filter.level);
+    query.set("page", String(filter.page ?? 1));
+    query.set("limit", String(filter.limit ?? 100));
+    return request<{ items: LogEntry[]; total: number; limit: number; offset: number }>(`/api/logs?${query}`);
+  },
   clearLogs: () => request<{ deleted: number }>("/api/logs", { method: "DELETE" }),
-  async downloadLogs() {
-    const response = await fetch("/api/logs/download", { headers: authHeader() });
+  async downloadLogs(filter: { keyword?: string; level?: string } = {}) {
+    const query = new URLSearchParams();
+    if (filter.keyword) query.set("keyword", filter.keyword);
+    if (filter.level) query.set("level", filter.level);
+    const response = await fetch(`/api/logs/download?${query}`, { headers: authHeader() });
     if (!response.ok) throw new ApiError(response.status, response.statusText);
     const url = URL.createObjectURL(await response.blob());
     const anchor = document.createElement("a");
