@@ -63,8 +63,13 @@ func TestClientManagementAndTokenReset(t *testing.T) {
 	if reset.Code != http.StatusCreated {
 		t.Fatalf("reset status=%d body=%s", reset.Code, reset.Body.String())
 	}
-	if _, err := service.AuthenticateAgent(context.Background(), cleartext); err == nil {
-		t.Fatal("old token remained valid after reset")
+	if _, err := service.AuthenticateAgent(context.Background(), cleartext); err != nil {
+		t.Fatal("reset disabled a token that may be shared by another device")
+	}
+	if _, err := store.UpsertClient(context.Background(), token.ID, storage.ClientHello{
+		Name: "home", DeviceID: client.DeviceID,
+	}); err == nil {
+		t.Fatal("old token reclaimed the reset device")
 	}
 }
 
@@ -124,7 +129,7 @@ func TestTokenDeleteRemovesBoundClientAndTunnel(t *testing.T) {
 	}
 }
 
-func TestClientDeleteRevokesItsToken(t *testing.T) {
+func TestClientDeleteRevokesItsDeviceIdentity(t *testing.T) {
 	store, service, router, session, runtime := managementRouter(t)
 	token, cleartext, err := service.CreateAgentToken(context.Background(), "client-delete")
 	if err != nil {
@@ -140,11 +145,42 @@ func TestClientDeleteRevokesItsToken(t *testing.T) {
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("delete status=%d body=%s", response.Code, response.Body.String())
 	}
-	if _, err := service.AuthenticateAgent(context.Background(), cleartext); err == nil {
-		t.Fatal("deleted client token remains usable")
+	if _, err := service.AuthenticateAgent(context.Background(), cleartext); err != nil {
+		t.Fatal("deleting one client disabled its reusable token")
 	}
 	if len(runtime.disconnected) != 1 || runtime.disconnected[0] != client.ID {
 		t.Fatalf("client was not disconnected: %v", runtime.disconnected)
+	}
+}
+
+func TestClientResetDisconnectsOnlyTargetWithSharedToken(t *testing.T) {
+	store, service, router, session, runtime := managementRouter(t)
+	token, cleartext, err := service.CreateAgentToken(context.Background(), "shared-reset")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.UpsertClient(context.Background(), token.ID, storage.ClientHello{
+		Name: "first", DeviceID: "reset-first",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.UpsertClient(context.Background(), token.ID, storage.ClientHello{
+		Name: "second", DeviceID: "reset-second",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := requestJSON(t, router, http.MethodPost,
+		"/api/clients/"+first.ID+"/reset-token", session, nil)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("reset status=%d body=%s", response.Code, response.Body.String())
+	}
+	if _, err := service.AuthenticateAgent(context.Background(), cleartext); err != nil {
+		t.Fatal("shared token was disabled during target reset")
+	}
+	if len(runtime.disconnected) != 1 || runtime.disconnected[0] != first.ID {
+		t.Fatalf("wrong clients disconnected: target=%s other=%s got=%v", first.ID, second.ID, runtime.disconnected)
 	}
 }
 

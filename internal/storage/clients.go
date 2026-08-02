@@ -24,16 +24,17 @@ func (s *Store) UpsertClient(ctx context.Context, tokenID string, hello ClientHe
 	id := uuid.NewString()
 	result, err := s.db.ExecContext(ctx, `INSERT INTO clients
         (id, name, device_id, token_id, status, disabled, ip, os, version, last_online, created_at)
-        VALUES(?, ?, ?, ?, 'online', 0, ?, ?, ?, ?, ?)
+        SELECT ?, ?, ?, ?, 'online', 0, ?, ?, ?, ?, ?
+        WHERE NOT EXISTS (SELECT 1 FROM revoked_devices WHERE device_id = ?)
         ON CONFLICT(device_id) DO UPDATE SET name=excluded.name,
         status='online', ip=excluded.ip, os=excluded.os, version=excluded.version,
 		last_online=excluded.last_online WHERE clients.token_id=excluded.token_id`, id, hello.Name, hello.DeviceID, tokenID,
-		hello.IP, hello.OS, hello.Version, now, now)
+		hello.IP, hello.OS, hello.Version, now, now, hello.DeviceID)
 	if err != nil {
 		return model.Client{}, err
 	}
 	if err := requireChanged(result); err != nil {
-		return model.Client{}, errors.New("device_id is already bound to another token")
+		return model.Client{}, errors.New("device_id is bound to another token or has been revoked")
 	}
 	return s.GetClientByDevice(ctx, hello.DeviceID)
 }
@@ -133,6 +134,14 @@ func (s *Store) DeleteClient(ctx context.Context, id string) error {
 		return err
 	}
 	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `INSERT INTO revoked_devices(device_id, revoked_at)
+        SELECT device_id, ? FROM clients WHERE id = ? ON CONFLICT(device_id) DO NOTHING`, time.Now().UTC(), id)
+	if err != nil {
+		return err
+	}
+	if err := requireChanged(result); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM traffic_logs WHERE tunnel_id IN
         (SELECT id FROM tunnels WHERE client_id = ?)`, id); err != nil {
 		return err
@@ -140,7 +149,7 @@ func (s *Store) DeleteClient(ctx context.Context, id string) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM tunnels WHERE client_id = ?", id); err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, "DELETE FROM clients WHERE id = ?", id)
+	result, err = tx.ExecContext(ctx, "DELETE FROM clients WHERE id = ?", id)
 	if err != nil {
 		return err
 	}

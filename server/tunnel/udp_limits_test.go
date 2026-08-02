@@ -32,3 +32,18 @@ func TestUDPRuntimeBoundsSessionsAndP2PSockets(t *testing.T) {
 		t.Fatal("released p2p capacity was not reusable")
 	}
 }
+
+func TestDisconnectUDPClientClearsOnlyItsSessions(t *testing.T) {
+	manager := &Manager{udpRuntimes: make(map[string]*udpRuntime)}
+	first := newUDPRuntime(manager, model.Tunnel{ID: "first", ClientID: "client-a"}, nil)
+	second := newUDPRuntime(manager, model.Tunnel{ID: "second", ClientID: "client-b"}, nil)
+	manager.udpRuntimes[first.tunnel.ID] = first
+	manager.udpRuntimes[second.tunnel.ID] = second
+	first.session(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1001})
+	second.session(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1002})
+
+	manager.disconnectUDPClient("client-a")
+	if len(first.sessions) != 0 || len(second.sessions) != 1 {
+		t.Fatalf("unexpected session counts: first=%d second=%d", len(first.sessions), len(second.sessions))
+	}
+}

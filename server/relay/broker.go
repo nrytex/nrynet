@@ -1,10 +1,8 @@
 package relay
 
 import (
-	"bufio"
 	"context"
 	"crypto/subtle"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -31,6 +29,7 @@ type Broker struct {
 
 	mu           sync.Mutex
 	pending      map[string]*pendingConn
+	connections  *clientConnections
 	meter        *bandwidthMeter
 	relayToken   string
 	relayVisitor func(nodeID, tunnelID, visitorAddr string, visitor net.Conn) error
@@ -48,11 +47,12 @@ func NewBroker(authService *auth.Service, store *storage.Store, timeout time.Dur
 		timeout = 30 * time.Second
 	}
 	return &Broker{
-		auth:    authService,
-		store:   store,
-		timeout: timeout,
-		pending: make(map[string]*pendingConn),
-		meter:   newBandwidthMeter(),
+		auth:        authService,
+		store:       store,
+		timeout:     timeout,
+		pending:     make(map[string]*pendingConn),
+		connections: newClientConnections(),
+		meter:       newBandwidthMeter(),
 	}
 }
 
@@ -152,7 +152,7 @@ func (b *Broker) handleDataConn(conn net.Conn) {
 		_ = dataConn.Close()
 		return
 	}
-	err = b.relay(dataConn, pending.visitor, pending.onComplete)
+	err = b.relayPending(dataConn, pending)
 	pending.done <- err
 }
 
@@ -183,34 +183,24 @@ func (b *Broker) HandleAuthenticatedStream(stream dataStream, handshake protocol
 		_ = stream.Close()
 		return
 	}
-	err = b.relay(stream, pending.visitor, pending.onComplete)
+	err = b.relayPending(stream, pending)
 	pending.done <- err
 }
 
 func (b *Broker) claimPending(handshake protocol.DataHandshake) (*pendingConn, error) {
-	token, err := b.auth.AuthenticateAgent(context.Background(), handshake.Token)
+	client, err := b.store.GetClientByDevice(context.Background(), handshake.DeviceID)
 	if err != nil {
 		return nil, err
 	}
-	client, err := b.store.GetClientByDevice(context.Background(), handshake.DeviceID)
+	generation := b.connections.generationFor(client.ID)
+	token, err := b.auth.AuthenticateAgent(context.Background(), handshake.Token)
 	if err != nil {
 		return nil, err
 	}
 	if client.Disabled || client.TokenID != token.ID {
 		return nil, errors.New("client is not authorized")
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	pending := b.pending[handshake.RequestID]
-	if pending == nil {
-		return nil, errRequestNotFound
-	}
-	if pending.tunnel.ClientID != client.ID {
-		return nil, errors.New("request does not belong to client")
-	}
-	delete(b.pending, handshake.RequestID)
-	close(pending.paired)
-	return pending, nil
+	return b.claimPendingForClient(client.ID, handshake.RequestID, generation)
 }
 
 func (b *Broker) claimAuthenticatedPending(tokenID, deviceID, requestID string) (*pendingConn, error) {
@@ -221,6 +211,7 @@ func (b *Broker) claimAuthenticatedPending(tokenID, deviceID, requestID string) 
 	if err != nil {
 		return nil, err
 	}
+	generation := b.connections.generationFor(client.ID)
 	token, err := b.store.GetToken(context.Background(), tokenID)
 	if err != nil {
 		return nil, err
@@ -228,10 +219,10 @@ func (b *Broker) claimAuthenticatedPending(tokenID, deviceID, requestID string) 
 	if client.Disabled || token.Disabled || client.TokenID != tokenID {
 		return nil, errors.New("client is not authorized")
 	}
-	return b.claimPendingForClient(client.ID, requestID)
+	return b.claimPendingForClient(client.ID, requestID, generation)
 }
 
-func (b *Broker) claimPendingForClient(clientID, requestID string) (*pendingConn, error) {
+func (b *Broker) claimPendingForClient(clientID, requestID string, generation uint64) (*pendingConn, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	pending := b.pending[requestID]
@@ -241,6 +232,7 @@ func (b *Broker) claimPendingForClient(clientID, requestID string) (*pendingConn
 	if pending.tunnel.ClientID != clientID {
 		return nil, errors.New("request does not belong to client")
 	}
+	pending.connectionGeneration = generation
 	delete(b.pending, requestID)
 	close(pending.paired)
 	return pending, nil
@@ -269,48 +261,11 @@ func (p *Pending) Paired() <-chan struct{} {
 }
 
 type pendingConn struct {
-	requestID  string
-	visitor    net.Conn
-	tunnel     model.Tunnel
-	onComplete CompleteFunc
-	done       chan error
-	paired     chan struct{}
-}
-
-type bufferedConn struct {
-	net.Conn
-	reader *bufio.Reader
-}
-
-type initialHandshake struct {
-	Role        string `json:"role"`
-	Token       string `json:"token"`
-	DeviceID    string `json:"device_id"`
-	RequestID   string `json:"request_id"`
-	NodeID      string `json:"node_id"`
-	TunnelID    string `json:"tunnel_id"`
-	VisitorAddr string `json:"visitor_addr"`
-}
-
-func readInitialHandshake(conn net.Conn) (net.Conn, initialHandshake, error) {
-	reader := bufio.NewReaderSize(conn, 4096)
-	line, err := reader.ReadSlice('\n')
-	if err != nil {
-		return nil, initialHandshake{}, err
-	}
-	var handshake initialHandshake
-	if err := json.Unmarshal(line, &handshake); err != nil {
-		return nil, initialHandshake{}, err
-	}
-	if handshake.Role == "relay_visitor" {
-		return bufferedConn{Conn: conn, reader: reader}, handshake, nil
-	}
-	if handshake.Token == "" || handshake.DeviceID == "" || handshake.RequestID == "" {
-		return nil, initialHandshake{}, errors.New("invalid data handshake")
-	}
-	return bufferedConn{Conn: conn, reader: reader}, handshake, nil
-}
-
-func (c bufferedConn) Read(p []byte) (int, error) {
-	return c.reader.Read(p)
+	requestID            string
+	visitor              net.Conn
+	tunnel               model.Tunnel
+	onComplete           CompleteFunc
+	done                 chan error
+	paired               chan struct{}
+	connectionGeneration uint64
 }

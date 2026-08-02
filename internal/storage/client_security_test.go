@@ -73,3 +73,27 @@ func TestDeleteTokenRemovesBoundClientsAndTunnels(t *testing.T) {
 		t.Fatalf("bound tunnels remain: %+v", tunnels)
 	}
 }
+
+func TestDeleteClientRevokesOnlyItsDevice(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	tokenID := insertTestToken(t, store, "shared")
+	firstHello := ClientHello{Name: "first", DeviceID: "first-device"}
+	first, err := store.UpsertClient(ctx, tokenID, firstHello)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondHello := ClientHello{Name: "second", DeviceID: "second-device"}
+	if _, err := store.UpsertClient(ctx, tokenID, secondHello); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteClient(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpsertClient(ctx, tokenID, firstHello); err == nil {
+		t.Fatal("deleted device identity was recreated")
+	}
+	if _, err := store.UpsertClient(ctx, tokenID, secondHello); err != nil {
+		t.Fatalf("other device using shared token was revoked: %v", err)
+	}
+}

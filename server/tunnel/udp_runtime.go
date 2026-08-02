@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/nat-link/nat-link/internal/model"
-	"github.com/nat-link/nat-link/internal/protocol"
 )
 
 const (
@@ -261,6 +260,20 @@ func (r *udpRuntime) clearSessions() {
 	r.manager.active.Add(-int64(count))
 }
 
+func (m *Manager) disconnectUDPClient(clientID string) {
+	m.mu.Lock()
+	runtimes := make([]*udpRuntime, 0)
+	for _, runtime := range m.udpRuntimes {
+		if runtime.tunnel.ClientID == clientID {
+			runtimes = append(runtimes, runtime)
+		}
+	}
+	m.mu.Unlock()
+	for _, runtime := range runtimes {
+		runtime.clearSessions()
+	}
+}
+
 func (r *udpRuntime) recordDenied(addr *net.UDPAddr) {
 	_ = r.manager.store.RecordEvent(context.Background(), "warn", "tunnel.denied",
 		"Visitor denied by IP allowlist", map[string]any{
@@ -283,47 +296,4 @@ func (r *udpRuntime) recordPath(event string, session *udpVisitorSession) {
 	r.mu.Unlock()
 	_ = r.manager.store.RecordEvent(context.Background(), "info", event,
 		"UDP packet routed", map[string]any{"tunnel_id": r.tunnel.ID, "session_id": session.id})
-}
-
-func (m *Manager) HandleUDPPacket(clientID string, message protocol.ControlMessage) {
-	payload, err := protocol.DecodePayload[protocol.UDPPacketPayload](message)
-	if err != nil || len(payload.Payload) == 0 {
-		return
-	}
-	runtime := m.udpRuntimeFor(clientID, message.TunnelID)
-	if runtime == nil {
-		return
-	}
-	_ = runtime.sendToVisitor(message.RequestID, payload.Payload)
-}
-
-func (m *Manager) udpRuntimeFor(clientID, tunnelID string) *udpRuntime {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	runtime := m.udpRuntimes[tunnelID]
-	if runtime == nil || (clientID != "" && runtime.tunnel.ClientID != clientID) {
-		return nil
-	}
-	return runtime
-}
-
-func (m *Manager) removeUDPSession(tunnelID, sessionID string) {
-	runtime := m.udpRuntimeFor("", tunnelID)
-	if runtime != nil {
-		runtime.removeSession(sessionID)
-	}
-}
-
-func (r *udpRuntime) removeSession(sessionID string) {
-	r.mu.Lock()
-	session := r.byID[sessionID]
-	if session == nil {
-		r.mu.Unlock()
-		return
-	}
-	delete(r.sessions, session.addr.String())
-	delete(r.byID, sessionID)
-	r.mu.Unlock()
-	session.closeP2P()
-	r.manager.active.Add(-1)
 }

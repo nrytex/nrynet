@@ -20,6 +20,9 @@ var migrations = []string{
         last_online DATETIME NOT NULL, created_at DATETIME NOT NULL,
         FOREIGN KEY(token_id) REFERENCES tokens(id)
     )`,
+	`CREATE TABLE IF NOT EXISTS revoked_devices (
+        device_id TEXT PRIMARY KEY, revoked_at DATETIME NOT NULL
+    )`,
 	`CREATE TABLE IF NOT EXISTS tunnels (
         id TEXT PRIMARY KEY, client_id TEXT NOT NULL, name TEXT NOT NULL,
         protocol TEXT NOT NULL, local_host TEXT NOT NULL, local_port INTEGER NOT NULL,

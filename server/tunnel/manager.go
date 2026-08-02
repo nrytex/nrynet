@@ -179,6 +179,8 @@ func (m *Manager) SyncClient(ctx context.Context, clientID string) error {
 
 func (m *Manager) DisconnectClient(clientID string) {
 	m.hub.Disconnect(clientID)
+	m.broker.DisconnectClient(clientID)
+	m.disconnectUDPClient(clientID)
 }
 
 func (m *Manager) ClientConnectedAt(clientID string) (time.Time, bool) {

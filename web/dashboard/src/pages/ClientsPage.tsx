@@ -37,7 +37,7 @@ export function ClientsPage() {
   function remove(client: Client) {
     modal.confirm({
       title: `删除 ${client.name}?`,
-      content: "这会停止并删除该 Client 的 Tunnel，同时禁用其当前 Token。",
+      content: "这会停止并删除该 Client 的 Tunnel，同时撤销该设备身份。",
       okButtonProps: { danger: true },
       onOk: async () => {
         await api.deleteClient(client.id);
