@@ -38,7 +38,7 @@ func TestNodeDialsTLSBrokerWithHostnameValidation(t *testing.T) {
 	if err := os.WriteFile(caFile, pemData, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	node, err := New(Config{ID: "relay", Address: "203.0.113.1", ControlAddress: "http://relay:7100", BrokerAddress: listener.Addr().String(), Token: "secret", BrokerTLS: true, BrokerServerName: "localhost", BrokerCAFile: caFile})
+	node, err := New(Config{ID: "relay", Address: "203.0.113.1", ControlAddress: "http://127.0.0.1:7100", BrokerAddress: listener.Addr().String(), Token: "secret", BrokerTLS: true, BrokerServerName: "localhost", BrokerCAFile: caFile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,5 +50,27 @@ func TestNodeDialsTLSBrokerWithHostnameValidation(t *testing.T) {
 	_, err = node.dialBroker(bindRequest{BrokerAddress: listener.Addr().String(), BrokerTLS: true, BrokerServerName: "wrong.example"})
 	if err == nil {
 		t.Fatal("expected hostname validation failure")
+	}
+}
+
+func TestNodeRejectsRemotePlaintextControlAndBroker(t *testing.T) {
+	base := Config{
+		ID: "relay", Address: "203.0.113.1", ControlAddress: "http://127.0.0.1:7100",
+		BrokerAddress: "127.0.0.1:7001", Token: "secret",
+	}
+	remoteControl := base
+	remoteControl.ControlAddress = "http://relay.example:7100"
+	if _, err := New(remoteControl); err == nil {
+		t.Fatal("remote plaintext control address was accepted")
+	}
+	remoteBroker := base
+	remoteBroker.BrokerAddress = "broker.example:7001"
+	if _, err := New(remoteBroker); err == nil {
+		t.Fatal("remote plaintext broker was accepted")
+	}
+	remoteListener := base
+	remoteListener.ControlListen = "0.0.0.0:7100"
+	if _, err := New(remoteListener); err == nil {
+		t.Fatal("remote plaintext control listener was accepted")
 	}
 }

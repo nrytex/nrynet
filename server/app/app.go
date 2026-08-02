@@ -50,6 +50,10 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		store.Close()
 		return nil, auth.BootstrapResult{}, err
 	}
+	if err := config.ValidateServerTransport(cfg.Server); err != nil {
+		store.Close()
+		return nil, auth.BootstrapResult{}, err
+	}
 	authService, err := auth.New(ctx, store, cfg.Server.JWTTTL)
 	if err != nil {
 		store.Close()
@@ -94,7 +98,10 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		}
 		dashboardHandler.ServeHTTP(c.Writer, c.Request)
 	})
-	server := &http.Server{Addr: cfg.Server.Listen, Handler: router, ReadHeaderTimeout: 10 * time.Second}
+	server := &http.Server{
+		Addr: cfg.Server.Listen, Handler: router, ReadHeaderTimeout: 10 * time.Second,
+		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13},
+	}
 	quicServer, err := listenQUIC(cfg.Server, authService, hub, broker)
 	if err != nil {
 		_ = dataListener.Close()
@@ -118,10 +125,15 @@ func safeSettings(cfg config.Config) []api.SettingItem {
 	return []api.SettingItem{
 		{Key: "server.listen", Value: cfg.Server.Listen, Description: "Dashboard and control API address; restart required", Mutable: true},
 		{Key: "server.data_listen", Value: cfg.Server.DataListen, Description: "TCP relay data address; restart required", Mutable: true},
+		{Key: "server.public_data_address", Value: cfg.Server.PublicDataAddress, Description: "Data address advertised to agents and relays; restart required", Mutable: true},
 		{Key: "server.quic_listen", Value: cfg.Server.QUICListen, Description: "QUIC control and data stream address; restart required", Mutable: true},
+		{Key: "server.public_quic_address", Value: cfg.Server.PublicQUICAddress, Description: "QUIC address advertised to agents; restart required", Mutable: true},
 		{Key: "server.rendezvous_listen", Value: cfg.Server.RendezvousListen, Description: "UDP rendezvous address; restart required", Mutable: true},
+		{Key: "server.public_rendezvous_address", Value: cfg.Server.PublicRendezvous, Description: "Rendezvous address advertised to agents; restart required", Mutable: true},
 		{Key: "server.http_listen", Value: cfg.Server.HTTPListen, Description: "HTTP and HTTPS gateway; restart required", Mutable: true},
-		{Key: "server.tls.enabled", Value: cfg.Server.TLS.Enabled, Description: "Configured through YAML certificate settings"},
+		{Key: "server.tls.enabled", Value: cfg.Server.TLS.Enabled, Description: "Required for non-loopback control and data listeners; restart required", Mutable: true},
+		{Key: "server.tls.cert_file", Value: cfg.Server.TLS.CertFile, Description: "TLS certificate chain path; restart required", Mutable: true},
+		{Key: "server.tls.key_file", Value: cfg.Server.TLS.KeyFile, Description: "TLS private key path; restart required", Mutable: true},
 		{Key: "server.heartbeat_timeout", Value: cfg.Server.HeartbeatText, Description: "Agent offline timeout; restart required", Mutable: true},
 	}
 }
@@ -157,9 +169,14 @@ func applyStoredSettings(ctx context.Context, store *storage.Store, cfg *config.
 	}{
 		{"server.listen", &cfg.Server.Listen},
 		{"server.data_listen", &cfg.Server.DataListen},
+		{"server.public_data_address", &cfg.Server.PublicDataAddress},
 		{"server.quic_listen", &cfg.Server.QUICListen},
+		{"server.public_quic_address", &cfg.Server.PublicQUICAddress},
 		{"server.rendezvous_listen", &cfg.Server.RendezvousListen},
+		{"server.public_rendezvous_address", &cfg.Server.PublicRendezvous},
 		{"server.http_listen", &cfg.Server.HTTPListen},
+		{"server.tls.cert_file", &cfg.Server.TLS.CertFile},
+		{"server.tls.key_file", &cfg.Server.TLS.KeyFile},
 		{"server.heartbeat_timeout", &cfg.Server.HeartbeatText},
 	}
 	for _, setting := range stringSettings {
@@ -261,5 +278,9 @@ func (a *App) monitorRelays() {
 }
 
 func (a *App) Address() string {
-	return fmt.Sprintf("http://%s", a.config.Server.Listen)
+	scheme := "http"
+	if a.config.Server.TLS.Enabled {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s", scheme, a.config.Server.Listen)
 }

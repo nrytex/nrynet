@@ -12,6 +12,9 @@ func TestP2PFrameAuthenticatesDirectionSequenceAndPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if bytes.Contains(frame, []byte("hello")) {
+		t.Fatal("p2p frame exposed plaintext payload")
+	}
 	payload, sequence, err := DecodeP2PFrame(key, P2PDirectionServerToAgent, 0, frame)
 	if err != nil || string(payload) != "hello" || sequence != 1 {
 		t.Fatalf("payload=%q sequence=%d err=%v", payload, sequence, err)

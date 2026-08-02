@@ -50,9 +50,11 @@ func (a *Agent) dialLegacyData(ctx context.Context) (dataConn, error) {
 	if !strings.HasPrefix(strings.ToLower(a.options.Config.ServerURL), "wss://") {
 		return dialTCP(ctx, a.options.Config.DataAddress)
 	}
-	dialer := tls.Dialer{Config: &tls.Config{
-		MinVersion: tls.VersionTLS13, InsecureSkipVerify: a.options.Config.InsecureSkipVerify,
-	}}
+	tlsConfig, err := secureClientTLS(tlsServerName(a.options.Config.DataAddress), a.options.Config)
+	if err != nil {
+		return nil, err
+	}
+	dialer := tls.Dialer{Config: tlsConfig}
 	return dialer.DialContext(ctx, "tcp", a.options.Config.DataAddress)
 }
 

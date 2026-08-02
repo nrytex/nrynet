@@ -17,7 +17,7 @@ import { formatBytes, formatTime, logLine, redact } from "./format";
 
 const emptyConfig: AppConfig = {
   serverUrl: "", dataAddress: "", token: "", name: "", deviceId: "",
-  transport: "websocket", quicAddress: "", insecureSkipVerify: false,
+  transport: "websocket", quicAddress: "", caFile: "", insecureSkipVerify: false,
   updateManifestUrl: "", updatePublicKey: "", updateChannel: "stable",
   autoStart: false,
 };
@@ -30,7 +30,9 @@ export default function App() {
   const refresh = async () => {
     const next = await DesktopService.Snapshot();
     setSnapshot(next);
-    form.setFieldsValue({ ...emptyConfig, ...next.config });
+    if (!form.isFieldsTouched()) {
+      form.setFieldsValue({ ...emptyConfig, ...next.config });
+    }
   };
 
   useEffect(() => {
@@ -150,6 +152,7 @@ function ConfigForm({ form, cfg, loading, onSave }: {
             { value: "quic", label: "QUIC" },
           ]} /></Form.Item></Col>
           <Col span={12}><Form.Item label="QUIC Address" name="quicAddress"><Input /></Form.Item></Col>
+          <Col span={12}><Form.Item label="Private CA File" name="caFile"><Input /></Form.Item></Col>
           <Col span={12}><Form.Item label="Device Name" name="name"><Input /></Form.Item></Col>
           <Col span={12}><Form.Item label="Device ID" name="deviceId"><Input /></Form.Item></Col>
           <Col span={24}><Form.Item label="Token" name="token" rules={[{ required: true }]}><Input.Password /></Form.Item></Col>

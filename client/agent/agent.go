@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -86,10 +88,11 @@ func (a *Agent) dialControl(ctx context.Context) (controlConn, error) {
 	if a.options.Config.Transport == "quic" {
 		return a.dialQUICControl(ctx)
 	}
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 10 * time.Second,
-		TLSClientConfig:  tlsConfig(a.options.Config.InsecureSkipVerify),
+	tlsConfig, err := a.webSocketTLSConfig()
+	if err != nil {
+		return nil, err
 	}
+	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second, TLSClientConfig: tlsConfig}
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+a.options.Config.Token)
 	header.Set("X-NAT-Link-Device-ID", a.options.Config.DeviceID)
@@ -101,7 +104,12 @@ func (a *Agent) dialControl(ctx context.Context) (controlConn, error) {
 }
 
 func (a *Agent) dialQUICControl(ctx context.Context) (controlConn, error) {
-	tlsConfig := netx.ClientTLSConfig(quicServerName(a.options.Config.QUICAddress), a.options.Config.InsecureSkipVerify)
+	tlsConfig, err := secureClientTLS(
+		quicServerName(a.options.Config.QUICAddress), a.options.Config, netx.QUICALPN,
+	)
+	if err != nil {
+		return nil, err
+	}
 	session, err := netx.DialQUIC(ctx, a.options.Config.QUICAddress, tlsConfig, netx.AuthRequest{
 		Token: a.options.Config.Token, DeviceID: a.options.Config.DeviceID, Role: "agent",
 	})
@@ -228,17 +236,21 @@ func (c *quicControl) openData(ctx context.Context, requestID string) (dataConn,
 	return c.session.OpenStreamFrame(ctx, netx.Frame{Kind: netx.FrameData, RequestID: requestID})
 }
 
-func tlsConfig(skipVerify bool) *tls.Config {
-	if !skipVerify {
-		return nil
-	}
-	return &tls.Config{InsecureSkipVerify: true}
-}
-
 func quicServerName(address string) string {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil || host == "" {
 		return "localhost"
 	}
 	return host
+}
+
+func (a *Agent) webSocketTLSConfig() (*tls.Config, error) {
+	if !strings.HasPrefix(strings.ToLower(a.options.Config.ServerURL), "wss://") {
+		return nil, nil
+	}
+	parsed, err := url.Parse(a.options.Config.ServerURL)
+	if err != nil {
+		return nil, err
+	}
+	return secureClientTLS(parsed.Hostname(), a.options.Config)
 }

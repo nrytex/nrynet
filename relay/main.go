@@ -27,7 +27,7 @@ func main() {
 	token := flag.String("token", "", "relay control and data-plane token")
 	interval := flag.Duration("heartbeat", 10*time.Second, "heartbeat interval")
 	flag.Parse()
-	node, err := runtime.New(runtime.Config{ID: *id, Address: *address, ControlAddress: *controlAddress, BindHost: *bindHost, BrokerAddress: *broker, Token: *token, BrokerTLS: *brokerTLS, BrokerServerName: *brokerServerName, BrokerCAFile: *brokerCAFile, ControlTLS: *controlTLS, ControlCertFile: *controlCertFile, ControlKeyFile: *controlKeyFile})
+	node, err := runtime.New(runtime.Config{ID: *id, Address: *address, ControlListen: *controlListen, ControlAddress: *controlAddress, BindHost: *bindHost, BrokerAddress: *broker, Token: *token, BrokerTLS: *brokerTLS, BrokerServerName: *brokerServerName, BrokerCAFile: *brokerCAFile, ControlTLS: *controlTLS, ControlCertFile: *controlCertFile, ControlKeyFile: *controlKeyFile})
 	if err != nil {
 		log.Fatal(err)
 	}

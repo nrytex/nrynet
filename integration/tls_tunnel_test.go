@@ -3,10 +3,12 @@ package integration
 import (
 	"context"
 	"crypto/tls"
+	"encoding/pem"
 	"io"
 	"log/slog"
 	"net"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -35,7 +37,8 @@ func TestTLSControlAndDataTunnelEndToEnd(t *testing.T) {
 	broker := relay.NewBroker(authService, store, 3*time.Second)
 	go func() { _ = broker.Run(dataListener) }()
 
-	agent := newTLSAgent(t, control.URL, dataListener.Addr().String(), cleartext)
+	caFile := writeTestCA(t, control.Certificate().Raw)
+	agent := newTLSAgent(t, control.URL, dataListener.Addr().String(), cleartext, caFile)
 	go func() { _ = agent.Run(ctx) }()
 	client := waitForClient(t, store, "tls-device")
 	echo := startEcho(t)
@@ -50,18 +53,28 @@ func TestTLSControlAndDataTunnelEndToEnd(t *testing.T) {
 	assertTCPPayload(t, remotePort)
 }
 
-func newTLSAgent(t *testing.T, serverURL, dataAddress, token string) *clientagent.Agent {
+func newTLSAgent(t *testing.T, serverURL, dataAddress, token, caFile string) *clientagent.Agent {
 	t.Helper()
 	clientConfig := config.ClientConfig{
 		ServerURL:   strings.Replace(serverURL, "https://", "wss://", 1) + "/agent/connect",
 		DataAddress: dataAddress, Token: token, Name: "tls-agent", DeviceID: "tls-device",
-		InsecureSkipVerify: true,
+		CAFile: caFile,
 	}
 	client, err := clientagent.New(clientagent.NewOptions(config.Config{Client: clientConfig}, "test"), slog.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
 	return client
+}
+
+func writeTestCA(t *testing.T, certificate []byte) string {
+	t.Helper()
+	path := t.TempDir() + "/ca.pem"
+	data := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificate})
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func assertTCPPayload(t *testing.T, remotePort int) {

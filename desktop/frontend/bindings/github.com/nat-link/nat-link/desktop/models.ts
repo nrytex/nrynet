@@ -10,6 +10,7 @@ export interface AppConfig {
     "dataAddress": string;
     "transport": string;
     "quicAddress": string;
+    "caFile": string;
     "token": string;
     "name": string;
     "deviceId": string;

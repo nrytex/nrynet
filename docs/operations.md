@@ -6,12 +6,12 @@ The example configuration exposes these server listeners:
 
 | Port | Transport | Purpose |
 | --- | --- | --- |
-| 7000 | HTTP or HTTPS | Dashboard, administration API, and agent WebSocket control |
-| 7001 | TCP or TLS | Per-connection TCP relay data channel |
+| 7000 | HTTPS | Dashboard, administration API, and agent WebSocket control |
+| 7001 | TLS | Per-connection TCP relay data channel |
 | 7002 | UDP/QUIC | Authenticated QUIC control and data streams |
 | 7003 | UDP | P2P endpoint rendezvous and hole punching |
 | 8080 | TCP | Shared HTTP Host and HTTPS SNI gateway |
-| 7100 | HTTP or HTTPS | Distributed relay control API (relay node only) |
+| 7100 | HTTPS | Distributed relay control API (relay node only) |
 | tunnel-defined | TCP or UDP | Public visitor ports |
 
 ## Distributed relay nodes
@@ -30,13 +30,18 @@ from the control server, and a local bind host for public visitor ports:
 
 ```sh
 ./nat-link-relay \
-  -server http://control.example.com:7000 \
+  -server https://control.example.com:7000 \
   -id edge-singapore-1 \
   -address 203.0.113.10 \
   -control-listen 0.0.0.0:7100 \
-  -control-address http://10.0.0.10:7100 \
+  -control-address https://relay.example.com:7100 \
   -bind-host 0.0.0.0 \
   -broker control.example.com:7001 \
+  -broker-tls \
+  -broker-server-name control.example.com \
+  -control-tls \
+  -control-cert-file /opt/nat-link-relay/tls/fullchain.pem \
+  -control-key-file /opt/nat-link-relay/tls/privkey.pem \
   -token "$RELAY_API_TOKEN"
 ```
 
@@ -45,21 +50,22 @@ counts, and current tunnel assignments. A missed heartbeat marks a node
 unhealthy; the control server moves its tunnels to another healthy relay or
 falls back to its own TCP listener when no relay remains.
 
-For TLS broker listeners, add `-broker-tls -broker-server-name control.example.com`.
 Private certificate authorities can be supplied with `-broker-ca-file /path/to/ca.pem`;
 hostname verification remains enabled.
 
 Use an `https://` value for `-control-address` together with `-control-tls`,
 `-control-cert-file`, and `-control-key-file` to encrypt the server-to-relay
-control plane. Plain HTTP control listeners are intended only for local or
-otherwise protected development networks.
+control plane. Plain HTTP control and broker connections are rejected unless
+every endpoint is loopback. This keeps local development simple without
+permitting remote credentials or tunneled bytes on a plaintext control plane.
 
 Expose only the administration address ranges that need Dashboard access.
 Tunnel IP allowlists are enforced independently for visitors.
 
 ## TLS
 
-Agent control and TCP data listeners use the same certificate when TLS is enabled:
+Agent control and TCP data listeners use the same certificate. Non-loopback
+listeners are rejected unless TLS is enabled:
 
 ```yaml
 server:
@@ -70,12 +76,15 @@ server:
 client:
   server_url: "wss://relay.example.com:7000/agent/connect"
   data_address: "relay.example.com:7001"
+  ca_file: ""
   insecure_skip_verify: false
 ```
 
-Use a certificate whose DNS names include the host in `client.data_address`.
-`insecure_skip_verify` exists only for controlled development with self-signed
-certificates. HTTPS tunnels are passed through without terminating visitor TLS.
+Use a certificate whose DNS names include the control and data hosts. Set
+`client.ca_file` when the deployment uses a private certificate authority.
+`insecure_skip_verify` is accepted only for loopback development with
+self-signed certificates. Remote clients must validate the server certificate.
+HTTPS tunnels are passed through without terminating visitor TLS.
 
 ## QUIC and P2P
 

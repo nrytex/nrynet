@@ -3,6 +3,7 @@ package advanced
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"net"
 	"testing"
 	"time"
@@ -23,7 +24,16 @@ func TestQUICAuthenticatedStreamsCarryFrames(t *testing.T) {
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- serveQUICEcho(ctx, server) }()
 
-	client, err := DialQUIC(ctx, server.Addr().String(), ClientTLSConfig("localhost", true), AuthRequest{
+	certificate, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(certificate)
+	_, port, _ := net.SplitHostPort(server.Addr().String())
+	clientTLS := ClientTLSConfig("localhost", false)
+	clientTLS.RootCAs = roots
+	client, err := DialQUIC(ctx, net.JoinHostPort("localhost", port), clientTLS, AuthRequest{
 		Token: "secret", DeviceID: "agent-1",
 	})
 	if err != nil {

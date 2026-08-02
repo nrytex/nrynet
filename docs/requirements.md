@@ -12,7 +12,8 @@ end-to-end verification.
 - [x] Tokens authenticate agents and can be created, disabled, and deleted.
 - [ ] A Go agent runs on Windows, Linux, and macOS and maintains a heartbeat.
 - [x] A TCP tunnel exposes a configured public port and relays bidirectional bytes.
-- [x] Agent/server communication supports TLS and rejects invalid credentials.
+- [x] Remote agent/server and relay communication requires authenticated TLS and rejects invalid credentials.
+- [x] P2P datagrams are encrypted with an authenticated, replay-protected session cipher.
 - [x] The dashboard shows server health, online clients, tunnels, connections, bandwidth, and daily traffic.
 
 ## V1.1 management
@@ -20,6 +21,7 @@ end-to-end verification.
 - [x] Administrators can inspect, rename, disable, delete, and reset a client token.
 - [x] Administrators can create, edit, start, stop, and delete tunnels.
 - [x] Tunnel changes reach an online agent without restarting it.
+- [x] Agents can use only administrator-assigned tunnels, and stopped tunnels refuse new visitors.
 - [x] Traffic is tracked for server, client, and tunnel over today and current month.
 - [x] Server logs can be searched, downloaded, and cleared.
 - [x] IP allowlists are enforced before relaying a visitor.
@@ -52,3 +54,9 @@ end-to-end verification.
 - [x] Automated tests cover authentication, storage, protocol framing, and TCP/HTTP/UDP end-to-end paths.
 
 Platform-specific runtime rows remain open until the binaries and GUI are exercised on every named operating system; cross-build and CI configuration alone are not recorded as runtime proof.
+
+Local Windows acceptance on 2026-08-02 exercised the server, CLI agent, and
+Wails desktop executable. The desktop UI saved configuration without losing
+in-progress edits, authenticated, received a live tunnel snapshot, and relayed
+traffic through that tunnel. Linux and macOS remain cross-build/CI evidence
+only because native runners are unavailable on this Windows host.

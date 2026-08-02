@@ -39,8 +39,19 @@ func (o Options) Validate() error {
 	if o.Config.Transport == "quic" && o.Config.QUICAddress == "" {
 		return errors.New("client.quic_address is required")
 	}
+	if o.Config.Transport != "quic" && o.Config.Transport != "websocket" {
+		return errors.New("client.transport must be websocket or quic")
+	}
 	if o.Config.Transport != "quic" && o.Config.DataAddress == "" {
 		return errors.New("client.data_address is required")
+	}
+	if o.Config.Transport == "websocket" {
+		if err := config.ValidateSecureWebSocketURL(o.Config.ServerURL, o.Config.DataAddress); err != nil {
+			return err
+		}
+	}
+	if err := config.ValidateTLSVerification(o.Config); err != nil {
+		return err
 	}
 	if o.Config.Token == "" {
 		return errors.New("client.token is required")

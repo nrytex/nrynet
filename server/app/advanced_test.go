@@ -12,6 +12,7 @@ import (
 
 	netx "github.com/nat-link/nat-link/internal/advanced"
 	"github.com/nat-link/nat-link/internal/config"
+	relayruntime "github.com/nat-link/nat-link/relay/runtime"
 )
 
 func TestAppStartsRendezvousAndRelayAPI(t *testing.T) {
@@ -26,9 +27,21 @@ func TestAppStartsRendezvousAndRelayAPI(t *testing.T) {
 	baseURL := "http://" + cfg.Server.Listen
 	waitHealth(t, baseURL)
 	assertRendezvousObserved(t, cfg.Server.RendezvousListen)
-	registerRelay(t, baseURL, cfg.Server.RelayAPIToken)
+	registerRelayRuntime(t, baseURL, cfg)
 	session := login(t, baseURL, bootstrap.Username, cfg.Server.Bootstrap.AdminPassword)
 	assertRelayVisible(t, baseURL, session)
+}
+
+func TestAppRejectsRemotePlaintextControlListeners(t *testing.T) {
+	cfg := advancedTestConfig(t)
+	cfg.Server.Listen = "0.0.0.0:0"
+	app, _, err := New(context.Background(), cfg)
+	if app != nil {
+		_ = app.Shutdown(context.Background())
+	}
+	if err == nil {
+		t.Fatal("remote plaintext server listener was accepted")
+	}
 }
 
 func advancedTestConfig(t *testing.T) config.Config {
@@ -89,18 +102,20 @@ func assertRendezvousObserved(t *testing.T, address string) {
 	}
 }
 
-func registerRelay(t *testing.T, baseURL, secret string) {
+func registerRelayRuntime(t *testing.T, baseURL string, cfg config.Config) {
 	t.Helper()
-	body := map[string]string{"id": "relay-a", "address": "127.0.0.1:9001"}
-	request := jsonRequest(t, http.MethodPost, baseURL+"/api/v2/relays/register", body)
-	request.Header.Set("X-NAT-Link-Relay-Token", secret)
-	response, err := http.DefaultClient.Do(request)
+	node, err := relayruntime.New(relayruntime.Config{
+		ID: "relay-a", Address: "127.0.0.1", ControlAddress: "http://127.0.0.1:7100",
+		BrokerAddress: cfg.Server.DataListen, Token: cfg.Server.RelayAPIToken,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("relay register status=%d", response.StatusCode)
+	if err := node.Register(http.DefaultClient, baseURL); err != nil {
+		t.Fatal(err)
+	}
+	if err := node.Heartbeat(http.DefaultClient, baseURL); err != nil {
+		t.Fatal(err)
 	}
 }
 

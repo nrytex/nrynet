@@ -75,7 +75,8 @@ func validateSetting(key string, value any) (string, error) {
 	}
 	switch key {
 	case "server.listen", "server.data_listen", "server.quic_listen",
-		"server.rendezvous_listen", "server.http_listen":
+		"server.rendezvous_listen", "server.http_listen", "server.public_data_address",
+		"server.public_quic_address", "server.public_rendezvous_address":
 		if _, _, err := net.SplitHostPort(text); err != nil {
 			return "", fmt.Errorf("setting must be a host:port address: %w", err)
 		}

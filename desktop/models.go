@@ -14,6 +14,7 @@ type AppConfig struct {
 	DataAddress        string `json:"dataAddress"`
 	Transport          string `json:"transport"`
 	QUICAddress        string `json:"quicAddress"`
+	CAFile             string `json:"caFile"`
 	Token              string `json:"token"`
 	Name               string `json:"name"`
 	DeviceID           string `json:"deviceId"`
@@ -58,7 +59,8 @@ func (c AppConfig) toClientConfig() config.ClientConfig {
 	return config.ClientConfig{
 		ServerURL: c.ServerURL, DataAddress: c.DataAddress,
 		Transport: c.Transport, QUICAddress: c.QUICAddress,
-		Token: c.Token, Name: c.Name, DeviceID: c.DeviceID,
+		CAFile: c.CAFile,
+		Token:  c.Token, Name: c.Name, DeviceID: c.DeviceID,
 		InsecureSkipVerify: c.InsecureSkipVerify,
 	}
 }
@@ -67,7 +69,8 @@ func configFromClient(c config.ClientConfig) AppConfig {
 	return AppConfig{
 		ServerURL: c.ServerURL, DataAddress: c.DataAddress,
 		Transport: c.Transport, QUICAddress: c.QUICAddress,
-		Token: c.Token, Name: c.Name, DeviceID: c.DeviceID,
+		CAFile: c.CAFile,
+		Token:  c.Token, Name: c.Name, DeviceID: c.DeviceID,
 		InsecureSkipVerify: c.InsecureSkipVerify,
 	}
 }

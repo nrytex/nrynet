@@ -10,6 +10,7 @@ import (
 	"time"
 
 	netx "github.com/nat-link/nat-link/internal/advanced"
+	"github.com/nat-link/nat-link/internal/config"
 	"github.com/nat-link/nat-link/internal/model"
 	serverTunnel "github.com/nat-link/nat-link/server/tunnel"
 )
@@ -64,6 +65,9 @@ func (n *RemoteRelayNode) controlAddress(nodeID string) (string, error) {
 }
 
 func (n *RemoteRelayNode) call(method, url string, payload any) error {
+	if err := config.ValidateSecureHTTPURL(url); err != nil {
+		return err
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err

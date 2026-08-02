@@ -14,21 +14,23 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	netx "github.com/nat-link/nat-link/internal/advanced"
+	"github.com/nat-link/nat-link/internal/config"
 	"github.com/nat-link/nat-link/internal/protocol"
 )
 
 type Config struct {
-	ID, Address, ControlAddress, BindHost, BrokerAddress, Token string
-	BrokerTLS                                                   bool
-	BrokerServerName                                            string
-	BrokerCAFile                                                string
-	ControlTLS                                                  bool
-	ControlCertFile                                             string
-	ControlKeyFile                                              string
+	ID, Address, ControlListen, ControlAddress, BindHost, BrokerAddress, Token string
+	BrokerTLS                                                                  bool
+	BrokerServerName                                                           string
+	BrokerCAFile                                                               string
+	ControlTLS                                                                 bool
+	ControlCertFile                                                            string
+	ControlKeyFile                                                             string
 }
 
 type Node struct {
@@ -50,6 +52,9 @@ func New(config Config) (*Node, error) {
 	if config.ID == "" || config.Address == "" || config.ControlAddress == "" || config.BrokerAddress == "" || config.Token == "" {
 		return nil, errors.New("relay id, address, control address, broker and token are required")
 	}
+	if err := validateTransportSecurity(config); err != nil {
+		return nil, err
+	}
 	if config.BindHost == "" {
 		config.BindHost = "0.0.0.0"
 	}
@@ -57,6 +62,23 @@ func New(config Config) (*Node, error) {
 		return nil, errors.New("control TLS certificate and key are required")
 	}
 	return &Node{config: config, bindings: make(map[string]net.Listener)}, nil
+}
+
+func validateTransportSecurity(cfg Config) error {
+	if err := config.ValidateSecureHTTPURL(cfg.ControlAddress); err != nil {
+		return fmt.Errorf("relay control address: %w", err)
+	}
+	if !cfg.BrokerTLS && !config.IsLoopbackAddress(cfg.BrokerAddress) {
+		return errors.New("remote relay broker connections require TLS")
+	}
+	if !cfg.ControlTLS && cfg.ControlListen != "" && !config.IsLoopbackAddress(cfg.ControlListen) {
+		return errors.New("remote relay control listeners require TLS")
+	}
+	usesHTTPS := strings.HasPrefix(strings.ToLower(cfg.ControlAddress), "https://")
+	if usesHTTPS != cfg.ControlTLS {
+		return errors.New("relay control URL scheme and TLS setting must agree")
+	}
+	return nil
 }
 
 func (n *Node) Register(client *http.Client, server string) error {
@@ -232,6 +254,9 @@ func brokerTLSConfig(serverName, caFile string) (*tls.Config, error) {
 }
 
 func postJSON(client *http.Client, url, token string, body any) error {
+	if err := config.ValidateSecureHTTPURL(url); err != nil {
+		return err
+	}
 	data, err := json.Marshal(body)
 	if err != nil {
 		return err

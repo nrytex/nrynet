@@ -13,8 +13,8 @@ an embedded React dashboard, and a desktop agent. The implementation follows
 
 ## Quick start
 
-1. Copy `config.example.yaml` to `config.yaml` and set
-   `server.public_data_address` to an address reachable by agents.
+1. Copy `config.example.yaml` to `config.yaml`. The example binds to loopback
+   for a safe local evaluation.
 2. Start the server with `go run ./server -config config.yaml`.
 3. Record the one-time administrator password printed on first start, then open
    `http://127.0.0.1:7000`.
@@ -23,7 +23,8 @@ an embedded React dashboard, and a desktop agent. The implementation follows
    `go run ./client -config config.yaml`.
 6. Create and start a TCP, HTTP, HTTPS, or UDP tunnel in the dashboard.
 
-TLS should be enabled for any deployment outside a trusted development network.
+Remote control and data listeners require TLS. Configure the certificate,
+switch the agent URL to `wss://`, and then bind the server listeners publicly.
 See `docs/operations.md` for certificates, systemd, Docker, ports, and builds.
 See `docs/requirements.md` for the versioned acceptance matrix.
 

@@ -5,6 +5,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/nat-link/nat-link/internal/config"
 )
 
 var ErrNoHealthyRelay = errors.New("no healthy relay node available")
@@ -45,6 +47,11 @@ func NewRelayRegistry(timeout time.Duration) *RelayRegistry {
 func (r *RelayRegistry) Register(node RelayNode) (RelayNode, error) {
 	if node.ID == "" || node.Address == "" {
 		return RelayNode{}, errors.New("relay id and address are required")
+	}
+	if node.ControlAddr != "" {
+		if err := config.ValidateSecureHTTPURL(node.ControlAddr); err != nil {
+			return RelayNode{}, err
+		}
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()

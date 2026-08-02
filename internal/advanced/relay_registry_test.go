@@ -38,6 +38,21 @@ func TestRelayRegistryReturnsNoHealthyRelay(t *testing.T) {
 	}
 }
 
+func TestRelayRegistryRejectsRemotePlaintextControl(t *testing.T) {
+	registry := NewRelayRegistry(time.Second)
+	_, err := registry.Register(RelayNode{
+		ID: "relay", Address: "203.0.113.10", ControlAddr: "http://relay.example:7100",
+	})
+	if err == nil {
+		t.Fatal("remote plaintext relay control address was accepted")
+	}
+	if _, err := registry.Register(RelayNode{
+		ID: "relay", Address: "203.0.113.10", ControlAddr: "https://relay.example:7100",
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func mustRegisterRelay(t *testing.T, registry *RelayRegistry, id, address string) {
 	t.Helper()
 	if _, err := registry.Register(RelayNode{ID: id, Address: address}); err != nil {
