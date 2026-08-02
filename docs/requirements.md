@@ -12,7 +12,7 @@ end-to-end verification.
 - [x] Tokens authenticate agents and can be created, disabled, and deleted.
 - [ ] A Go agent runs on Windows, Linux, and macOS and maintains a heartbeat.
 - [x] A TCP tunnel exposes a configured public port and relays bidirectional bytes.
-- [ ] Agent/server communication supports TLS and rejects invalid credentials.
+- [x] Agent/server communication supports TLS and rejects invalid credentials.
 - [x] The dashboard shows server health, online clients, tunnels, connections, bandwidth, and daily traffic.
 
 ## V1.1 management
@@ -33,20 +33,22 @@ end-to-end verification.
 ## V1.2 desktop agent
 
 - [ ] Windows and macOS users can configure, connect, disconnect, and inspect the agent in a GUI.
-- [ ] The GUI reports connection, tunnel, and transfer status without exposing configuration files.
-- [ ] Updates are downloaded only after version and signature verification.
+- [x] The GUI reports connection, tunnel, and transfer status without exposing configuration files.
+- [x] Updates are downloaded only after version and signature verification.
 
 ## V2.0 advanced networking
 
 - [x] UDP tunnels relay independent visitor datagrams and replies.
-- [ ] QUIC can carry authenticated agent control and data traffic over TLS 1.3.
-- [ ] A rendezvous service discovers public endpoints and coordinates UDP hole punching.
-- [ ] Agents fall back to the relay when a direct peer path cannot be established.
-- [ ] Multiple relay nodes register, heartbeat, receive tunnel assignments, and expose health in the dashboard.
+- [x] QUIC can carry authenticated agent control and data traffic over TLS 1.3.
+- [x] A rendezvous service discovers public endpoints and coordinates UDP hole punching.
+- [x] Agents fall back to the relay when a direct peer path cannot be established.
+- [x] Multiple relay nodes register, heartbeat, receive tunnel assignments, and expose health in the dashboard.
 
 ## Operational delivery
 
-- [ ] Server and agent binaries have reproducible cross-platform build commands.
-- [ ] A systemd unit and documented directory layout support `/opt/nat-link`.
+- [x] Server and agent binaries have reproducible cross-platform build commands.
+- [x] A systemd unit and documented directory layout support `/opt/nat-link`.
 - [x] SQLite persists configuration and metrics across server restarts.
-- [ ] Automated tests cover authentication, storage, protocol framing, and TCP/HTTP/UDP end-to-end paths.
+- [x] Automated tests cover authentication, storage, protocol framing, and TCP/HTTP/UDP end-to-end paths.
+
+Platform-specific runtime rows remain open until the binaries and GUI are exercised on every named operating system; cross-build and CI configuration alone are not recorded as runtime proof.

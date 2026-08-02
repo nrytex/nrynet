@@ -39,6 +39,51 @@ func TestTrafficAndEventManagement(t *testing.T) {
 	}
 }
 
+func TestSQLitePersistsConfigurationAndMetricsAcrossRestart(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir() + "/restart.db"
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.DB().ExecContext(ctx, `INSERT INTO tokens
+		(id, name, prefix, secret_hash, disabled, created_at) VALUES('token', 'test', 'prefix', 'hash', 0, ?)`, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := store.UpsertClient(ctx, "token", ClientHello{Name: "client", DeviceID: "restart-device"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tunnel, err := store.CreateTunnel(ctx, model.Tunnel{
+		Name: "persistent", ClientID: client.ID, Protocol: "tcp",
+		LocalHost: "127.0.0.1", LocalPort: 80, RemotePort: 6001,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordTraffic(ctx, tunnel.ID, 123, 456); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	persisted, err := reopened.GetTunnel(ctx, tunnel.ID)
+	if err != nil || persisted.Name != tunnel.Name || persisted.ClientID != client.ID {
+		t.Fatalf("persisted tunnel=%+v err=%v", persisted, err)
+	}
+	summary, err := reopened.TrafficSummary(ctx, time.Now().Add(-time.Hour))
+	if err != nil || summary.Upload != 123 || summary.Download != 456 {
+		t.Fatalf("persisted metrics=%+v err=%v", summary, err)
+	}
+}
+
 func analyticsStore(t *testing.T) (*Store, model.Tunnel) {
 	t.Helper()
 	store, err := Open(t.TempDir() + "/analytics.db")
