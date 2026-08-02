@@ -68,6 +68,13 @@ func TestTCPTunnelEndToEnd(t *testing.T) {
 	if string(got) != string(want) {
 		t.Fatalf("relay response=%q want=%q", got, want)
 	}
+	if err := store.SetTokenDisabled(ctx, client.TokenID, true); err != nil {
+		t.Fatal(err)
+	}
+	manager.DisconnectClient(client.ID)
+	if _, err := visitor.Read(make([]byte, 1)); err == nil {
+		t.Fatal("active TCP stream survived token revocation")
+	}
 	_ = visitor.Close()
 	waitForTraffic(t, store, int64(len(want)*2))
 }
