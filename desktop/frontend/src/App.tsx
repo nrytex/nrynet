@@ -1,194 +1,122 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  Alert, Button, Card, Col, Divider, Form, Input, Layout, List, Row,
-  Select, Space, Switch, Table, Tabs, Tag, Typography, message,
-} from "antd";
-import {
-  Activity, Download, EyeOff, Power, PowerOff, RefreshCw, Save, Settings,
-} from "lucide-react";
+import { App as AntApp, ConfigProvider, Form } from "antd";
+import { useEffect, useRef, useState } from "react";
 import "antd/dist/reset.css";
-import "./styles.css";
 import { DesktopService } from "../bindings/github.com/nat-link/nat-link/desktop";
-import type {
-  AppConfig, DesktopSnapshot, LogEntry,
-} from "../bindings/github.com/nat-link/nat-link/desktop";
-import type { Tunnel } from "../bindings/github.com/nat-link/nat-link/internal/model";
-import { formatBytes, formatTime, logLine, redact } from "./format";
+import type { AppConfig, DesktopSnapshot } from "../bindings/github.com/nat-link/nat-link/desktop";
+import { HomeView } from "./HomeView";
+import { SettingsView, type SettingsSection } from "./SettingsView";
+import { TunnelDetailView } from "./TunnelDetailView";
+import { makePreviewSnapshot } from "./previewData";
+import "./styles.css";
 
 const emptyConfig: AppConfig = {
   serverUrl: "", dataAddress: "", token: "", name: "", deviceId: "",
   transport: "websocket", quicAddress: "", caFile: "", insecureSkipVerify: false,
-  updateManifestUrl: "", updatePublicKey: "", updateChannel: "stable",
-  autoStart: false,
+  updateManifestUrl: "", updatePublicKey: "", updateChannel: "stable", autoStart: false,
 };
 
+type View =
+  | { name: "home" }
+  | { name: "settings"; section: SettingsSection }
+  | { name: "tunnel"; tunnelId: string };
+
 export default function App() {
+  return (
+    <ConfigProvider theme={{ token: {
+      colorPrimary: "#13ad68", colorInfo: "#13ad68", borderRadius: 8,
+      colorText: "#152033", colorBorder: "#e5ebe8", fontFamily: "Inter, PingFang SC, Microsoft YaHei, sans-serif",
+    } }}>
+      <AntApp><DesktopApp /></AntApp>
+    </ConfigProvider>
+  );
+}
+
+function DesktopApp() {
+  const { message } = AntApp.useApp();
   const [snapshot, setSnapshot] = useState<DesktopSnapshot>();
+  const [view, setView] = useState<View>({ name: "home" });
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm<AppConfig>();
+  const previewTick = useRef(0);
 
   const refresh = async () => {
-    const next = await DesktopService.Snapshot();
-    setSnapshot(next);
-    if (!form.isFieldsTouched()) {
-      form.setFieldsValue({ ...emptyConfig, ...next.config });
+    let next: DesktopSnapshot;
+    try {
+      next = await DesktopService.Snapshot();
+    } catch (error) {
+      if (!import.meta.env.DEV) throw error;
+      next = makePreviewSnapshot(previewTick.current++);
     }
+    setSnapshot(next);
   };
 
   useEffect(() => {
-    refresh().catch((err) => message.error(String(err)));
+    refresh().catch((error) => message.error(String(error)));
     const id = window.setInterval(() => refresh().catch(() => undefined), 2000);
     return () => window.clearInterval(id);
   }, []);
 
-  const status = snapshot?.status;
-  const cfg = snapshot?.config ?? emptyConfig;
-  const isConnected = Boolean(status?.connected);
-  const tunnels = snapshot?.tunnels ?? [];
-  const logs = snapshot?.logs ?? [];
+  const runConnectionAction = async (action: "connect" | "disconnect") => {
+    setLoading(true);
+    try {
+      if (action === "connect") await DesktopService.Connect();
+      else await DesktopService.Disconnect();
+      await refresh();
+    } catch (error) {
+      if (!import.meta.env.DEV) message.error(String(error));
+      setSnapshot((current) => current ? {
+        ...current,
+        status: { ...current.status, connected: action === "connect", state: action === "connect" ? "connected" : "disconnected" },
+      } : current);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const saveConfig = async (values: AppConfig) => {
     setLoading(true);
     try {
       const next = await DesktopService.SaveConfig(values);
       setSnapshot(next);
-      message.success("Saved");
+      message.success("设置已保存");
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        setSnapshot((current) => current ? { ...current, config: values } : current);
+        message.success("预览设置已保存");
+      } else message.error(String(error));
     } finally {
       setLoading(false);
     }
-  };
-
-  const connect = async () => {
-    setLoading(true);
-    try {
-      await DesktopService.Connect();
-      await refresh();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const disconnect = async () => {
-    await DesktopService.Disconnect();
-    await refresh();
   };
 
   const checkUpdate = async () => {
     try {
       const result = await DesktopService.CheckForUpdate();
       message.success(result.message);
-    } catch (err) {
-      message.error(String(err));
+    } catch (error) {
+      message.info(import.meta.env.DEV ? "当前已是最新版本" : String(error));
     }
   };
 
-  const items = useMemo(() => [
-    { key: "config", label: "Config", children: <ConfigForm form={form} cfg={cfg} loading={loading} onSave={saveConfig} /> },
-    { key: "tunnels", label: "Tunnels", children: <TunnelTable tunnels={tunnels} /> },
-    { key: "logs", label: "Logs", children: <LogList logs={logs} /> },
-  ], [cfg, form, loading, logs, tunnels]);
+  const config = snapshot?.config ?? emptyConfig;
+  const status = snapshot?.status;
+  const tunnels = snapshot?.tunnels ?? [];
+  const selectedTunnel = view.name === "tunnel" ? tunnels.find((item) => item.id === view.tunnelId) : undefined;
 
-  return (
-    <Layout className="shell">
-      <Layout.Sider className="side" width={244}>
-        <div className="brand">NAT-Link</div>
-        <StatusBlock status={status} config={cfg} />
-        <Space direction="vertical" className="actions">
-          <Button icon={<Power size={16} />} type="primary" disabled={isConnected} loading={loading} onClick={connect}>Connect</Button>
-          <Button icon={<PowerOff size={16} />} disabled={!isConnected} onClick={disconnect}>Disconnect</Button>
-          <Button icon={<Download size={16} />} onClick={checkUpdate}>Update</Button>
-          <Button icon={<EyeOff size={16} />} onClick={() => DesktopService.HideWindow()}>Hide</Button>
-        </Space>
-      </Layout.Sider>
-      <Layout.Content className="content">
-        <Row gutter={12} className="metrics">
-          <Metric title="State" value={status?.state ?? "disconnected"} active={isConnected} />
-          <Metric title="Tunnels" value={String(tunnels.length)} />
-          <Metric title="Upload" value={formatBytes(status?.uploadBytes ?? 0)} />
-          <Metric title="Download" value={formatBytes(status?.downloadBytes ?? 0)} />
-        </Row>
-        <Alert className="notice" type="info" showIcon message={`Token: ${redact(cfg.token)} | Version: ${status?.version ?? "0.1.0"}`} />
-        <Tabs items={items} />
-      </Layout.Content>
-    </Layout>
-  );
-}
-
-function StatusBlock({ status, config }: { status?: DesktopSnapshot["status"]; config: AppConfig }) {
-  const color = status?.connected ? "green" : "default";
-  return (
-    <div className="status">
-      <Tag color={color}>{status?.state ?? "disconnected"}</Tag>
-      <Typography.Text className="muted">{config.serverUrl || "No server"}</Typography.Text>
-      <Typography.Text className="muted">{status?.message || "Ready"}</Typography.Text>
-      <Typography.Text className="muted">Started {formatTime(status?.lastStartedAt)}</Typography.Text>
-    </div>
-  );
-}
-
-function Metric({ title, value, active = false }: { title: string; value: string; active?: boolean }) {
-  return (
-    <Col span={6}>
-      <Card className="metric">
-        <Space><Activity size={16} color={active ? "#16a34a" : "#64748b"} /><span>{title}</span></Space>
-        <Typography.Title level={3}>{value}</Typography.Title>
-      </Card>
-    </Col>
-  );
-}
-
-function ConfigForm({ form, cfg, loading, onSave }: {
-  form: ReturnType<typeof Form.useForm<AppConfig>>[0]; cfg: AppConfig; loading: boolean;
-  onSave: (values: AppConfig) => void;
-}) {
-  return (
-    <Card>
-      <Form form={form} layout="vertical" initialValues={cfg} onFinish={onSave}>
-        <Row gutter={16}>
-          <Col span={12}><Form.Item label="Control WebSocket" name="serverUrl" rules={[{ required: true }]}><Input /></Form.Item></Col>
-          <Col span={12}><Form.Item label="Data Address" name="dataAddress" rules={[{ required: true }]}><Input /></Form.Item></Col>
-          <Col span={12}><Form.Item label="Transport" name="transport"><Select options={[
-            { value: "websocket", label: "WebSocket" },
-            { value: "quic", label: "QUIC" },
-          ]} /></Form.Item></Col>
-          <Col span={12}><Form.Item label="QUIC Address" name="quicAddress"><Input /></Form.Item></Col>
-          <Col span={12}><Form.Item label="Private CA File" name="caFile"><Input /></Form.Item></Col>
-          <Col span={12}><Form.Item label="Device Name" name="name"><Input /></Form.Item></Col>
-          <Col span={12}><Form.Item label="Device ID" name="deviceId"><Input /></Form.Item></Col>
-          <Col span={24}><Form.Item label="Token" name="token" rules={[{ required: true }]}><Input.Password /></Form.Item></Col>
-        </Row>
-        <Divider />
-        <Row gutter={16}>
-          <Col span={12}><Form.Item label="Manifest URL" name="updateManifestUrl"><Input /></Form.Item></Col>
-          <Col span={12}><Form.Item label="Channel" name="updateChannel"><Input /></Form.Item></Col>
-          <Col span={24}><Form.Item label="Updater Public Key" name="updatePublicKey"><Input.TextArea rows={3} /></Form.Item></Col>
-          <Col span={8}><Form.Item label="Skip TLS Verify" name="insecureSkipVerify" valuePropName="checked"><Switch /></Form.Item></Col>
-          <Col span={8}><Form.Item label="Open at Login" name="autoStart" valuePropName="checked"><Switch /></Form.Item></Col>
-        </Row>
-        <Button icon={<Save size={16} />} type="primary" htmlType="submit" loading={loading}>Save</Button>
-      </Form>
-    </Card>
-  );
-}
-
-function TunnelTable({ tunnels }: { tunnels: Tunnel[] }) {
-  return <Table rowKey="id" dataSource={tunnels} pagination={false} columns={[
-    { title: "Name", dataIndex: "name" },
-    { title: "Protocol", dataIndex: "protocol" },
-    { title: "Local", render: (_: unknown, r: Tunnel) => `${r.local_host}:${r.local_port}` },
-    { title: "Remote", dataIndex: "remote_port" },
-    { title: "Domain", dataIndex: "domain" },
-    { title: "Status", dataIndex: "status", render: (v: string) => <Tag>{v}</Tag> },
-  ]} />;
-}
-
-function LogList({ logs }: { logs: LogEntry[] }) {
-  return (
-    <Card>
-      <Space className="log-title"><Settings size={16} /><Typography.Text>Runtime Log</Typography.Text><RefreshCw size={16} /></Space>
-      <List className="logs" dataSource={[...logs].reverse()} renderItem={(entry) => (
-        <List.Item><code>{logLine(entry)}</code></List.Item>
-      )} />
-    </Card>
-  );
+  if (view.name === "settings") {
+    return <SettingsView
+      form={form} config={config} status={status} logs={snapshot?.logs ?? []}
+      loading={loading} initialSection={view.section} onBack={() => setView({ name: "home" })}
+      onSave={saveConfig} onCheckUpdate={checkUpdate}
+    />;
+  }
+  if (view.name === "tunnel" && selectedTunnel) {
+    return <TunnelDetailView tunnel={selectedTunnel} status={status} onBack={() => setView({ name: "home" })} />;
+  }
+  return <HomeView
+    snapshot={snapshot} loading={loading}
+    onConnect={() => runConnectionAction("connect")} onDisconnect={() => runConnectionAction("disconnect")}
+    onSettings={(section = "general") => setView({ name: "settings", section })}
+    onTunnel={(tunnelId) => setView({ name: "tunnel", tunnelId })}
+  />;
 }

@@ -42,8 +42,8 @@ func main() {
 	}
 	app.RegisterService(application.NewService(desktopSvc))
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "NAT-Link", Width: 1120, Height: 760, MinWidth: 920,
-		MinHeight: 620, URL: "/", BackgroundColour: application.NewRGB(246, 248, 251),
+		Title: "NAT-Link", Width: 680, Height: 860, MinWidth: 600,
+		MinHeight: 620, URL: "/", BackgroundColour: application.NewRGB(238, 245, 242),
 	})
 	desktopSvc.setWindow(&appWindow{app: app, win: win})
 	configureTray(app, desktopSvc, win)
