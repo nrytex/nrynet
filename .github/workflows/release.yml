@@ -31,12 +31,12 @@ jobs:
       - run: git diff --exit-code -- server/dashboard/assets
       - name: Validate desktop
         run: |
-          cd desktop
-          go test ./...
-          cd frontend
+          cd desktop/frontend
           npm ci
           npm test -- --run
           npm run build
+          cd ..
+          go test ./...
       - name: Validate installer scripts
         shell: pwsh
         run: |
