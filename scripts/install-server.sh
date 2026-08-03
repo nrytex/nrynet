@@ -9,6 +9,7 @@ ADMIN_USER="admin"
 FORCE_CONFIG=0
 RENEW_CERT=0
 ALLOW_DOWNGRADE=0
+PROXY=""
 
 usage() {
   cat <<'EOF'
@@ -22,6 +23,7 @@ Usage: sudo ./install-server.sh [options]
   --force-config       Replace an existing config.yaml
   --renew-cert         Replace the generated TLS certificate
   --allow-downgrade    Permit replacing a newer installed version
+  --proxy URL          HTTP(S) proxy for package installation and GitHub downloads
   -h, --help           Show this help
 EOF
 }
@@ -35,6 +37,11 @@ while [ "$#" -gt 0 ]; do
     --force-config) FORCE_CONFIG=1; shift ;;
     --renew-cert) RENEW_CERT=1; shift ;;
     --allow-downgrade) ALLOW_DOWNGRADE=1; shift ;;
+    --proxy)
+      [ "$#" -ge 2 ] || { echo "--proxy requires a URL." >&2; exit 2; }
+      PROXY="$2"
+      shift 2
+      ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -48,6 +55,16 @@ case "$INSTALL_DIR" in
   /*) ;;
   *) echo "--install-dir must be an absolute path." >&2; exit 2 ;;
 esac
+
+if [ -n "$PROXY" ]; then
+  case "$PROXY" in
+    http://*|https://*) ;;
+    *) echo "--proxy must be an HTTP(S) proxy URL." >&2; exit 2 ;;
+  esac
+  # Package managers and curl honor these standard proxy environment variables.
+  export HTTP_PROXY="$PROXY" HTTPS_PROXY="$PROXY" ALL_PROXY="$PROXY"
+  export http_proxy="$PROXY" https_proxy="$PROXY" all_proxy="$PROXY"
+fi
 case "$INSTALL_DIR" in
   *" "*|*"'"*|*'"'*) echo "--install-dir cannot contain spaces or quotes." >&2; exit 2 ;;
 esac
@@ -120,8 +137,17 @@ fi
 TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEMP_DIR"' EXIT INT TERM
 echo "Downloading NAT-Link Server ($ARCH, $VERSION)..."
-curl -fL --retry 3 -o "$TEMP_DIR/$ASSET" "$DOWNLOAD_BASE/$ASSET"
-curl -fL --retry 3 -o "$TEMP_DIR/SHA256SUMS" "$DOWNLOAD_BASE/SHA256SUMS"
+download_file() {
+  output="$1"
+  url="$2"
+  if [ -n "$PROXY" ]; then
+    curl -fL --retry 3 --proxy "$PROXY" -o "$output" "$url"
+  else
+    curl -fL --retry 3 -o "$output" "$url"
+  fi
+}
+download_file "$TEMP_DIR/$ASSET" "$DOWNLOAD_BASE/$ASSET"
+download_file "$TEMP_DIR/SHA256SUMS" "$DOWNLOAD_BASE/SHA256SUMS"
 EXPECTED="$(awk -v name="$ASSET" '$2 == name {print $1}' "$TEMP_DIR/SHA256SUMS")"
 [ -n "$EXPECTED" ] || { echo "Release checksum for $ASSET was not found." >&2; exit 1; }
 printf '%s  %s\n' "$EXPECTED" "$TEMP_DIR/$ASSET" | sha256sum -c -

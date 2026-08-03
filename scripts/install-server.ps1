@@ -1,3 +1,11 @@
+<#
+.SYNOPSIS
+Installs the Nrynet Server Windows service.
+
+.PARAMETER Proxy
+HTTP(S) proxy URL used for package installation and GitHub downloads. Both
+http://proxy.example:8080 and proxy.example:8080 are accepted.
+#>
 [CmdletBinding()]
 param(
     [string]$PublicHost = $env:COMPUTERNAME,
@@ -8,7 +16,8 @@ param(
     [switch]$ForceConfig,
     [switch]$RenewCertificate,
     [switch]$AllowDowngrade,
-    [switch]$SkipFirewall
+    [switch]$SkipFirewall,
+    [string]$Proxy
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,6 +56,28 @@ function Find-OpenSSL {
     throw "OpenSSL was installed but openssl.exe could not be located."
 }
 
+function Resolve-Proxy([string]$Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $null }
+    $candidate = $Value.Trim()
+    if ($candidate -notmatch '^[a-zA-Z][a-zA-Z0-9+.-]*://') {
+        $candidate = "http://$candidate"
+    }
+    $uri = $null
+    if (-not [uri]::TryCreate($candidate, [UriKind]::Absolute, [ref]$uri) -or
+        $uri.Scheme -notin @("http", "https") -or -not $uri.Host) {
+        throw "Proxy must be a valid HTTP(S) proxy URL."
+    }
+    return $uri.AbsoluteUri.TrimEnd('/')
+}
+
+function Invoke-Download([string]$Uri, [string]$OutFile, [string]$ProxyUri) {
+    if ($ProxyUri) {
+        Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $OutFile -Proxy $ProxyUri
+        return
+    }
+    Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $OutFile
+}
+
 function Get-DownloadBase {
     if ($Version -eq "latest") {
         return "https://github.com/$Repository/releases/latest/download"
@@ -72,6 +103,15 @@ if ($PublicHost -notmatch '^[A-Za-z0-9.-]+$') {
 if ($AdminUser -notmatch '^[A-Za-z0-9_.-]+$') {
     throw "AdminUser may contain only letters, numbers, dot, underscore and hyphen."
 }
+$ResolvedProxy = Resolve-Proxy $Proxy
+if ($ResolvedProxy) {
+    $env:HTTP_PROXY = $ResolvedProxy
+    $env:HTTPS_PROXY = $ResolvedProxy
+    $env:ALL_PROXY = $ResolvedProxy
+    $env:http_proxy = $ResolvedProxy
+    $env:https_proxy = $ResolvedProxy
+    $env:all_proxy = $ResolvedProxy
+}
 $OpenSSL = Find-OpenSSL
 $Asset = "nat-link-windows-amd64.zip"
 $DownloadBase = Get-DownloadBase
@@ -82,8 +122,8 @@ $ChecksumFile = Join-Path $TempDir "SHA256SUMS"
 try {
     New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
     Write-Host "Downloading NAT-Link Server ($Version)..."
-    Invoke-WebRequest -UseBasicParsing -Uri "$DownloadBase/$Asset" -OutFile $Archive
-    Invoke-WebRequest -UseBasicParsing -Uri "$DownloadBase/SHA256SUMS" -OutFile $ChecksumFile
+    Invoke-Download "$DownloadBase/$Asset" $Archive $ResolvedProxy
+    Invoke-Download "$DownloadBase/SHA256SUMS" $ChecksumFile $ResolvedProxy
     $checksumLine = Get-Content -LiteralPath $ChecksumFile | Where-Object { $_ -match "\s$([regex]::Escape($Asset))$" } | Select-Object -First 1
     if (-not $checksumLine) { throw "Release checksum for $Asset was not found." }
     $expected = ($checksumLine -split '\s+')[0].ToLowerInvariant()
