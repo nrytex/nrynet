@@ -1,0 +1,183 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            web/dashboard/package-lock.json
+            desktop/frontend/package-lock.json
+      - run: go test ./...
+      - name: Validate server dashboard
+        working-directory: web/dashboard
+        run: npm ci && npm test && npm run build
+      - run: git diff --exit-code -- server/dashboard/assets
+      - name: Validate desktop
+        run: |
+          cd desktop
+          go test ./...
+          cd frontend
+          npm ci
+          npm test -- --run
+          npm run build
+      - name: Validate installer scripts
+        shell: pwsh
+        run: |
+          sh -n scripts/install-server.sh
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path scripts/install-server.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          )
+          if ($errors.Count) { $errors | Format-List; exit 1 }
+
+  cli-bundles:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            archive: tar.gz
+          - goos: linux
+            goarch: arm64
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            archive: zip
+          - goos: darwin
+            goarch: amd64
+            archive: tar.gz
+          - goos: darwin
+            goarch: arm64
+            archive: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+      - name: Build command-line bundle
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          extension=""
+          if [[ "$GOOS" == "windows" ]]; then extension=".exe"; fi
+          stage="bundle-$GOOS-$GOARCH"
+          mkdir -p "$stage" release-assets
+          go build -trimpath -ldflags "-s -w" -o "$stage/nat-link-server$extension" ./server
+          go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$stage/nat-link-client$extension" ./client
+          go build -trimpath -ldflags "-s -w" -o "$stage/nat-link-relay$extension" ./relay
+          cp config.example.yaml config.local.example.yaml README.md "$stage/"
+          asset="nat-link-$GOOS-$GOARCH"
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            (cd "$stage" && zip -q -r "../release-assets/$asset.zip" .)
+          else
+            tar -czf "release-assets/$asset.tar.gz" -C "$stage" .
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  desktop-bundles:
+    needs: validate
+    strategy:
+      matrix:
+        include:
+          - runner: windows-latest
+            goarch: amd64
+          - runner: macos-latest
+            goarch: universal
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: desktop/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.120
+      - name: Build desktop application
+        working-directory: desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            wails3 task darwin:build:universal "APP_VERSION=$version"
+          else
+            wails3 build "APP_VERSION=$version"
+          fi
+      - name: Package Windows desktop
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          Compress-Archive -LiteralPath desktop/bin/nat-linkdesktop.exe `
+            -DestinationPath release-assets/nat-link-desktop-windows-${{ matrix.goarch }}.zip
+      - name: Package macOS desktop
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          tar -czf "release-assets/nat-link-desktop-darwin-universal.tar.gz" \
+            -C desktop/bin nat-linkdesktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.goarch }}-${{ matrix.runner }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  publish:
+    needs: [cli-bundles, desktop-bundles]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Add installers and checksums
+        run: |
+          cp scripts/install-server.sh scripts/install-server.ps1 release-assets/
+          cd release-assets
+          sha256sum nat-link-* install-server.sh install-server.ps1 > SHA256SUMS
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --verify-tag \
+            --title "NAT-Link $version" \
+            --generate-notes
