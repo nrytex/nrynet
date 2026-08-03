@@ -25,6 +25,8 @@ foreach ($target in $targets) {
     if ($LASTEXITCODE -ne 0) { throw "client build failed for $($target.OS)/$($target.Arch)" }
     go build -trimpath -ldflags "-s -w" -o (Join-Path $directory "nat-link-relay$extension") ./relay
     if ($LASTEXITCODE -ne 0) { throw "relay build failed for $($target.OS)/$($target.Arch)" }
+    Copy-Item -LiteralPath "config.example.yaml" -Destination (Join-Path $directory "config.example.yaml") -Force
+    Copy-Item -LiteralPath "config.local.example.yaml" -Destination (Join-Path $directory "config.local.example.yaml") -Force
 }
 
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED -ErrorAction SilentlyContinue

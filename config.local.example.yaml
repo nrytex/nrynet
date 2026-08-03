@@ -1,0 +1,33 @@
+server:
+  # Loopback-only development configuration. It is safe to run without TLS.
+  listen: "127.0.0.1:7000"
+  data_listen: "127.0.0.1:7001"
+  public_data_address: "127.0.0.1:7001"
+  quic_listen: "127.0.0.1:7002"
+  public_quic_address: "127.0.0.1:7002"
+  rendezvous_listen: "127.0.0.1:7003"
+  public_rendezvous_address: "127.0.0.1:7003"
+  relay_api_token: ""
+  http_listen: "127.0.0.1:8080"
+  database: "data/nat-link.db"
+  log_directory: "logs"
+  jwt_ttl: "12h"
+  heartbeat_timeout: "45s"
+  tls:
+    enabled: false
+    cert_file: ""
+    key_file: ""
+  bootstrap:
+    admin_username: "admin"
+    admin_password: ""
+client:
+  server_url: "ws://127.0.0.1:7000/agent/connect"
+  data_address: "127.0.0.1:7001"
+  transport: "websocket"
+  quic_address: "127.0.0.1:7002"
+  rendezvous_address: "127.0.0.1:7003"
+  ca_file: ""
+  token: ""
+  name: ""
+  device_id: ""
+  insecure_skip_verify: false

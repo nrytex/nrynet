@@ -13,8 +13,8 @@ an embedded React dashboard, and a desktop agent. The implementation follows
 
 ## Quick start
 
-1. Copy `config.example.yaml` to `config.yaml`. The example binds to loopback
-   for a safe local evaluation.
+1. Copy `config.local.example.yaml` to `config.yaml` for a safe loopback-only
+   evaluation. `config.example.yaml` listens on `0.0.0.0` and requires TLS.
 2. Start the server with `go run ./server -config config.yaml`.
 3. Record the one-time administrator password printed on first start, then open
    `http://127.0.0.1:7000`.

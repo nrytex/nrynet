@@ -1,33 +1,33 @@
 server:
-  # Plaintext is accepted only on loopback. Use TLS before binding these listeners publicly.
-  listen: "127.0.0.1:7000"
-  data_listen: "127.0.0.1:7001"
+  # Listen on all IPv4 interfaces. TLS is mandatory for public control and data listeners.
+  listen: "0.0.0.0:7000"
+  data_listen: "0.0.0.0:7001"
   public_data_address: "127.0.0.1:7001"
-  quic_listen: "127.0.0.1:7002"
+  quic_listen: "0.0.0.0:7002"
   public_quic_address: "127.0.0.1:7002"
-  rendezvous_listen: "127.0.0.1:7003"
+  rendezvous_listen: "0.0.0.0:7003"
   public_rendezvous_address: "127.0.0.1:7003"
   # Required to enable distributed relay nodes. Use a separate long random secret.
   relay_api_token: ""
-  http_listen: "127.0.0.1:8080"
+  http_listen: "0.0.0.0:8080"
   database: "data/nat-link.db"
   log_directory: "logs"
   jwt_ttl: "12h"
   heartbeat_timeout: "45s"
   tls:
-    enabled: false
+    enabled: true
     cert_file: "/opt/nat-link/tls/fullchain.pem"
     key_file: "/opt/nat-link/tls/privkey.pem"
   bootstrap:
     admin_username: "admin"
     admin_password: ""
 client:
-  server_url: "ws://127.0.0.1:7000/agent/connect"
+  server_url: "wss://127.0.0.1:7000/agent/connect"
   data_address: "127.0.0.1:7001"
   transport: "websocket"
   quic_address: "127.0.0.1:7002"
   rendezvous_address: "127.0.0.1:7003"
-  ca_file: ""
+  ca_file: "/opt/nat-link/tls/fullchain.pem"
   token: ""
   name: ""
   device_id: ""

@@ -50,14 +50,14 @@ Linux/macOS：
 VERSION=1.0.0 ./scripts/build.sh
 ```
 
-产物位于 `bin/<版本>-<系统>-<架构>/`。脚本会生成 Linux amd64/arm64、Windows amd64、macOS amd64/arm64 的 Server、Client 和 Relay，共 15 个文件。
+产物位于 `bin/<版本>-<系统>-<架构>/`。每个目标目录包含 Server、Client、Relay，以及面向网络部署和本地验证的两份配置示例。
 
 ## 4. 本地验证部署
 
 本地验证只监听 `127.0.0.1`，不需要 TLS：
 
 ```powershell
-Copy-Item config.example.yaml config.yaml
+Copy-Item config.local.example.yaml config.yaml
 go run ./server -config config.yaml
 ```
 
