@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	clientagent "github.com/nat-link/nat-link/client/agent"
-	"github.com/nat-link/nat-link/internal/config"
-	clienthub "github.com/nat-link/nat-link/server/client"
-	"github.com/nat-link/nat-link/server/relay"
-	serverTunnel "github.com/nat-link/nat-link/server/tunnel"
+	clientagent "github.com/nrytex/nrynet/client/agent"
+	"github.com/nrytex/nrynet/internal/config"
+	clienthub "github.com/nrytex/nrynet/server/client"
+	"github.com/nrytex/nrynet/server/relay"
+	serverTunnel "github.com/nrytex/nrynet/server/tunnel"
 )
 
 func TestTLSControlAndDataTunnelEndToEnd(t *testing.T) {

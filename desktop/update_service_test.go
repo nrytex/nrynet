@@ -50,8 +50,8 @@ func TestUpdateServiceConfiguresGitHubOnce(t *testing.T) {
 
 func TestDesktopAssetMatcherRejectsCLIBundles(t *testing.T) {
 	assets := []githubprovider.ReleaseAsset{
-		{Name: "nat-link-windows-amd64.zip"},
-		{Name: "nat-link-desktop-windows-amd64.zip"},
+		{Name: "nrynet-windows-amd64.zip"},
+		{Name: "nrynet-desktop-windows-amd64.zip"},
 		{Name: "SHA256SUMS"},
 	}
 	got := desktopAssetMatcher(updater.CheckRequest{Platform: "windows", Arch: "amd64"}, assets)
@@ -61,7 +61,7 @@ func TestDesktopAssetMatcherRejectsCLIBundles(t *testing.T) {
 }
 
 func TestDesktopAssetMatcherAcceptsUniversalMacBuild(t *testing.T) {
-	assets := []githubprovider.ReleaseAsset{{Name: "nat-link-desktop-darwin-universal.tar.gz"}}
+	assets := []githubprovider.ReleaseAsset{{Name: "nrynet-desktop-darwin-universal.tar.gz"}}
 	for _, arch := range []string{"amd64", "arm64"} {
 		got := desktopAssetMatcher(updater.CheckRequest{Platform: "darwin", Arch: arch}, assets)
 		if got != 0 {

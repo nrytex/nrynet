@@ -1,6 +1,6 @@
 package agent
 
-import "github.com/nat-link/nat-link/internal/model"
+import "github.com/nrytex/nrynet/internal/model"
 
 const (
 	DirectionUpload   = "upload"

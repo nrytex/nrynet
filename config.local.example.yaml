@@ -9,7 +9,7 @@ server:
   public_rendezvous_address: "127.0.0.1:7003"
   relay_api_token: ""
   http_listen: "127.0.0.1:8080"
-  database: "data/nat-link.db"
+  database: "data/nrynet.db"
   log_directory: "logs"
   jwt_ttl: "12h"
   heartbeat_timeout: "45s"

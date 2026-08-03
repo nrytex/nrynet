@@ -1,6 +1,6 @@
 package tunnel
 
-import "github.com/nat-link/nat-link/internal/protocol"
+import "github.com/nrytex/nrynet/internal/protocol"
 
 func (m *Manager) HandleUDPPacket(clientID string, message protocol.ControlMessage) {
 	payload, err := protocol.DecodePayload[protocol.UDPPacketPayload](message)

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/model"
-	"github.com/nat-link/nat-link/internal/storage"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/model"
+	"github.com/nrytex/nrynet/internal/storage"
 )
 
 func TestRelayVisitorAllowlistUsesOriginalAddress(t *testing.T) {

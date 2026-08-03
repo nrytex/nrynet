@@ -50,8 +50,8 @@ function DashboardApp() {
 
   useEffect(() => {
     const handler = () => setAuthenticated(false);
-    window.addEventListener("nat-link:unauthorized", handler);
-    return () => window.removeEventListener("nat-link:unauthorized", handler);
+    window.addEventListener("nrynet:unauthorized", handler);
+    return () => window.removeEventListener("nrynet:unauthorized", handler);
   }, []);
 
   if (!authenticated) return <LoginPage onSuccess={() => setAuthenticated(true)} />;
@@ -61,7 +61,7 @@ function DashboardApp() {
       <Layout.Sider breakpoint="lg" collapsedWidth="0" width={224} className="sider">
         <div className="brand">
           <Activity size={23} />
-          <Typography.Text strong>NAT-Link</Typography.Text>
+          <Typography.Text strong>Nrynet</Typography.Text>
         </div>
         <Menu
           theme="dark"

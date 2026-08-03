@@ -8,7 +8,10 @@ import (
 	"path/filepath"
 )
 
-const launchAgentName = "io.natlink.desktop.plist"
+const (
+	launchAgentName       = "io.nrynet.desktop.plist"
+	legacyLaunchAgentName = "io.natlink.desktop.plist"
+)
 
 func SetAutoStart(enabled bool) error {
 	dir, err := os.UserHomeDir()
@@ -16,6 +19,10 @@ func SetAutoStart(enabled bool) error {
 		return err
 	}
 	path := filepath.Join(dir, "Library", "LaunchAgents", launchAgentName)
+	legacyPath := filepath.Join(dir, "Library", "LaunchAgents", legacyLaunchAgentName)
+	if err := os.Remove(legacyPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	if !enabled {
 		if err := os.Remove(path); os.IsNotExist(err) {
 			return nil
@@ -38,7 +45,7 @@ func plist(exe string) string {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
 "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>Label</key><string>io.natlink.desktop</string>
+<key>Label</key><string>io.nrynet.desktop</string>
 <key>ProgramArguments</key><array><string>%s</string></array>
 <key>RunAtLoad</key><true/>
 </dict></plist>

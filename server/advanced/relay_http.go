@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
+	netx "github.com/nrytex/nrynet/internal/advanced"
 )
 
 type RelayAPI struct {

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/nat-link/nat-link/internal/model"
+	"github.com/nrytex/nrynet/internal/model"
 )
 
 func (s *Store) RecordTraffic(ctx context.Context, tunnelID string, upload, download int64) error {

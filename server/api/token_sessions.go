@@ -3,8 +3,8 @@ package api
 import (
 	"context"
 
-	"github.com/nat-link/nat-link/internal/model"
-	"github.com/nat-link/nat-link/internal/storage"
+	"github.com/nrytex/nrynet/internal/model"
+	"github.com/nrytex/nrynet/internal/storage"
 )
 
 func clientsUsingToken(ctx context.Context, store *storage.Store, tokenID string) ([]model.Client, error) {

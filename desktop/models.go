@@ -3,8 +3,8 @@ package main
 import (
 	"time"
 
-	"github.com/nat-link/nat-link/internal/config"
-	"github.com/nat-link/nat-link/internal/model"
+	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/internal/model"
 )
 
 var appVersion = "1.0.0"

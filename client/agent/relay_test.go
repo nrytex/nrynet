@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nat-link/nat-link/internal/config"
-	"github.com/nat-link/nat-link/internal/protocol"
+	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 func TestOpenAndRelayConnectsLocalServiceThroughDataChannel(t *testing.T) {

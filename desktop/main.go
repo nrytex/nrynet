@@ -26,8 +26,8 @@ func main() {
 		log.Fatal(err)
 	}
 	app := application.New(application.Options{
-		Name:        "NAT-Link",
-		Description: "NAT-Link desktop client",
+		Name:        "Nrynet",
+		Description: "Nrynet desktop client",
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
@@ -42,7 +42,7 @@ func main() {
 	}
 	app.RegisterService(application.NewService(desktopSvc))
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "NAT-Link", Width: 680, Height: 860, MinWidth: 600,
+		Title: "Nrynet", Width: 680, Height: 860, MinWidth: 600,
 		MinHeight: 620, URL: "/", BackgroundColour: application.NewRGB(238, 245, 242),
 	})
 	desktopSvc.setWindow(&appWindow{app: app, win: win})
@@ -55,7 +55,7 @@ func main() {
 
 func configureTray(app *application.App, svc *DesktopService, win *application.WebviewWindow) {
 	tray := app.SystemTray.New()
-	tray.SetTooltip("NAT-Link")
+	tray.SetTooltip("Nrynet")
 	tray.AttachWindow(win)
 	menu := application.NewMenu()
 	menu.Add("显示主窗口").OnClick(func(*application.Context) { svc.ShowWindow() })
@@ -70,7 +70,7 @@ func configureTray(app *application.App, svc *DesktopService, win *application.W
 func configureMenu(app *application.App, svc *DesktopService) {
 	menu := app.Menu.New()
 	app.Menu.SetApplicationMenu(menu)
-	appMenu := menu.AddSubmenu("NAT-Link")
+	appMenu := menu.AddSubmenu("Nrynet")
 	appMenu.Add("显示主窗口").OnClick(func(*application.Context) { svc.ShowWindow() })
 	appMenu.Add("检查更新").OnClick(func(*application.Context) {
 		_, _ = svc.CheckForUpdate()

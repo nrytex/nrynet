@@ -14,17 +14,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/auth"
-	"github.com/nat-link/nat-link/internal/config"
-	"github.com/nat-link/nat-link/internal/storage"
-	serveradvanced "github.com/nat-link/nat-link/server/advanced"
-	"github.com/nat-link/nat-link/server/api"
-	clienthub "github.com/nat-link/nat-link/server/client"
-	"github.com/nat-link/nat-link/server/dashboard"
-	"github.com/nat-link/nat-link/server/gateway"
-	"github.com/nat-link/nat-link/server/relay"
-	"github.com/nat-link/nat-link/server/tunnel"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/auth"
+	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/internal/storage"
+	serveradvanced "github.com/nrytex/nrynet/server/advanced"
+	"github.com/nrytex/nrynet/server/api"
+	clienthub "github.com/nrytex/nrynet/server/client"
+	"github.com/nrytex/nrynet/server/dashboard"
+	"github.com/nrytex/nrynet/server/gateway"
+	"github.com/nrytex/nrynet/server/relay"
+	"github.com/nrytex/nrynet/server/tunnel"
 )
 
 type App struct {

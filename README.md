@@ -1,6 +1,6 @@
-# NAT-Link
+# Nrynet
 
-NAT-Link is a self-hosted NAT traversal system made of a Go server, a Go agent,
+Nrynet is a self-hosted NAT traversal system made of a Go server, a Go agent,
 an embedded React dashboard, and a desktop agent targeting Linux, Windows,
 and macOS.
 
@@ -33,13 +33,17 @@ See `docs/requirements.md` for the versioned acceptance matrix.
 
 Linux systemd hosts can install the latest release and generate a self-signed
 TLS certificate with OpenSSL in one command. The installer registers,
-enables, and starts the `nat-link-server` systemd service:
+enables, and starts the `nrynet-server` systemd service:
 
 ```sh
 curl -fLO https://github.com/nrytex/nrynet/releases/latest/download/install-server.sh
 chmod +x install-server.sh
 sudo ./install-server.sh --public-host nat.example.com
 ```
+
+Add `--proxy http://127.0.0.1:7890` when release downloads must use an
+HTTP(S) proxy. The Windows installer accepts both `--proxy URL` and its native
+PowerShell spelling, `-Proxy URL`.
 
 Windows Server users can download `install-server.ps1` from the same release
 and run it from an elevated PowerShell session. Full instructions, certificate

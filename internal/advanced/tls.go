@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const QUICALPN = "nat-link-quic-v1"
+const QUICALPN = "nrynet-quic-v1"
 
 func ServerTLSConfig(cert tls.Certificate) *tls.Config {
 	return &tls.Config{

@@ -3,10 +3,10 @@ import type { FormInstance } from "antd";
 import { ArrowLeft, CircleUserRound, Info, Network, RadioTower, Save, ScrollText, Settings } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
-import type { AppConfig, LogEntry, RuntimeStatus } from "../bindings/github.com/nat-link/nat-link/desktop";
+import type { AppConfig, LogEntry, RuntimeStatus } from "../bindings/github.com/nrytex/nrynet/desktop";
 import { formatTime, logLine } from "./format";
 import "./settings.css";
-import brandMark from "./assets/nat-link-mark.png";
+import brandMark from "./assets/nrynet-mark.png";
 
 export type SettingsSection = "general" | "network" | "connection" | "logs" | "about";
 
@@ -35,7 +35,7 @@ export function SettingsView({ form, config, status, logs, loading, initialSecti
           <NavItem icon={<Network size={17} />} label="网络设置" active={section === "network"} onClick={() => setSection("network")} />
           <NavItem icon={<RadioTower size={17} />} label="连接设置" active={section === "connection"} onClick={() => setSection("connection")} />
           <NavItem icon={<ScrollText size={17} />} label="运行日志" active={section === "logs"} onClick={() => setSection("logs")} />
-          <NavItem icon={<Info size={17} />} label="关于 NAT-Link" active={section === "about"} onClick={() => setSection("about")} />
+          <NavItem icon={<Info size={17} />} label="关于 Nrynet" active={section === "about"} onClick={() => setSection("about")} />
         </nav>
         <section className="settings-content">
           {section === "logs" ? <LogsPanel logs={logs} /> : section === "about" ? (
@@ -61,7 +61,7 @@ function NavItem({ icon, label, active, onClick }: { icon: ReactNode; label: str
 
 function GeneralPanel() {
   return <div className="settings-group">
-    <SwitchRow title="开机启动" detail="系统启动时自动运行 NAT-Link" name="autoStart" />
+    <SwitchRow title="开机启动" detail="系统启动时自动运行 Nrynet" name="autoStart" />
     <div className="switch-row"><div><strong>自动更新</strong><span>每 6 小时检查一次 GitHub 正式版本</span></div><Switch checked disabled /></div>
   </div>;
 }
@@ -101,8 +101,8 @@ function LogsPanel({ logs }: { logs: LogEntry[] }) {
 
 function AboutPanel({ status, onCheckUpdate }: { status?: RuntimeStatus; onCheckUpdate: () => void }) {
   return <>
-    <Typography.Title level={4}>关于 NAT-Link</Typography.Title>
-    <div className="about-lockup"><img src={brandMark} alt="" /><div><strong>NAT-Link</strong><span>安全、稳定的私有网络隧道客户端</span></div></div>
+    <Typography.Title level={4}>关于 Nrynet</Typography.Title>
+    <div className="about-lockup"><img src={brandMark} alt="" /><div><strong>Nrynet</strong><span>安全、稳定的私有网络隧道客户端</span></div></div>
     <div className="settings-group about-details">
       <div><span>当前版本</span><strong>{status?.version ?? "1.0.0"}</strong></div>
       <div><span>连接状态</span><strong>{status?.connected ? "已连接" : "未连接"}</strong></div>

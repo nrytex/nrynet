@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/nat-link/nat-link/internal/storage"
+	"github.com/nrytex/nrynet/internal/storage"
 )
 
 type Router interface {

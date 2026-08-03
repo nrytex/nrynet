@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/nat-link/nat-link/internal/storage"
+	"github.com/nrytex/nrynet/internal/storage"
 )
 
 type logHandler struct {
@@ -38,7 +38,7 @@ func (h logHandler) download(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
-	c.Header("Content-Disposition", `attachment; filename="nat-link-logs.jsonl"`)
+	c.Header("Content-Disposition", `attachment; filename="nrynet-logs.jsonl"`)
 	c.Header("Content-Type", "application/x-ndjson")
 	encoder := json.NewEncoder(c.Writer)
 	for _, event := range events {

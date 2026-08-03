@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nat-link/nat-link/internal/protocol"
+	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 func (a *Agent) handleOpenConnection(ctx context.Context, conn controlConn, message protocol.ControlMessage) {

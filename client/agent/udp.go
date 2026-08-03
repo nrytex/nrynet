@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nat-link/nat-link/internal/protocol"
+	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 type udpRelay struct {

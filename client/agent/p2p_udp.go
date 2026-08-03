@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"time"
 
-	clientadvanced "github.com/nat-link/nat-link/client/advanced"
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/protocol"
+	clientadvanced "github.com/nrytex/nrynet/client/advanced"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 func (a *Agent) handleP2PConnect(ctx context.Context, message protocol.ControlMessage) {

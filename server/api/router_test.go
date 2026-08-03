@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nat-link/nat-link/internal/auth"
-	"github.com/nat-link/nat-link/internal/storage"
+	"github.com/nrytex/nrynet/internal/auth"
+	"github.com/nrytex/nrynet/internal/storage"
 )
 
 func TestAuthenticationAndTokenLifecycle(t *testing.T) {

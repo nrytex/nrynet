@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/auth"
-	"github.com/nat-link/nat-link/internal/protocol"
-	clienthub "github.com/nat-link/nat-link/server/client"
-	"github.com/nat-link/nat-link/server/relay"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/auth"
+	"github.com/nrytex/nrynet/internal/protocol"
+	clienthub "github.com/nrytex/nrynet/server/client"
+	"github.com/nrytex/nrynet/server/relay"
 )
 
 type QUICControlServer struct {

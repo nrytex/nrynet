@@ -12,11 +12,11 @@ import (
 
 	"github.com/google/uuid"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/model"
-	"github.com/nat-link/nat-link/internal/storage"
-	clienthub "github.com/nat-link/nat-link/server/client"
-	"github.com/nat-link/nat-link/server/relay"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/model"
+	"github.com/nrytex/nrynet/internal/storage"
+	clienthub "github.com/nrytex/nrynet/server/client"
+	"github.com/nrytex/nrynet/server/relay"
 )
 
 type Manager struct {

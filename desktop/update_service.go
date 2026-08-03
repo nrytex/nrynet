@@ -88,7 +88,7 @@ func (s *UpdateService) ensureConfigured() error {
 func desktopAssetMatcher(req updater.CheckRequest, assets []githubprovider.ReleaseAsset) int {
 	for index, asset := range assets {
 		name := strings.ToLower(asset.Name)
-		if !strings.HasPrefix(name, "nat-link-desktop-") || !strings.Contains(name, req.Platform) {
+		if !strings.HasPrefix(name, "nrynet-desktop-") || !strings.Contains(name, req.Platform) {
 			continue
 		}
 		if strings.Contains(name, req.Arch) || (req.Platform == "darwin" && strings.Contains(name, "universal")) {

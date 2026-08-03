@@ -9,11 +9,13 @@ import (
 	"strings"
 	"time"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/config"
-	"github.com/nat-link/nat-link/internal/model"
-	serverTunnel "github.com/nat-link/nat-link/server/tunnel"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/internal/model"
+	serverTunnel "github.com/nrytex/nrynet/server/tunnel"
 )
+
+const legacyRelaySecretHeader = "X-NAT-Link-Relay-Token"
 
 type RemoteRelayNode struct {
 	Token            string
@@ -77,7 +79,8 @@ func (n *RemoteRelayNode) call(method, url string, payload any) error {
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-NAT-Link-Relay-Token", n.Token)
+	request.Header.Set("X-Nrynet-Relay-Token", n.Token)
+	request.Header.Set(legacyRelaySecretHeader, n.Token)
 	response, err := n.httpClient().Do(request)
 	if err != nil {
 		return err
@@ -102,7 +105,8 @@ func (b *remoteRelayBinding) Close() error {
 	if err != nil {
 		return err
 	}
-	request.Header.Set("X-NAT-Link-Relay-Token", b.token)
+	request.Header.Set("X-Nrynet-Relay-Token", b.token)
+	request.Header.Set(legacyRelaySecretHeader, b.token)
 	response, err := b.client.Do(request)
 	if err != nil {
 		return err

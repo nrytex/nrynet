@@ -1,7 +1,7 @@
 import { App, Button, Tabs, Tooltip, Typography } from "antd";
 import { ArrowLeft, Copy, MoreHorizontal } from "lucide-react";
-import type { RuntimeStatus } from "../bindings/github.com/nat-link/nat-link/desktop";
-import type { Tunnel } from "../bindings/github.com/nat-link/nat-link/internal/model";
+import type { RuntimeStatus } from "../bindings/github.com/nrytex/nrynet/desktop";
+import type { Tunnel } from "../bindings/github.com/nrytex/nrynet/internal/model";
 import { TrafficTrend } from "./TrafficChart";
 import { useTrafficHistory } from "./useTrafficHistory";
 import "./details.css";

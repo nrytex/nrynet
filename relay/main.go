@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/nat-link/nat-link/relay/runtime"
+	"github.com/nrytex/nrynet/relay/runtime"
 )
 
 var version = "1.0.0"

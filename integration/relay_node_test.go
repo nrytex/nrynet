@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/relay/runtime"
-	serveradvanced "github.com/nat-link/nat-link/server/advanced"
-	clienthub "github.com/nat-link/nat-link/server/client"
-	"github.com/nat-link/nat-link/server/relay"
-	serverTunnel "github.com/nat-link/nat-link/server/tunnel"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/relay/runtime"
+	serveradvanced "github.com/nrytex/nrynet/server/advanced"
+	clienthub "github.com/nrytex/nrynet/server/client"
+	"github.com/nrytex/nrynet/server/relay"
+	serverTunnel "github.com/nrytex/nrynet/server/tunnel"
 )
 
 func TestRelayNodeReassignsRealVisitorStreams(t *testing.T) {

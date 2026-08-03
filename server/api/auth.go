@@ -6,7 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/nat-link/nat-link/internal/auth"
+	"github.com/nrytex/nrynet/internal/auth"
 )
 
 type authHandler struct {

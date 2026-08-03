@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/config"
-	relayruntime "github.com/nat-link/nat-link/relay/runtime"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/config"
+	relayruntime "github.com/nrytex/nrynet/relay/runtime"
 )
 
 func TestAppStartsRendezvousAndRelayAPI(t *testing.T) {

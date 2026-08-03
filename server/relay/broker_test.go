@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nat-link/nat-link/internal/auth"
-	"github.com/nat-link/nat-link/internal/model"
-	"github.com/nat-link/nat-link/internal/protocol"
-	"github.com/nat-link/nat-link/internal/storage"
+	"github.com/nrytex/nrynet/internal/auth"
+	"github.com/nrytex/nrynet/internal/model"
+	"github.com/nrytex/nrynet/internal/protocol"
+	"github.com/nrytex/nrynet/internal/storage"
 )
 
 func TestBrokerPairsDataChannelWithVisitor(t *testing.T) {

@@ -51,7 +51,7 @@ function ValueEditor({ item, onSaved }: { item: SettingItem; onSaved: () => void
   const [form] = Form.useForm();
   const save = async ({ value }: { value: SettingItem["value"] }) => {
     await api.updateSetting(item.key, value);
-    message.success("Setting saved; restart NAT-Link to apply it");
+    message.success("Setting saved; restart Nrynet to apply it");
     onSaved();
   };
   return (

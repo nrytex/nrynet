@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/nat-link/nat-link/internal/model"
+	"github.com/nrytex/nrynet/internal/model"
 )
 
 type ClientHello struct {

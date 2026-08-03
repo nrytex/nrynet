@@ -28,7 +28,7 @@ export function LoginPage({ onSuccess }: LoginPageProps) {
   return (
     <main className="login-screen">
       <Card className="login-card">
-        <Typography.Title level={2}>NAT-Link</Typography.Title>
+        <Typography.Title level={2}>Nrynet</Typography.Title>
         <Typography.Text type="secondary">登录本地管理员账号</Typography.Text>
         {error && <Alert showIcon type="error" message={error} />}
         <Form layout="vertical" onFinish={submit} requiredMark={false}>

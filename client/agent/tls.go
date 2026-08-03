@@ -7,7 +7,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/nat-link/nat-link/internal/config"
+	"github.com/nrytex/nrynet/internal/config"
 )
 
 func secureClientTLS(serverName string, cfg config.ClientConfig, protocols ...string) (*tls.Config, error) {

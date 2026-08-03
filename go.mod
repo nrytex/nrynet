@@ -1,4 +1,4 @@
-module github.com/nat-link/nat-link
+module github.com/nrytex/nrynet
 
 go 1.25.0
 

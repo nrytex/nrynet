@@ -10,14 +10,14 @@ server:
   # Required to enable distributed relay nodes. Use a separate long random secret.
   relay_api_token: ""
   http_listen: "0.0.0.0:8080"
-  database: "data/nat-link.db"
+  database: "data/nrynet.db"
   log_directory: "logs"
   jwt_ttl: "12h"
   heartbeat_timeout: "45s"
   tls:
     enabled: true
-    cert_file: "/opt/nat-link/tls/fullchain.pem"
-    key_file: "/opt/nat-link/tls/privkey.pem"
+    cert_file: "/opt/nrynet/tls/fullchain.pem"
+    key_file: "/opt/nrynet/tls/privkey.pem"
   bootstrap:
     admin_username: "admin"
     admin_password: ""
@@ -27,7 +27,7 @@ client:
   transport: "websocket"
   quic_address: "127.0.0.1:7002"
   rendezvous_address: "127.0.0.1:7003"
-  ca_file: "/opt/nat-link/tls/fullchain.pem"
+  ca_file: "/opt/nrynet/tls/fullchain.pem"
   token: ""
   name: ""
   device_id: ""

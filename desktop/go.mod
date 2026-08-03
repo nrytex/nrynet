@@ -1,4 +1,4 @@
-module github.com/nat-link/nat-link/desktop
+module github.com/nrytex/nrynet/desktop
 
 go 1.25.0
 
@@ -13,7 +13,7 @@ require (
 	golang.org/x/net v0.53.0 // indirect
 )
 
-replace github.com/nat-link/nat-link => ../
+replace github.com/nrytex/nrynet => ../
 
 require (
 	github.com/adrg/xdg v0.5.3 // indirect
@@ -23,7 +23,7 @@ require (
 	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/nat-link/nat-link v0.0.0
+	github.com/nrytex/nrynet v0.0.0
 	golang.org/x/sys v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
 )

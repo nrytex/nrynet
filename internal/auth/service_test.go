@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nat-link/nat-link/internal/storage"
+	"github.com/nrytex/nrynet/internal/storage"
 )
 
 func TestBootstrapLoginAndAgentToken(t *testing.T) {

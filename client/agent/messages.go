@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nat-link/nat-link/internal/protocol"
+	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 func (a *Agent) heartbeat(ctx context.Context, conn controlConn) error {

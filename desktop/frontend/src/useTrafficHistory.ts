@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { RuntimeStatus } from "../bindings/github.com/nat-link/nat-link/desktop";
+import type { RuntimeStatus } from "../bindings/github.com/nrytex/nrynet/desktop";
 
 export interface TrafficPoint {
   time: string;

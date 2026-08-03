@@ -19,9 +19,9 @@ Unicode true
 ####
 ## The following information is taken from the wails_tools.nsh file, but they can be overwritten here.
 ####
-## !define INFO_PROJECTNAME    "my-project" # Default "NAT-LinkDesktop"
-## !define INFO_COMPANYNAME    "My Company" # Default "NAT-Link"
-## !define INFO_PRODUCTNAME    "My Product Name" # Default "NAT-Link"
+## !define INFO_PROJECTNAME    "my-project" # Default "NrynetDesktop"
+## !define INFO_COMPANYNAME    "My Company" # Default "Nrynet"
+## !define INFO_PRODUCTNAME    "My Product Name" # Default "Nrynet"
 ## !define INFO_PRODUCTVERSION "1.0.0"     # Default "1.0.0"
 ## !define INFO_COPYRIGHT      "(c) Now, My Company" # Default "© 2026, My Company"
 ###

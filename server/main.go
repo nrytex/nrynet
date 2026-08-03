@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nat-link/nat-link/internal/config"
-	"github.com/nat-link/nat-link/server/app"
+	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/server/app"
 )
 
 var version = "1.0.0"
@@ -33,7 +33,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if bootstrap.Created {
-		fmt.Fprintf(os.Stderr, "NAT-Link administrator created\nusername: %s\npassword: %s\nserver secret: %s\n",
+		fmt.Fprintf(os.Stderr, "Nrynet administrator created\nusername: %s\npassword: %s\nserver secret: %s\n",
 			bootstrap.Username, bootstrap.Password, bootstrap.ServerSecret)
 	}
 	runError := make(chan error, 1)

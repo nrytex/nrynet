@@ -12,9 +12,9 @@ import (
 
 	"github.com/google/uuid"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/model"
-	"github.com/nat-link/nat-link/internal/protocol"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/model"
+	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 type p2pDirectSession struct {

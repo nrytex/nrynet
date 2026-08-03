@@ -3,7 +3,10 @@ set -eu
 
 REPOSITORY="nrytex/nrynet"
 VERSION="latest"
-INSTALL_DIR="/opt/nat-link"
+INSTALL_DIR="/opt/nrynet"
+INSTALL_DIR_SET=0
+LEGACY_INSTALL_DIR="/opt/nat-link"
+LEGACY_SERVICE="nat-link-server"
 PUBLIC_HOST=""
 ADMIN_USER="admin"
 FORCE_CONFIG=0
@@ -13,12 +16,12 @@ PROXY=""
 
 usage() {
   cat <<'EOF'
-Install NAT-Link Server as a systemd service.
+Install Nrynet Server as a systemd service.
 
 Usage: sudo ./install-server.sh [options]
   --public-host HOST   DNS name or IPv4 address advertised to clients
   --version VERSION    Release version such as 1.0.0 (default: latest)
-  --install-dir PATH   Installation directory (default: /opt/nat-link)
+  --install-dir PATH   Installation directory (default: /opt/nrynet)
   --admin-user NAME    Initial administrator name (default: admin)
   --force-config       Replace an existing config.yaml
   --renew-cert         Replace the generated TLS certificate
@@ -32,7 +35,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --public-host) PUBLIC_HOST="$2"; shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
-    --install-dir) INSTALL_DIR="$2"; shift 2 ;;
+    --install-dir) INSTALL_DIR="$2"; INSTALL_DIR_SET=1; shift 2 ;;
     --admin-user) ADMIN_USER="$2"; shift 2 ;;
     --force-config) FORCE_CONFIG=1; shift ;;
     --renew-cert) RENEW_CERT=1; shift ;;
@@ -116,6 +119,67 @@ validate_host() {
   fi
 }
 
+migrate_legacy_install() {
+  [ "$INSTALL_DIR_SET" -eq 0 ] || return
+  [ "$INSTALL_DIR" = "/opt/nrynet" ] || return
+  legacy_found=0
+  if [ -d "$LEGACY_INSTALL_DIR" ] && [ ! -e "$INSTALL_DIR" ]; then
+    systemctl stop "$LEGACY_SERVICE" 2>/dev/null || true
+    mv "$LEGACY_INSTALL_DIR" "$INSTALL_DIR"
+    [ ! -f "$INSTALL_DIR/data/nat-link.db" ] || \
+      mv "$INSTALL_DIR/data/nat-link.db" "$INSTALL_DIR/data/nrynet.db"
+    [ ! -f "$INSTALL_DIR/nat-link-server" ] || \
+      mv "$INSTALL_DIR/nat-link-server" "$INSTALL_DIR/nrynet-server"
+    if [ -f "$INSTALL_DIR/config.yaml" ]; then
+      sed -i 's#/opt/nat-link#/opt/nrynet#g; s#nat-link\.db#nrynet.db#g' "$INSTALL_DIR/config.yaml"
+    fi
+    legacy_found=1
+  fi
+  if systemctl cat "$LEGACY_SERVICE" >/dev/null 2>&1; then
+    systemctl disable --now "$LEGACY_SERVICE" 2>/dev/null || true
+    rm -f "/etc/systemd/system/$LEGACY_SERVICE.service"
+    systemctl daemon-reload
+    legacy_found=1
+  fi
+  MIGRATED_LEGACY="$legacy_found"
+}
+
+preflight_legacy_install() {
+  [ "$INSTALL_DIR_SET" -eq 0 ] || return
+  [ "$INSTALL_DIR" = "/opt/nrynet" ] || return
+  if [ -e "$LEGACY_INSTALL_DIR" ] && [ -e "$INSTALL_DIR" ]; then
+    echo "Both $LEGACY_INSTALL_DIR and $INSTALL_DIR exist; resolve the legacy installation manually before continuing." >&2
+    exit 1
+  fi
+  for database_dir in "$LEGACY_INSTALL_DIR/data" "$INSTALL_DIR/data"; do
+    if [ -f "$database_dir/nat-link.db" ] && [ -f "$database_dir/nrynet.db" ]; then
+      echo "Both nat-link.db and nrynet.db exist in $database_dir; resolve the database conflict manually before continuing." >&2
+      exit 1
+    fi
+  done
+}
+
+preflight_installed_version() {
+  version_binary="$INSTALL_DIR/nrynet-server"
+  if [ ! -x "$version_binary" ] && [ -x "$INSTALL_DIR/nat-link-server" ]; then
+    version_binary="$INSTALL_DIR/nat-link-server"
+  fi
+  if [ "$INSTALL_DIR_SET" -eq 0 ] && [ "$INSTALL_DIR" = "/opt/nrynet" ] && \
+    [ ! -x "$version_binary" ] && [ -x "$LEGACY_INSTALL_DIR/nat-link-server" ]; then
+    version_binary="$LEGACY_INSTALL_DIR/nat-link-server"
+  fi
+  [ -x "$version_binary" ] || return
+  installed_version="$("$version_binary" -version 2>/dev/null || true)"
+  installed_version="$(printf '%s' "$installed_version" | tr -d '\r\n ' | sed 's/^v//')"
+  [ -n "$installed_version" ] || return
+  lowest="$(printf '%s\n%s\n' "$installed_version" "$TARGET_VERSION" | sort -V | head -n 1)"
+  if [ "$lowest" = "$TARGET_VERSION" ] && [ "$ALLOW_DOWNGRADE" -ne 1 ] && [ "$installed_version" != "$TARGET_VERSION" ]; then
+    echo "Installed version $installed_version is newer than requested $TARGET_VERSION." >&2
+    echo "Use --allow-downgrade only when an intentional rollback is required." >&2
+    exit 1
+  fi
+}
+
 if ! printf '%s' "$ADMIN_USER" | grep -Eq '^[A-Za-z0-9_.-]+$'; then
   echo "Administrator name may contain only letters, numbers, dot, underscore and hyphen." >&2
   exit 2
@@ -126,7 +190,7 @@ command -v systemctl >/dev/null 2>&1 || { echo "This installer requires a system
 ARCH="$(detect_arch)"
 PUBLIC_HOST="$(detect_public_host)"
 validate_host "$PUBLIC_HOST"
-ASSET="nat-link-linux-$ARCH.tar.gz"
+ASSET="nrynet-linux-$ARCH.tar.gz"
 if [ "$VERSION" = "latest" ]; then
   DOWNLOAD_BASE="https://github.com/$REPOSITORY/releases/latest/download"
 else
@@ -136,7 +200,7 @@ fi
 
 TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEMP_DIR"' EXIT INT TERM
-echo "Downloading NAT-Link Server ($ARCH, $VERSION)..."
+echo "Downloading Nrynet Server ($ARCH, $VERSION)..."
 download_file() {
   output="$1"
   url="$2"
@@ -153,21 +217,30 @@ EXPECTED="$(awk -v name="$ASSET" '$2 == name {print $1}' "$TEMP_DIR/SHA256SUMS")
 printf '%s  %s\n' "$EXPECTED" "$TEMP_DIR/$ASSET" | sha256sum -c -
 mkdir -p "$TEMP_DIR/package"
 tar -xzf "$TEMP_DIR/$ASSET" -C "$TEMP_DIR/package"
-[ -f "$TEMP_DIR/package/nat-link-server" ] || { echo "Release archive is missing nat-link-server." >&2; exit 1; }
+[ -f "$TEMP_DIR/package/nrynet-server" ] || { echo "Release archive is missing nrynet-server." >&2; exit 1; }
 [ -f "$TEMP_DIR/package/VERSION" ] || { echo "Release archive is missing VERSION." >&2; exit 1; }
 TARGET_VERSION="$(tr -d '\r\n ' < "$TEMP_DIR/package/VERSION")"
 TARGET_VERSION="${TARGET_VERSION#v}"
 [ -n "$TARGET_VERSION" ] || { echo "Release version is empty." >&2; exit 1; }
 
+preflight_legacy_install
+preflight_installed_version
+MIGRATED_LEGACY=0
+migrate_legacy_install
+
 INSTALLED_VERSION=""
-if [ -x "$INSTALL_DIR/nat-link-server" ]; then
-  INSTALLED_VERSION="$("$INSTALL_DIR/nat-link-server" -version 2>/dev/null || true)"
+if [ -x "$INSTALL_DIR/nrynet-server" ]; then
+  INSTALLED_VERSION="$("$INSTALL_DIR/nrynet-server" -version 2>/dev/null || true)"
   INSTALLED_VERSION="$(printf '%s' "$INSTALLED_VERSION" | tr -d '\r\n ' | sed 's/^v//')"
 fi
 REPLACE_BINARY=1
 if [ "$INSTALLED_VERSION" = "$TARGET_VERSION" ]; then
-  REPLACE_BINARY=0
-  echo "NAT-Link Server $TARGET_VERSION is already installed."
+  if [ "$MIGRATED_LEGACY" -eq 1 ]; then
+    echo "Migrating Nrynet Server $TARGET_VERSION to the corrected product name..."
+  else
+    REPLACE_BINARY=0
+    echo "Nrynet Server $TARGET_VERSION is already installed."
+  fi
 elif [ -n "$INSTALLED_VERSION" ]; then
   LOWEST="$(printf '%s\n%s\n' "$INSTALLED_VERSION" "$TARGET_VERSION" | sort -V | head -n 1)"
   if [ "$LOWEST" = "$TARGET_VERSION" ] && [ "$ALLOW_DOWNGRADE" -ne 1 ]; then
@@ -175,24 +248,25 @@ elif [ -n "$INSTALLED_VERSION" ]; then
     echo "Use --allow-downgrade only when an intentional rollback is required." >&2
     exit 1
   fi
-  echo "Upgrading NAT-Link Server from $INSTALLED_VERSION to $TARGET_VERSION..."
+  echo "Upgrading Nrynet Server from $INSTALLED_VERSION to $TARGET_VERSION..."
 else
-  echo "Installing NAT-Link Server $TARGET_VERSION..."
+  echo "Installing Nrynet Server $TARGET_VERSION..."
 fi
 
-if ! getent group nat-link >/dev/null 2>&1; then
-  groupadd --system nat-link
+if ! getent group nrynet >/dev/null 2>&1; then
+  groupadd --system nrynet
 fi
-if ! id -u nat-link >/dev/null 2>&1; then
-  useradd --system --gid nat-link --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin nat-link
+if ! id -u nrynet >/dev/null 2>&1; then
+  useradd --system --gid nrynet --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin nrynet
 fi
-install -d -m 0750 -o nat-link -g nat-link "$INSTALL_DIR" "$INSTALL_DIR/data" "$INSTALL_DIR/logs"
-install -d -m 0750 -o root -g nat-link "$INSTALL_DIR/tls"
+install -d -m 0750 -o nrynet -g nrynet "$INSTALL_DIR" "$INSTALL_DIR/data" "$INSTALL_DIR/logs"
+install -d -m 0750 -o root -g nrynet "$INSTALL_DIR/tls"
+chown -R nrynet:nrynet "$INSTALL_DIR/data" "$INSTALL_DIR/logs"
 if [ "$REPLACE_BINARY" -eq 1 ]; then
-  if systemctl is-active --quiet nat-link-server 2>/dev/null; then
-    systemctl stop nat-link-server
+  if systemctl is-active --quiet nrynet-server 2>/dev/null; then
+    systemctl stop nrynet-server
   fi
-  install -m 0755 "$TEMP_DIR/package/nat-link-server" "$INSTALL_DIR/nat-link-server"
+  install -m 0755 "$TEMP_DIR/package/nrynet-server" "$INSTALL_DIR/nrynet-server"
 fi
 
 CERT_FILE="$INSTALL_DIR/tls/fullchain.pem"
@@ -206,14 +280,17 @@ if [ ! -s "$CERT_FILE" ] || [ ! -s "$KEY_FILE" ] || [ "$RENEW_CERT" -eq 1 ]; the
   openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 825 \
     -keyout "$KEY_FILE" -out "$CERT_FILE" -subj "/CN=$PUBLIC_HOST" \
     -addext "subjectAltName=$PRIMARY_SAN,DNS:localhost,IP:127.0.0.1"
-  chown root:nat-link "$CERT_FILE" "$KEY_FILE"
+  chown root:nrynet "$CERT_FILE" "$KEY_FILE"
   chmod 0644 "$CERT_FILE"
   chmod 0640 "$KEY_FILE"
 fi
+chown root:nrynet "$CERT_FILE" "$KEY_FILE"
+chmod 0644 "$CERT_FILE"
+chmod 0640 "$KEY_FILE"
 
 CONFIG_FILE="$INSTALL_DIR/config.yaml"
 NEW_DATABASE=0
-[ -f "$INSTALL_DIR/data/nat-link.db" ] || NEW_DATABASE=1
+[ -f "$INSTALL_DIR/data/nrynet.db" ] || NEW_DATABASE=1
 INITIAL_PASSWORD=""
 if [ ! -f "$CONFIG_FILE" ] || [ "$FORCE_CONFIG" -eq 1 ]; then
   RELAY_TOKEN="$(openssl rand -hex 32)"
@@ -229,7 +306,7 @@ server:
   public_rendezvous_address: "$PUBLIC_HOST:7003"
   relay_api_token: "$RELAY_TOKEN"
   http_listen: "0.0.0.0:8080"
-  database: "$INSTALL_DIR/data/nat-link.db"
+  database: "$INSTALL_DIR/data/nrynet.db"
   log_directory: "$INSTALL_DIR/logs"
   jwt_ttl: "12h"
   heartbeat_timeout: "45s"
@@ -252,21 +329,23 @@ client:
   device_id: ""
   insecure_skip_verify: false
 EOF
-  install -m 0640 -o root -g nat-link "$TEMP_DIR/config.yaml" "$CONFIG_FILE"
+  install -m 0640 -o root -g nrynet "$TEMP_DIR/config.yaml" "$CONFIG_FILE"
 fi
+chown root:nrynet "$CONFIG_FILE"
+chmod 0640 "$CONFIG_FILE"
 
-cat >"$TEMP_DIR/nat-link-server.service" <<EOF
+cat >"$TEMP_DIR/nrynet-server.service" <<EOF
 [Unit]
-Description=NAT-Link self-hosted relay server
+Description=Nrynet self-hosted relay server
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=nat-link
-Group=nat-link
+User=nrynet
+Group=nrynet
 WorkingDirectory=$INSTALL_DIR
-ExecStart=$INSTALL_DIR/nat-link-server -config $CONFIG_FILE
+ExecStart=$INSTALL_DIR/nrynet-server -config $CONFIG_FILE
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true
@@ -279,18 +358,18 @@ LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 EOF
-install -m 0644 "$TEMP_DIR/nat-link-server.service" /etc/systemd/system/nat-link-server.service
+install -m 0644 "$TEMP_DIR/nrynet-server.service" /etc/systemd/system/nrynet-server.service
 systemctl daemon-reload
-systemctl enable nat-link-server
-if systemctl is-active --quiet nat-link-server 2>/dev/null; then
-  systemctl restart nat-link-server
+systemctl enable nrynet-server
+if systemctl is-active --quiet nrynet-server 2>/dev/null; then
+  systemctl restart nrynet-server
 else
-  systemctl start nat-link-server
+  systemctl start nrynet-server
 fi
 sleep 2
-if ! systemctl is-active --quiet nat-link-server; then
-  journalctl -u nat-link-server -n 40 --no-pager >&2 || true
-  echo "NAT-Link Server failed to start." >&2
+if ! systemctl is-active --quiet nrynet-server; then
+  journalctl -u nrynet-server -n 40 --no-pager >&2 || true
+  echo "Nrynet Server failed to start." >&2
   exit 1
 fi
 if [ -n "$INITIAL_PASSWORD" ]; then
@@ -298,7 +377,7 @@ if [ -n "$INITIAL_PASSWORD" ]; then
 fi
 
 echo
-echo "NAT-Link Server is running: https://$PUBLIC_HOST:7000"
+echo "Nrynet Server is running: https://$PUBLIC_HOST:7000"
 echo "Installed version: $TARGET_VERSION"
 echo "Self-signed CA certificate: $CERT_FILE"
 if [ -n "$INITIAL_PASSWORD" ]; then

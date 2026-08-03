@@ -17,13 +17,13 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	clientagent "github.com/nat-link/nat-link/client/agent"
-	"github.com/nat-link/nat-link/internal/config"
-	"github.com/nat-link/nat-link/internal/model"
-	clienthub "github.com/nat-link/nat-link/server/client"
-	"github.com/nat-link/nat-link/server/gateway"
-	"github.com/nat-link/nat-link/server/relay"
-	serverTunnel "github.com/nat-link/nat-link/server/tunnel"
+	clientagent "github.com/nrytex/nrynet/client/agent"
+	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/internal/model"
+	clienthub "github.com/nrytex/nrynet/server/client"
+	"github.com/nrytex/nrynet/server/gateway"
+	"github.com/nrytex/nrynet/server/relay"
+	serverTunnel "github.com/nrytex/nrynet/server/tunnel"
 )
 
 func TestHTTPAndHTTPSTunnelsEndToEnd(t *testing.T) {
@@ -72,7 +72,7 @@ func TestHTTPAndHTTPSTunnelsEndToEnd(t *testing.T) {
 
 func responseHandler(body string) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("X-NAT-Link-Host", request.Host)
+		writer.Header().Set("X-Nrynet-Host", request.Host)
 		_, _ = io.WriteString(writer, body)
 	})
 }

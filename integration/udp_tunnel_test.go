@@ -13,14 +13,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	clientagent "github.com/nat-link/nat-link/client/agent"
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/config"
-	"github.com/nat-link/nat-link/internal/model"
-	"github.com/nat-link/nat-link/internal/storage"
-	clienthub "github.com/nat-link/nat-link/server/client"
-	"github.com/nat-link/nat-link/server/relay"
-	serverTunnel "github.com/nat-link/nat-link/server/tunnel"
+	clientagent "github.com/nrytex/nrynet/client/agent"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/internal/model"
+	"github.com/nrytex/nrynet/internal/storage"
+	clienthub "github.com/nrytex/nrynet/server/client"
+	"github.com/nrytex/nrynet/server/relay"
+	serverTunnel "github.com/nrytex/nrynet/server/tunnel"
 )
 
 func TestUDPTunnelEndToEnd(t *testing.T) {

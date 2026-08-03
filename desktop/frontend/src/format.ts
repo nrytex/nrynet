@@ -1,4 +1,4 @@
-import type { LogEntry } from "../bindings/github.com/nat-link/nat-link/desktop";
+import type { LogEntry } from "../bindings/github.com/nrytex/nrynet/desktop";
 
 export function redact(value: string): string {
   if (!value) return "";

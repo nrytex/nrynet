@@ -87,7 +87,7 @@ func defaults() Config {
 		PublicDataAddress: "127.0.0.1:7001", HTTPListen: "127.0.0.1:8080",
 		QUICListen: "127.0.0.1:7002", PublicQUICAddress: "127.0.0.1:7002",
 		RendezvousListen: "127.0.0.1:7003", PublicRendezvous: "127.0.0.1:7003",
-		Database: "data/nat-link.db", LogDirectory: "logs",
+		Database: "data/nrynet.db", LogDirectory: "logs",
 		JWTTTLText: "12h", HeartbeatText: "45s",
 		Bootstrap: BootstrapConfig{AdminUsername: "admin"},
 	}}

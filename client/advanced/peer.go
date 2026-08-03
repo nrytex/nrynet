@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
+	netx "github.com/nrytex/nrynet/internal/advanced"
 )
 
 type DirectConnectResult struct {

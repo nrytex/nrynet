@@ -9,7 +9,10 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-const autoStartName = "NAT-Link"
+const (
+	autoStartName       = "Nrynet"
+	legacyAutoStartName = "NAT-Link"
+)
 
 func SetAutoStart(enabled bool) error {
 	key, _, err := registry.CreateKey(
@@ -21,6 +24,9 @@ func SetAutoStart(enabled bool) error {
 		return err
 	}
 	defer key.Close()
+	if err := key.DeleteValue(legacyAutoStartName); err != nil && !errors.Is(err, registry.ErrNotExist) {
+		return err
+	}
 	if !enabled {
 		if err := key.DeleteValue(autoStartName); errors.Is(err, registry.ErrNotExist) {
 			return nil

@@ -1,4 +1,4 @@
-# NAT-Link operations
+# Nrynet operations
 
 [中文安装部署指南](deployment.zh-CN.md)
 
@@ -31,7 +31,7 @@ an advertised public address, a separately advertised control address reachable
 from the control server, and a local bind host for public visitor ports:
 
 ```sh
-./nat-link-relay \
+./nrynet-relay \
   -server https://control.example.com:7000 \
   -id edge-singapore-1 \
   -address 203.0.113.10 \
@@ -42,8 +42,8 @@ from the control server, and a local bind host for public visitor ports:
   -broker-tls \
   -broker-server-name control.example.com \
   -control-tls \
-  -control-cert-file /opt/nat-link-relay/tls/fullchain.pem \
-  -control-key-file /opt/nat-link-relay/tls/privkey.pem \
+  -control-cert-file /opt/nrynet-relay/tls/fullchain.pem \
+  -control-key-file /opt/nrynet-relay/tls/privkey.pem \
   -token "$RELAY_API_TOKEN"
 ```
 
@@ -73,8 +73,8 @@ listeners are rejected unless TLS is enabled:
 server:
   tls:
     enabled: true
-    cert_file: "/opt/nat-link/tls/fullchain.pem"
-    key_file: "/opt/nat-link/tls/privkey.pem"
+    cert_file: "/opt/nrynet/tls/fullchain.pem"
+    key_file: "/opt/nrynet/tls/privkey.pem"
 client:
   server_url: "wss://relay.example.com:7000/agent/connect"
   data_address: "relay.example.com:7001"
@@ -100,7 +100,7 @@ client:
   quic_address: "relay.example.com:7002"
 ```
 
-When server TLS is disabled, NAT-Link creates an ephemeral development
+When server TLS is disabled, Nrynet creates an ephemeral development
 certificate for QUIC; only controlled local testing should pair that with
 `insecure_skip_verify: true`. UDP tunnels attempt the direct punched path over
 the rendezvous listener and automatically use the authenticated control relay
@@ -111,32 +111,18 @@ when punching or the direct round trip fails.
 Create a system user and the PRD directory layout:
 
 ```sh
-sudo useradd --system --home /opt/nat-link --shell /usr/sbin/nologin nat-link
-sudo install -d -o nat-link -g nat-link /opt/nat-link/{data,logs,tls}
-sudo install -o nat-link -g nat-link nat-link-server /opt/nat-link/
-sudo install -o nat-link -g nat-link -m 0600 config.yaml /opt/nat-link/
-sudo install -m 0644 deploy/nat-link-server.service /etc/systemd/system/nat-link.service
+sudo useradd --system --home /opt/nrynet --shell /usr/sbin/nologin nrynet
+sudo install -d -o nrynet -g nrynet /opt/nrynet/{data,logs,tls}
+sudo install -o nrynet -g nrynet nrynet-server /opt/nrynet/
+sudo install -o nrynet -g nrynet -m 0600 config.yaml /opt/nrynet/
+sudo install -m 0644 deploy/nrynet-server.service /etc/systemd/system/nrynet-server.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now nat-link
-sudo journalctl -u nat-link -f
+sudo systemctl enable --now nrynet-server
+sudo journalctl -u nrynet-server -f
 ```
 
-Install an agent with `deploy/nat-link-client.service` under
-`/opt/nat-link-client` in the same way.
-
-## Docker
-
-Create `config.yaml` before running Compose. Set public addresses to the Docker
-host's reachable DNS name, not `127.0.0.1`.
-
-```sh
-cp config.example.yaml config.yaml
-docker compose up -d --build
-docker compose logs -f nat-link-server
-```
-
-SQLite and logs are stored in named volumes. Mount certificate files read-only
-and use their container paths in YAML when TLS is enabled.
+Install an agent with `deploy/nrynet-client.service` under
+`/opt/nrynet-client` in the same way.
 
 ## Cross-platform builds
 
@@ -159,7 +145,7 @@ instructions in `desktop/README.md`.
 ## Backup and recovery
 
 Stop the server or use SQLite's online backup tooling before copying
-`data/nat-link.db`. Keep the YAML configuration and TLS private key in a secret
+`data/nrynet.db`. Keep the YAML configuration and TLS private key in a secret
 backup. Restoring those files preserves administrator identity, tokens,
 clients, tunnels, and traffic history.
 

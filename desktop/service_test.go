@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/nat-link/nat-link/client/agent"
-	"github.com/nat-link/nat-link/internal/model"
+	"github.com/nrytex/nrynet/client/agent"
+	"github.com/nrytex/nrynet/internal/model"
 )
 
 func TestDesktopObserverUpdatesSessionTunnelsAndTraffic(t *testing.T) {

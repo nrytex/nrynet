@@ -1,4 +1,4 @@
-import type { AppConfig, RuntimeStatus } from "../bindings/github.com/nat-link/nat-link/desktop";
+import type { AppConfig, RuntimeStatus } from "../bindings/github.com/nrytex/nrynet/desktop";
 import type { SettingsSection } from "./SettingsView";
 
 export type FeedbackAction = "load" | "connect" | "save" | "update";
@@ -51,11 +51,11 @@ const errorRules = [
   { pattern: /connection refused|actively refused/i, message: "服务器拒绝连接，请确认服务端已启动且端口可访问。" },
   { pattern: /timeout|deadline exceeded/i, message: "连接服务器超时，请检查网络、防火墙和服务器端口。" },
   { pattern: /update check is already running/i, message: "正在检查更新，请稍候。" },
-  { pattern: /update settings changed/i, message: "更新设置已变更，请重启 NAT-Link 后再检查更新。" },
+  { pattern: /update settings changed/i, message: "更新设置已变更，请重启 Nrynet 后再检查更新。" },
 ];
 
 const fallbackMessages: Record<FeedbackAction, string> = {
-  load: "客户端信息加载失败，请重启 NAT-Link；若问题仍然存在，请查看运行日志。",
+  load: "客户端信息加载失败，请重启 Nrynet；若问题仍然存在，请查看运行日志。",
   connect: "连接失败，请检查服务器地址、网络和服务端状态后重试。",
   save: "设置保存失败，请检查填写内容和系统权限后重试。",
   update: "检查更新失败，请检查网络连接和 GitHub Release 状态后重试。",

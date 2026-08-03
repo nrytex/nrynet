@@ -10,8 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nat-link/nat-link/client/agent"
-	"github.com/nat-link/nat-link/internal/config"
+	"github.com/nrytex/nrynet/client/agent"
+	"github.com/nrytex/nrynet/internal/config"
 )
 
 var version = "1.0.0"

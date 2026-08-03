@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/nat-link/nat-link/internal/model"
+	"github.com/nrytex/nrynet/internal/model"
 )
 
 func TestUDPRuntimeBoundsSessionsAndP2PSockets(t *testing.T) {

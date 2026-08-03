@@ -7,10 +7,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
+	netx "github.com/nrytex/nrynet/internal/advanced"
 )
 
-const relaySecretHeader = "X-NAT-Link-Relay-Token"
+const (
+	relaySecretHeader       = "X-Nrynet-Relay-Token"
+	legacyRelaySecretHeader = "X-NAT-Link-Relay-Token"
+)
 
 type relayHandler struct {
 	registry *netx.RelayRegistry
@@ -29,6 +32,9 @@ func (h relayHandler) requireRelaySecret(c *gin.Context) {
 		return
 	}
 	actual := strings.TrimSpace(c.GetHeader(relaySecretHeader))
+	if actual == "" {
+		actual = strings.TrimSpace(c.GetHeader(legacyRelaySecretHeader))
+	}
 	if subtle.ConstantTimeCompare([]byte(actual), []byte(expected)) != 1 {
 		respondError(c, http.StatusUnauthorized, "invalid relay token")
 		c.Abort()

@@ -18,7 +18,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, { ...options, headers });
   if (response.status === 401) {
     clearSession();
-    window.dispatchEvent(new CustomEvent("nat-link:unauthorized"));
+    window.dispatchEvent(new CustomEvent("nrynet:unauthorized"));
   }
   if (response.status === 204) return undefined as T;
   const payload = await readPayload(response);
@@ -97,7 +97,7 @@ export const api = {
     const url = URL.createObjectURL(await response.blob());
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = "nat-link-logs.jsonl";
+    anchor.download = "nrynet-logs.jsonl";
     anchor.click();
     URL.revokeObjectURL(url);
   },

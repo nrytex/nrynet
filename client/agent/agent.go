@@ -16,8 +16,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/protocol"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 type Agent struct {
@@ -97,6 +97,7 @@ func (a *Agent) dialControl(ctx context.Context) (controlConn, error) {
 	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second, TLSClientConfig: tlsConfig}
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+a.options.Config.Token)
+	header.Set("X-Nrynet-Device-ID", a.options.Config.DeviceID)
 	header.Set("X-NAT-Link-Device-ID", a.options.Config.DeviceID)
 	conn, _, err := dialer.DialContext(ctx, a.options.Config.ServerURL, header)
 	if err != nil {

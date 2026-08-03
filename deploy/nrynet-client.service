@@ -1,0 +1,21 @@
+[Unit]
+Description=Nrynet private network agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nrynet
+Group=nrynet
+WorkingDirectory=/opt/nrynet-client
+ExecStart=/opt/nrynet-client/nrynet-client -config /opt/nrynet-client/config.yaml
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/nrynet-client/logs
+
+[Install]
+WantedBy=multi-user.target

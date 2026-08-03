@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	clientagent "github.com/nat-link/nat-link/client/agent"
-	"github.com/nat-link/nat-link/server/relay"
+	clientagent "github.com/nrytex/nrynet/client/agent"
+	"github.com/nrytex/nrynet/server/relay"
 )
 
 func runBroker(t *testing.T, listener net.Listener, broker *relay.Broker) {

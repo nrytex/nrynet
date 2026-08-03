@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nat-link/nat-link/internal/config"
+	"github.com/nrytex/nrynet/internal/config"
 )
 
 var ErrNoHealthyRelay = errors.New("no healthy relay node available")

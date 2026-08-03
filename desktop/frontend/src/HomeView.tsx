@@ -1,14 +1,14 @@
 import { App, Button, Empty, Switch, Tooltip, Typography } from "antd";
 import { CircleAlert, Copy, Database, MoreHorizontal, Power, Settings, SlidersHorizontal } from "lucide-react";
 import type { MouseEvent } from "react";
-import type { DesktopSnapshot } from "../bindings/github.com/nat-link/nat-link/desktop";
-import type { Tunnel } from "../bindings/github.com/nat-link/nat-link/internal/model";
+import type { DesktopSnapshot } from "../bindings/github.com/nrytex/nrynet/desktop";
+import type { Tunnel } from "../bindings/github.com/nrytex/nrynet/internal/model";
 import { formatBytes } from "./format";
 import { TrafficSparkline } from "./TrafficChart";
 import { useTrafficHistory } from "./useTrafficHistory";
 import { connectionStatusMessage } from "./userFeedback";
 import type { SettingsSection } from "./SettingsView";
-import brandMark from "./assets/nat-link-mark.png";
+import brandMark from "./assets/nrynet-mark.png";
 
 interface HomeViewProps {
   snapshot?: DesktopSnapshot;
@@ -80,7 +80,7 @@ export function HomeView(props: HomeViewProps) {
 }
 
 export function Brand() {
-  return <div className="brand-lockup"><img src={brandMark} alt="" /><span>NAT-Link</span></div>;
+  return <div className="brand-lockup"><img src={brandMark} alt="" /><span>Nrynet</span></div>;
 }
 
 function Metric({ label, value, tone, compact }: { label: string; value: string; tone?: string; compact?: boolean }) {

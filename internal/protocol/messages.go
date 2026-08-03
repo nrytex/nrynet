@@ -3,7 +3,7 @@ package protocol
 import (
 	"encoding/json"
 
-	"github.com/nat-link/nat-link/internal/model"
+	"github.com/nrytex/nrynet/internal/model"
 )
 
 const (

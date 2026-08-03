@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
+	netx "github.com/nrytex/nrynet/internal/advanced"
 )
 
 func TestNodeDialsTLSBrokerWithHostnameValidation(t *testing.T) {

@@ -1,6 +1,6 @@
 package main
 
-import "github.com/nat-link/nat-link/internal/model"
+import "github.com/nrytex/nrynet/internal/model"
 
 type desktopObserver struct {
 	service *DesktopService

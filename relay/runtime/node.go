@@ -18,9 +18,9 @@ import (
 	"sync"
 	"time"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/config"
-	"github.com/nat-link/nat-link/internal/protocol"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 type Config struct {
@@ -116,7 +116,7 @@ func (n *Node) Close() {
 
 func authenticate(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		actual := r.Header.Get("X-NAT-Link-Relay-Token")
+		actual := r.Header.Get("X-Nrynet-Relay-Token")
 		if subtle.ConstantTimeCompare([]byte(actual), []byte(token)) != 1 {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
@@ -268,7 +268,7 @@ func postJSON(client *http.Client, url, token string, body any) error {
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("X-NAT-Link-Relay-Token", token)
+	request.Header.Set("X-Nrynet-Relay-Token", token)
 	response, err := client.Do(request)
 	if err != nil {
 		return err

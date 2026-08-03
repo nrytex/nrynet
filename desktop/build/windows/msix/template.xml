@@ -8,27 +8,27 @@
         AllowPromptForPassword="false">
     </Settings>
     <Installer
-        Path="nat-linkdesktop.exe"
+        Path="nrynet-desktop.exe"
         Arguments=""
-        InstallLocation="C:\Program Files\NAT-Link\NAT-Link">
+        InstallLocation="C:\Program Files\Nrynet\Nrynet">
     </Installer>
     <PackageInformation
-        PackageName="NAT-Link"
-        PackageDisplayName="NAT-Link"
-        PublisherName="CN=NAT-Link"
-        PublisherDisplayName="NAT-Link"
+        PackageName="Nrynet"
+        PackageDisplayName="Nrynet"
+        PublisherName="CN=Nrynet"
+        PublisherDisplayName="Nrynet"
         Version="1.0.0.0"
-        PackageDescription="NAT-Link desktop client">
+        PackageDescription="Nrynet desktop client">
         <Capabilities>
             <Capability Name="runFullTrust" />
 
         </Capabilities>
         <Applications>
             <Application
-                Id="io.natlink.desktop"
-                Description="NAT-Link desktop client"
-                DisplayName="NAT-Link"
-                ExecutableName="nat-linkdesktop.exe"
+                Id="io.nrynet.desktop"
+                Description="Nrynet desktop client"
+                DisplayName="Nrynet"
+                ExecutableName="nrynet-desktop.exe"
                 EntryPoint="Windows.FullTrustApplication">
 
             </Application>
@@ -41,13 +41,13 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>NAT-Link</DisplayName>
-            <PublisherDisplayName>NAT-Link</PublisherDisplayName>
-            <Description>NAT-Link desktop client</Description>
+            <DisplayName>Nrynet</DisplayName>
+            <PublisherDisplayName>Nrynet</PublisherDisplayName>
+            <Description>Nrynet desktop client</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>
-    <SaveLocation PackagePath="nat-linkdesktop.msix" />
+    <SaveLocation PackagePath="nrynet-desktop.msix" />
     <PackageIntegrity>
         <CertificatePath></CertificatePath>
     </PackageIntegrity>

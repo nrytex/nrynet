@@ -1,15 +1,15 @@
-# NAT-Link 安装部署指南
+# Nrynet 安装部署指南
 
-本文说明 NAT-Link Server、命令行 Agent、桌面客户端和可选 Relay 节点的安装与生产部署。示例以源码仓库根目录为起点，覆盖 Linux、Windows 和 macOS；根据项目要求，本文不使用 Docker。
+本文说明 Nrynet Server、命令行 Agent、桌面客户端和可选 Relay 节点的安装与生产部署。示例以源码仓库根目录为起点，覆盖 Linux、Windows 和 macOS；根据项目要求，本文不使用 Docker。
 
 ## 1. 组件与部署位置
 
 | 组件 | 推荐部署位置 | 作用 |
 | --- | --- | --- |
-| `nat-link-server` | 具有公网地址的 Linux/Windows 主机 | Dashboard、管理 API、控制通道、数据转发和 SQLite |
-| `nat-link-client` | 需要暴露内网服务的主机 | 命令行 Agent，连接内网本地服务 |
-| `nat-linkdesktop` | Windows/macOS 用户桌面 | 带图形界面的 Agent |
-| `nat-link-relay` | 可选的边缘公网节点 | 分布式承载公网隧道端口 |
+| `nrynet-server` | 具有公网地址的 Linux/Windows 主机 | Dashboard、管理 API、控制通道、数据转发和 SQLite |
+| `nrynet-client` | 需要暴露内网服务的主机 | 命令行 Agent，连接内网本地服务 |
+| `nrynet-desktop` | Windows/macOS 用户桌面 | 带图形界面的 Agent |
+| `nrynet-relay` | 可选的边缘公网节点 | 分布式承载公网隧道端口 |
 
 Server 和 Agent 可以安装在同一台机器用于本地验证，但生产环境通常分别部署。
 
@@ -22,7 +22,7 @@ Server 和 Agent 可以安装在同一台机器用于本地验证，但生产环
 - 受信任的 TLS 证书和私钥
 - Linux 使用 systemd；Windows 使用系统服务保持后台运行
 
-生产环境不要公开使用明文 `ws://`。NAT-Link 会拒绝绑定到非回环地址的明文控制和数据监听器。
+生产环境不要公开使用明文 `ws://`。Nrynet 会拒绝绑定到非回环地址的明文控制和数据监听器。
 
 ## 3. 一键安装 Server
 
@@ -38,20 +38,28 @@ chmod +x install-server.sh
 sudo ./install-server.sh --public-host nat.example.com
 ```
 
-脚本会自动安装缺少的 `curl`、`openssl`、`tar` 和校验工具，安装目录默认为 `/opt/nat-link`，服务名为 `nat-link-server`。指定版本或重新生成证书：
+脚本会自动安装缺少的 `curl`、`openssl`、`tar` 和校验工具，安装目录默认为 `/opt/nrynet`，服务名为 `nrynet-server`。指定版本或重新生成证书：
 
 ```bash
 sudo ./install-server.sh --version 1.0.0 --public-host nat.example.com --renew-cert
 ```
 
-再次执行同一个脚本即可升级。安装器会读取已安装 Server 的版本，和 Release 软件包内的 `VERSION` 比较：相同版本不会重复替换二进制，只允许正常升级，并保留现有数据库、配置和证书。需要明确回滚时才使用 `--allow-downgrade`；Windows 对应参数为 `-AllowDowngrade`。
-
-安装脚本不只是复制文件。它会创建 `/etc/systemd/system/nat-link-server.service`，执行 `daemon-reload`，设置开机启动并立即启动 Server。安装后可直接管理服务：
+通过 HTTP(S) 代理下载安装依赖和 GitHub Release：
 
 ```bash
-sudo systemctl status nat-link-server
-sudo systemctl restart nat-link-server
-sudo journalctl -u nat-link-server -f
+sudo ./install-server.sh --public-host nat.example.com --proxy http://127.0.0.1:7890
+```
+
+再次执行同一个脚本即可升级。安装器会读取已安装 Server 的版本，和 Release 软件包内的 `VERSION` 比较：相同版本不会重复替换二进制，只允许正常升级，并保留现有数据库、配置和证书。需要明确回滚时才使用 `--allow-downgrade`；Windows 对应参数为 `-AllowDowngrade`。
+
+早期错误使用 `NAT-Link` 名称的一键安装会被自动迁移到 Nrynet：默认安装目录、数据库、配置、证书和服务会保留并改用新的名称。
+
+安装脚本不只是复制文件。它会创建 `/etc/systemd/system/nrynet-server.service`，执行 `daemon-reload`，设置开机启动并立即启动 Server。安装后可直接管理服务：
+
+```bash
+sudo systemctl status nrynet-server
+sudo systemctl restart nrynet-server
+sudo journalctl -u nrynet-server -f
 ```
 
 ### 3.2 Windows
@@ -64,15 +72,23 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\install-server.ps1 -PublicHost nat.example.com
 ```
 
-脚本会在缺少 OpenSSL 时通过 `winget` 安装，注册 `NATLinkServer` Windows 服务，并开放 TCP `7000/7001/8080` 和 UDP `7002/7003`。使用 `-SkipFirewall` 可跳过防火墙规则。
+需要代理时使用：
+
+```powershell
+.\install-server.ps1 -PublicHost nat.example.com --proxy http://127.0.0.1:7890
+```
+
+PowerShell 原生写法 `-Proxy http://127.0.0.1:7890` 同样支持。
+
+脚本会在缺少 OpenSSL 时通过 `winget` 安装，注册 `NrynetServer` Windows 服务，并开放 TCP `7000/7001/8080` 和 UDP `7002/7003`。使用 `-SkipFirewall` 可跳过防火墙规则。
 
 首次安装完成后，终端会显示一次性管理员密码。脚本随后会从配置文件中移除明文密码。自动生成的是自签名证书，必须将输出位置的 `fullchain.pem` 安全复制到每台 Agent，并在命令行或桌面客户端中配置为私有 CA。浏览器访问 Dashboard 时也需要信任该证书；正式公网服务可替换为受信任 CA 签发的同名证书。
 
 Windows 服务同样会设置为自动启动并立即运行：
 
 ```powershell
-Get-Service NATLinkServer
-Restart-Service NATLinkServer
+Get-Service NrynetServer
+Restart-Service NrynetServer
 Get-WinEvent -LogName Application -MaxEvents 50
 ```
 
@@ -91,9 +107,9 @@ Server 是后台常驻服务，不需要每次手动运行二进制。Linux 命�
 ### 4.1 构建当前平台
 
 ```bash
-go build -trimpath -o nat-link-server ./server
-go build -trimpath -ldflags "-X main.version=1.0.0" -o nat-link-client ./client
-go build -trimpath -o nat-link-relay ./relay
+go build -trimpath -o nrynet-server ./server
+go build -trimpath -ldflags "-X main.version=1.0.0" -o nrynet-client ./client
+go build -trimpath -o nrynet-relay ./relay
 ```
 
 Windows 输出文件名可加 `.exe`。
@@ -139,7 +155,7 @@ go run ./client -config config.yaml
 
 ## 6. 生产配置
 
-以下示例假设域名为 `nat.example.com`，证书存放在 `/opt/nat-link/tls/`：
+以下示例假设域名为 `nat.example.com`，证书存放在 `/opt/nrynet/tls/`：
 
 ```yaml
 server:
@@ -151,15 +167,15 @@ server:
   rendezvous_listen: "0.0.0.0:7003"
   public_rendezvous_address: "nat.example.com:7003"
   http_listen: "0.0.0.0:8080"
-  database: "/opt/nat-link/data/nat-link.db"
-  log_directory: "/opt/nat-link/logs"
+  database: "/opt/nrynet/data/nrynet.db"
+  log_directory: "/opt/nrynet/logs"
   jwt_ttl: "12h"
   heartbeat_timeout: "45s"
   relay_api_token: ""
   tls:
     enabled: true
-    cert_file: "/opt/nat-link/tls/fullchain.pem"
-    key_file: "/opt/nat-link/tls/privkey.pem"
+    cert_file: "/opt/nrynet/tls/fullchain.pem"
+    key_file: "/opt/nrynet/tls/privkey.pem"
   bootstrap:
     admin_username: "admin"
     admin_password: ""
@@ -194,23 +210,23 @@ client:
 ## 8. Linux Server 手动安装
 
 ```bash
-sudo useradd --system --home /opt/nat-link --shell /usr/sbin/nologin nat-link
-sudo install -d -o nat-link -g nat-link /opt/nat-link/data /opt/nat-link/logs /opt/nat-link/tls
-sudo install -o nat-link -g nat-link -m 0755 nat-link-server /opt/nat-link/
-sudo install -o nat-link -g nat-link -m 0600 config.yaml /opt/nat-link/
-sudo install -o nat-link -g nat-link -m 0644 fullchain.pem /opt/nat-link/tls/
-sudo install -o nat-link -g nat-link -m 0600 privkey.pem /opt/nat-link/tls/
-sudo install -m 0644 deploy/nat-link-server.service /etc/systemd/system/nat-link-server.service
+sudo useradd --system --home /opt/nrynet --shell /usr/sbin/nologin nrynet
+sudo install -d -o nrynet -g nrynet /opt/nrynet/data /opt/nrynet/logs /opt/nrynet/tls
+sudo install -o nrynet -g nrynet -m 0755 nrynet-server /opt/nrynet/
+sudo install -o nrynet -g nrynet -m 0600 config.yaml /opt/nrynet/
+sudo install -o nrynet -g nrynet -m 0644 fullchain.pem /opt/nrynet/tls/
+sudo install -o nrynet -g nrynet -m 0600 privkey.pem /opt/nrynet/tls/
+sudo install -m 0644 deploy/nrynet-server.service /etc/systemd/system/nrynet-server.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now nat-link-server
+sudo systemctl enable --now nrynet-server
 ```
 
 查看首次密码和运行日志：
 
 ```bash
-sudo systemctl status nat-link-server
-sudo journalctl -u nat-link-server -n 100 --no-pager
-sudo journalctl -u nat-link-server -f
+sudo systemctl status nrynet-server
+sudo journalctl -u nrynet-server -n 100 --no-pager
+sudo journalctl -u nrynet-server -f
 ```
 
 首次登录后立即修改管理员密码，并妥善保存 Server Secret。
@@ -236,40 +252,40 @@ client:
 安装并启动：
 
 ```bash
-sudo useradd --system --home /opt/nat-link-client --shell /usr/sbin/nologin nat-link 2>/dev/null || true
-sudo install -d -o nat-link -g nat-link /opt/nat-link-client/logs
-sudo install -o nat-link -g nat-link -m 0755 nat-link-client /opt/nat-link-client/
-sudo install -o nat-link -g nat-link -m 0600 config.yaml /opt/nat-link-client/
-sudo install -m 0644 deploy/nat-link-client.service /etc/systemd/system/nat-link-client.service
+sudo useradd --system --home /opt/nrynet-client --shell /usr/sbin/nologin nrynet 2>/dev/null || true
+sudo install -d -o nrynet -g nrynet /opt/nrynet-client/logs
+sudo install -o nrynet -g nrynet -m 0755 nrynet-client /opt/nrynet-client/
+sudo install -o nrynet -g nrynet -m 0600 config.yaml /opt/nrynet-client/
+sudo install -m 0644 deploy/nrynet-client.service /etc/systemd/system/nrynet-client.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now nat-link-client
-sudo journalctl -u nat-link-client -f
+sudo systemctl enable --now nrynet-client
+sudo journalctl -u nrynet-client -f
 ```
 
 Agent 首次连接后会生成稳定设备 ID。不要将同一个设备 ID 复制给其他机器。
 
 ## 10. Windows Server 手动安装
 
-将文件放在 `C:\ProgramData\NAT-Link`：
+将文件放在 `C:\ProgramData\Nrynet`：
 
 ```powershell
-$install = "C:\ProgramData\NAT-Link"
+$install = "C:\ProgramData\Nrynet"
 New-Item -ItemType Directory -Force "$install\data", "$install\logs", "$install\tls"
-Copy-Item .\nat-link-server.exe $install
+Copy-Item .\nrynet-server.exe $install
 Copy-Item .\config.yaml $install
 Copy-Item .\fullchain.pem, .\privkey.pem "$install\tls"
 ```
 
-配置中的数据库、日志和证书路径可使用 YAML 单引号，例如 `'C:\ProgramData\NAT-Link\data\nat-link.db'`。
+配置中的数据库、日志和证书路径可使用 YAML 单引号，例如 `'C:\ProgramData\Nrynet\data\nrynet.db'`。
 
 使用 Windows 任务计划程序在开机时启动：
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute "$install\nat-link-server.exe" -Argument "-config `"$install\config.yaml`"" -WorkingDirectory $install
+$action = New-ScheduledTaskAction -Execute "$install\nrynet-server.exe" -Argument "-config `"$install\config.yaml`"" -WorkingDirectory $install
 $trigger = New-ScheduledTaskTrigger -AtStartup
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
-Register-ScheduledTask -TaskName "NAT-Link Server" -Action $action -Trigger $trigger -Principal $principal -Force
-Start-ScheduledTask -TaskName "NAT-Link Server"
+Register-ScheduledTask -TaskName "Nrynet Server" -Action $action -Trigger $trigger -Principal $principal -Force
+Start-ScheduledTask -TaskName "Nrynet Server"
 ```
 
 防火墙只开放实际使用的端口。首次初始化建议先在前台运行一次，以便安全记录管理员密码和 Server Secret。
@@ -284,7 +300,9 @@ $env:APP_VERSION = "1.0.0"
 wails3 build
 ```
 
-输出文件为 `desktop/bin/nat-linkdesktop.exe`。运行后进入“设置 -> 网络设置”和“连接设置”，填写服务器地址及 Agent Token。
+输出文件为 `desktop/bin/nrynet-desktop.exe`。运行后进入“设置 -> 网络设置”和“连接设置”，填写服务器地址及 Agent Token。
+
+早期误用 `NAT-Link` 名称发布的桌面端只识别旧资产名称，无法自动发现正式的 `nrynet-desktop-*` 安装包。该版本需要从 GitHub Release 手动更新一次；换成 Nrynet 桌面端后，后续版本会直接从 GitHub 检查和安装，不需要填写更新地址或密钥。旧配置和开机启动设置会自动兼容迁移。
 
 macOS 应在 macOS 主机上构建：
 
@@ -300,7 +318,7 @@ APP_VERSION=1.0.0 wails3 build GOOS=darwin
 仅需要分布式公网入口时部署 Relay。中央 Server 与所有 Relay 必须配置同一个高强度 `relay_api_token`，且不能复用管理员密码或 Agent Token。
 
 ```bash
-./nat-link-relay \
+./nrynet-relay \
   -server https://nat.example.com:7000 \
   -id edge-1 \
   -address 203.0.113.10 \
@@ -311,8 +329,8 @@ APP_VERSION=1.0.0 wails3 build GOOS=darwin
   -broker-tls \
   -broker-server-name nat.example.com \
   -control-tls \
-  -control-cert-file /opt/nat-link-relay/tls/fullchain.pem \
-  -control-key-file /opt/nat-link-relay/tls/privkey.pem \
+  -control-cert-file /opt/nrynet-relay/tls/fullchain.pem \
+  -control-key-file /opt/nrynet-relay/tls/privkey.pem \
   -token "$RELAY_API_TOKEN"
 ```
 
@@ -331,18 +349,18 @@ sudo ./install-server.sh --public-host nat.example.com
 升级前备份：
 
 ```bash
-sudo systemctl stop nat-link-server
-sudo tar -czf nat-link-backup.tgz /opt/nat-link/config.yaml /opt/nat-link/data /opt/nat-link/tls
-sudo systemctl start nat-link-server
+sudo systemctl stop nrynet-server
+sudo tar -czf nrynet-backup.tgz /opt/nrynet/config.yaml /opt/nrynet/data /opt/nrynet/tls
+sudo systemctl start nrynet-server
 ```
 
 升级二进制：
 
 ```bash
-sudo systemctl stop nat-link-server
-sudo install -o nat-link -g nat-link -m 0755 nat-link-server /opt/nat-link/nat-link-server
-sudo systemctl start nat-link-server
-sudo journalctl -u nat-link-server -n 100 --no-pager
+sudo systemctl stop nrynet-server
+sudo install -o nrynet -g nrynet -m 0755 nrynet-server /opt/nrynet/nrynet-server
+sudo systemctl start nrynet-server
+sudo journalctl -u nrynet-server -n 100 --no-pager
 ```
 
 回滚时停止服务，恢复旧二进制和备份数据库，再启动服务。复制 SQLite 数据库前必须停止 Server，或使用 SQLite 在线备份工具。
@@ -351,7 +369,7 @@ sudo journalctl -u nat-link-server -n 100 --no-pager
 
 ### 服务启动后立即退出
 
-执行 `journalctl -u nat-link-server -n 100`，重点检查端口冲突、配置语法、数据库目录权限和证书文件权限。
+执行 `journalctl -u nrynet-server -n 100`，重点检查端口冲突、配置语法、数据库目录权限和证书文件权限。
 
 ### 公网 Agent 无法连接
 

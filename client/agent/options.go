@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nat-link/nat-link/internal/config"
+	"github.com/nrytex/nrynet/internal/config"
 )
 
 const defaultHeartbeatInterval = 15 * time.Second

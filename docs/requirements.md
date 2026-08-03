@@ -1,4 +1,4 @@
-# NAT-Link acceptance matrix
+# Nrynet acceptance matrix
 
 This matrix turns the PRD into testable product behavior. A checkbox is only
 closed when its implementation has an automated test or a recorded manual
@@ -49,7 +49,7 @@ end-to-end verification.
 ## Operational delivery
 
 - [x] Server and agent binaries have reproducible cross-platform build commands.
-- [x] A systemd unit and documented directory layout support `/opt/nat-link`.
+- [x] A systemd unit and documented directory layout support `/opt/nrynet`.
 - [x] SQLite persists configuration and metrics across server restarts.
 - [x] Automated tests cover authentication, storage, protocol framing, and TCP/HTTP/UDP end-to-end paths.
 

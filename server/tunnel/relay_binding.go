@@ -6,8 +6,8 @@ import (
 	"net"
 	"strconv"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
-	"github.com/nat-link/nat-link/internal/model"
+	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/model"
 )
 
 type RelayBinder interface {

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/nat-link/nat-link/internal/model"
+	"github.com/nrytex/nrynet/internal/model"
 )
 
 func (s *Store) ListTokens(ctx context.Context) ([]model.Token, error) {

@@ -1,12 +1,12 @@
-# NAT-Link Desktop
+# Nrynet Desktop
 
 [中文说明](README.zh-CN.md)
 
-Wails v3 desktop client for NAT-Link. The Go module is intentionally isolated
+Wails v3 desktop client for Nrynet. The Go module is intentionally isolated
 under `desktop/` and uses:
 
 ```go
-replace github.com/nat-link/nat-link => ../
+replace github.com/nrytex/nrynet => ../
 ```
 
 so the GUI can reuse the real `client/agent` runtime without changing the root

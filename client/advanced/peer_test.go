@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	netx "github.com/nat-link/nat-link/internal/advanced"
+	netx "github.com/nrytex/nrynet/internal/advanced"
 )
 
 func TestPeerConnectorFallsBackToRelayWhenPunchTimesOut(t *testing.T) {

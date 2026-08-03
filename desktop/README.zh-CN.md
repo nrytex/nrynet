@@ -1,6 +1,6 @@
-# NAT-Link 桌面客户端说明
+# Nrynet 桌面客户端说明
 
-NAT-Link Desktop 是基于 Wails v3、Go 和 React 构建的 Windows/macOS 客户端。桌面端复用项目中的真实 `client/agent` 运行时，支持连接管理、隧道查看、实时流量、运行日志、托盘运行、开机启动和安全自动更新。
+Nrynet Desktop 是基于 Wails v3、Go 和 React 构建的 Windows/macOS 客户端。桌面端复用项目中的真实 `client/agent` 运行时，支持连接管理、隧道查看、实时流量、运行日志、托盘运行、开机启动和安全自动更新。
 
 [English](README.md)
 
@@ -40,13 +40,13 @@ NAT-Link Desktop 是基于 Wails v3、Go 和 React 构建的 Windows/macOS 客�
 | 网络设置 | 控制服务器、数据通道、传输协议、QUIC 和私有 CA |
 | 连接设置 | 设备名称、设备 ID 和 Agent Token |
 | 运行日志 | 查看桌面客户端最近的运行记录 |
-| 关于 NAT-Link | 查看版本、连接状态并手动检查更新 |
+| 关于 Nrynet | 查看版本、连接状态并手动检查更新 |
 
 修改设置后必须点击“保存设置”。连接期间修改网络或身份配置后，建议先断开再重新连接。
 
 ## 首次连接
 
-1. 在 NAT-Link Dashboard 的 Token 页面创建 Agent Token。
+1. 在 Nrynet Dashboard 的 Token 页面创建 Agent Token。
 2. 打开桌面客户端，进入“设置 -> 网络设置”。
 3. 填写控制服务器和数据通道地址。
 4. 进入“连接设置”，填写设备名称并粘贴 Agent Token。
@@ -89,7 +89,9 @@ NAT-Link Desktop 是基于 Wails v3、Go 和 React 构建的 Windows/macOS 客�
 - SHA-256 摘要校验
 - Release 中 `SHA256SUMS` 的文件摘要校验
 
-客户端每 6 小时自动检查一次最新正式版本；“关于 NAT-Link”页面仍可手动检查。生产构建必须通过 `APP_VERSION` 注入真实版本号，否则更新比较将不可靠。
+客户端每 6 小时自动检查一次最新正式版本；“关于 Nrynet”页面仍可手动检查。生产构建必须通过 `APP_VERSION` 注入真实版本号，否则更新比较将不可靠。
+
+早期误用 `NAT-Link` 名称发布的桌面端只识别旧资产名称，需要从 GitHub Release 手动安装一次 `nrynet-desktop-*`。完成这次名称迁移后，后续更新可继续自动完成，原有配置和开机启动设置会被兼容读取。
 
 ## 本地开发
 
@@ -125,7 +127,7 @@ $env:APP_VERSION = "1.0.0"
 wails3 build
 ```
 
-Windows 输出文件默认为 `desktop/bin/nat-linkdesktop.exe`。macOS 正式包应在 macOS 主机上使用相同 `APP_VERSION` 构建，并同步维护 `build/config.yml` 中的原生包版本。
+Windows 输出文件默认为 `desktop/bin/nrynet-desktop.exe`。macOS 正式包应在 macOS 主机上使用相同 `APP_VERSION` 构建，并同步维护 `build/config.yml` 中的原生包版本。
 
 ## 常见问题
 

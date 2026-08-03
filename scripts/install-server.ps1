@@ -4,25 +4,39 @@ Installs the Nrynet Server Windows service.
 
 .PARAMETER Proxy
 HTTP(S) proxy URL used for package installation and GitHub downloads. Both
-http://proxy.example:8080 and proxy.example:8080 are accepted.
+`-Proxy URL` and `--proxy URL` are accepted.
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string]$PublicHost = $env:COMPUTERNAME,
     [string]$Version = "latest",
-    [string]$InstallDir = "$env:ProgramFiles\NAT-Link",
-    [string]$DataDir = "$env:ProgramData\NAT-Link",
+    [string]$InstallDir = "$env:ProgramFiles\Nrynet",
+    [string]$DataDir = "$env:ProgramData\Nrynet",
     [string]$AdminUser = "admin",
     [switch]$ForceConfig,
     [switch]$RenewCertificate,
     [switch]$AllowDowngrade,
     [switch]$SkipFirewall,
-    [string]$Proxy
+    [string]$Proxy,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$ExtraArgs
 )
 
 $ErrorActionPreference = "Stop"
 $Repository = "nrytex/nrynet"
-$ServiceName = "NATLinkServer"
+$ServiceName = "NrynetServer"
+$LegacyServiceName = "NATLinkServer"
+$DefaultInstallDir = "$env:ProgramFiles\Nrynet"
+$DefaultDataDir = "$env:ProgramData\Nrynet"
+$LegacyInstallDir = "$env:ProgramFiles\NAT-Link"
+$LegacyDataDir = "$env:ProgramData\NAT-Link"
+
+if ($ExtraArgs) {
+    if ($ExtraArgs.Count -ne 2 -or $ExtraArgs[0] -ne "--proxy" -or $Proxy) {
+        throw "Unknown arguments. Use -Proxy URL or --proxy URL for an HTTP(S) proxy."
+    }
+    $Proxy = $ExtraArgs[1]
+}
 
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -96,6 +110,85 @@ function New-RandomHex([string]$OpenSSL, [int]$Bytes) {
     return $value
 }
 
+function Move-LegacyInstallation {
+    if ($InstallDir -ne $DefaultInstallDir -or $DataDir -ne $DefaultDataDir) { return $false }
+    $legacyService = Get-Service -Name $LegacyServiceName -ErrorAction SilentlyContinue
+    if ($legacyService -and $legacyService.Status -ne "Stopped") {
+        Stop-Service -Name $LegacyServiceName -Force
+        $legacyService.WaitForStatus("Stopped", [TimeSpan]::FromSeconds(20))
+    }
+    $migrated = $false
+    if ((Test-Path -LiteralPath $LegacyInstallDir) -and -not (Test-Path -LiteralPath $InstallDir)) {
+        Move-Item -LiteralPath $LegacyInstallDir -Destination $InstallDir
+        $migrated = $true
+    }
+    if ((Test-Path -LiteralPath $LegacyDataDir) -and -not (Test-Path -LiteralPath $DataDir)) {
+        Move-Item -LiteralPath $LegacyDataDir -Destination $DataDir
+        $migrated = $true
+    }
+    $legacyBinary = Join-Path $InstallDir "nat-link-server.exe"
+    $serverBinary = Join-Path $InstallDir "nrynet-server.exe"
+    if ((Test-Path -LiteralPath $legacyBinary) -and -not (Test-Path -LiteralPath $serverBinary)) {
+        Move-Item -LiteralPath $legacyBinary -Destination $serverBinary
+        $migrated = $true
+    }
+    $legacyDatabase = Join-Path $DataDir "data\nat-link.db"
+    $database = Join-Path $DataDir "data\nrynet.db"
+    if ((Test-Path -LiteralPath $legacyDatabase) -and -not (Test-Path -LiteralPath $database)) {
+        Move-Item -LiteralPath $legacyDatabase -Destination $database
+        $migrated = $true
+    }
+    $config = Join-Path $DataDir "config.yaml"
+    if ($migrated -and (Test-Path -LiteralPath $config)) {
+        $content = Get-Content -Raw -LiteralPath $config
+        $content = $content.Replace((ConvertTo-YamlPath $LegacyDataDir), (ConvertTo-YamlPath $DataDir))
+        $content = $content.Replace("nat-link.db", "nrynet.db")
+        Set-Content -LiteralPath $config -Value $content -Encoding UTF8
+    }
+    if ($legacyService) {
+        & sc.exe delete $LegacyServiceName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Could not remove the legacy Windows service." }
+        $migrated = $true
+    }
+    Remove-NetFirewallRule -DisplayName "NAT-Link TCP" -ErrorAction SilentlyContinue
+    Remove-NetFirewallRule -DisplayName "NAT-Link UDP" -ErrorAction SilentlyContinue
+    return $migrated
+}
+
+function Assert-LegacyMigrationIsSafe {
+    if ($InstallDir -ne $DefaultInstallDir -or $DataDir -ne $DefaultDataDir) { return }
+    if ((Test-Path -LiteralPath $LegacyInstallDir) -and (Test-Path -LiteralPath $InstallDir)) {
+        throw "Both $LegacyInstallDir and $InstallDir exist; resolve the legacy installation manually before continuing."
+    }
+    if ((Test-Path -LiteralPath $LegacyDataDir) -and (Test-Path -LiteralPath $DataDir)) {
+        throw "Both $LegacyDataDir and $DataDir exist; resolve the legacy data directory manually before continuing."
+    }
+    foreach ($dataPath in @($LegacyDataDir, $DataDir)) {
+        $legacyDatabase = Join-Path $dataPath "data\nat-link.db"
+        $database = Join-Path $dataPath "data\nrynet.db"
+        if ((Test-Path -LiteralPath $legacyDatabase) -and (Test-Path -LiteralPath $database)) {
+            throw "Both nat-link.db and nrynet.db exist in $dataPath; resolve the database conflict manually before continuing."
+        }
+    }
+}
+
+function Assert-NoVersionDowngrade([version]$TargetVersion) {
+    $serverExe = Join-Path $InstallDir "nrynet-server.exe"
+    if (-not (Test-Path -LiteralPath $serverExe)) {
+        $serverExe = Join-Path $InstallDir "nat-link-server.exe"
+    }
+    if ($InstallDir -eq $DefaultInstallDir -and -not (Test-Path -LiteralPath $serverExe)) {
+        $serverExe = Join-Path $LegacyInstallDir "nat-link-server.exe"
+    }
+    if (-not (Test-Path -LiteralPath $serverExe)) { return }
+    $installedVersionText = (& $serverExe -version 2>$null | Out-String).Trim().TrimStart("v")
+    if (-not $installedVersionText) { return }
+    try { $installedVersion = [version]$installedVersionText } catch { return }
+    if ($installedVersion -gt $TargetVersion -and -not $AllowDowngrade) {
+        throw "Installed version $installedVersion is newer than requested $TargetVersion. Use -AllowDowngrade only for an intentional rollback."
+    }
+}
+
 Assert-Administrator
 if ($PublicHost -notmatch '^[A-Za-z0-9.-]+$') {
     throw "PublicHost must be a DNS name or IPv4 address."
@@ -113,15 +206,15 @@ if ($ResolvedProxy) {
     $env:all_proxy = $ResolvedProxy
 }
 $OpenSSL = Find-OpenSSL
-$Asset = "nat-link-windows-amd64.zip"
+$Asset = "nrynet-windows-amd64.zip"
 $DownloadBase = Get-DownloadBase
-$TempDir = Join-Path ([IO.Path]::GetTempPath()) ("nat-link-install-" + [guid]::NewGuid())
+$TempDir = Join-Path ([IO.Path]::GetTempPath()) ("nrynet-install-" + [guid]::NewGuid())
 $Archive = Join-Path $TempDir $Asset
 $ChecksumFile = Join-Path $TempDir "SHA256SUMS"
 
 try {
     New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
-    Write-Host "Downloading NAT-Link Server ($Version)..."
+    Write-Host "Downloading Nrynet Server ($Version)..."
     Invoke-Download "$DownloadBase/$Asset" $Archive $ResolvedProxy
     Invoke-Download "$DownloadBase/SHA256SUMS" $ChecksumFile $ResolvedProxy
     $checksumLine = Get-Content -LiteralPath $ChecksumFile | Where-Object { $_ -match "\s$([regex]::Escape($Asset))$" } | Select-Object -First 1
@@ -132,19 +225,23 @@ try {
 
     $PackageDir = Join-Path $TempDir "package"
     Expand-Archive -LiteralPath $Archive -DestinationPath $PackageDir -Force
-    $PackagedServer = Join-Path $PackageDir "nat-link-server.exe"
-    if (-not (Test-Path -LiteralPath $PackagedServer)) { throw "Release archive is missing nat-link-server.exe." }
+    $PackagedServer = Join-Path $PackageDir "nrynet-server.exe"
+    if (-not (Test-Path -LiteralPath $PackagedServer)) { throw "Release archive is missing nrynet-server.exe." }
     $PackageVersionFile = Join-Path $PackageDir "VERSION"
     if (-not (Test-Path -LiteralPath $PackageVersionFile)) { throw "Release archive is missing VERSION." }
     $targetVersionText = (Get-Content -Raw -LiteralPath $PackageVersionFile).Trim().TrimStart("v")
     try { $targetVersion = [version]$targetVersionText } catch { throw "Release version '$targetVersionText' is invalid." }
+
+    Assert-LegacyMigrationIsSafe
+    Assert-NoVersionDowngrade $targetVersion
+    $migratedLegacy = Move-LegacyInstallation
 
     New-Item -ItemType Directory -Force -Path $InstallDir, $DataDir | Out-Null
     $DatabaseDir = Join-Path $DataDir "data"
     $LogDir = Join-Path $DataDir "logs"
     $TlsDir = Join-Path $DataDir "tls"
     New-Item -ItemType Directory -Force -Path $DatabaseDir, $LogDir, $TlsDir | Out-Null
-    $ServerExe = Join-Path $InstallDir "nat-link-server.exe"
+    $ServerExe = Join-Path $InstallDir "nrynet-server.exe"
     $installedVersionText = ""
     if (Test-Path -LiteralPath $ServerExe) {
         $installedVersionText = (& $ServerExe -version 2>$null | Out-String).Trim().TrimStart("v")
@@ -152,16 +249,16 @@ try {
     $replaceBinary = $true
     if ($installedVersionText) {
         try { $installedVersion = [version]$installedVersionText } catch { $installedVersion = [version]"0.0.0" }
-        if ($installedVersion -eq $targetVersion) {
+        if ($installedVersion -eq $targetVersion -and -not $migratedLegacy) {
             $replaceBinary = $false
-            Write-Host "NAT-Link Server $targetVersionText is already installed."
+            Write-Host "Nrynet Server $targetVersionText is already installed."
         } elseif ($installedVersion -gt $targetVersion -and -not $AllowDowngrade) {
             throw "Installed version $installedVersion is newer than requested $targetVersion. Use -AllowDowngrade only for an intentional rollback."
         } else {
-            Write-Host "Upgrading NAT-Link Server from $installedVersion to $targetVersion..."
+            Write-Host "Upgrading Nrynet Server from $installedVersion to $targetVersion..."
         }
     } else {
-        Write-Host "Installing NAT-Link Server $targetVersion..."
+        Write-Host "Installing Nrynet Server $targetVersion..."
     }
     $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($replaceBinary) {
@@ -183,7 +280,7 @@ try {
     }
 
     $ConfigFile = Join-Path $DataDir "config.yaml"
-    $DatabaseFile = Join-Path $DatabaseDir "nat-link.db"
+    $DatabaseFile = Join-Path $DatabaseDir "nrynet.db"
     $isNewDatabase = -not (Test-Path -LiteralPath $DatabaseFile)
     $initialPassword = ""
     if ($ForceConfig -or -not (Test-Path -LiteralPath $ConfigFile)) {
@@ -237,14 +334,14 @@ client:
         & sc.exe config $ServiceName "binPath= $binaryPath" "start= auto" | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Could not update the Windows service." }
     } else {
-        New-Service -Name $ServiceName -BinaryPathName $binaryPath -DisplayName "NAT-Link Server" `
-            -Description "NAT-Link self-hosted relay server" -StartupType Automatic | Out-Null
+        New-Service -Name $ServiceName -BinaryPathName $binaryPath -DisplayName "Nrynet Server" `
+            -Description "Nrynet self-hosted relay server" -StartupType Automatic | Out-Null
     }
 
     if (-not $SkipFirewall) {
         $rules = @(
-            @{ Name = "NAT-Link TCP"; Protocol = "TCP"; Ports = "7000,7001,8080" },
-            @{ Name = "NAT-Link UDP"; Protocol = "UDP"; Ports = "7002,7003" }
+            @{ Name = "Nrynet TCP"; Protocol = "TCP"; Ports = "7000,7001,8080" },
+            @{ Name = "Nrynet UDP"; Protocol = "UDP"; Ports = "7002,7003" }
         )
         foreach ($rule in $rules) {
             Remove-NetFirewallRule -DisplayName $rule.Name -ErrorAction SilentlyContinue
@@ -256,7 +353,7 @@ client:
     Start-Service -Name $ServiceName
     (Get-Service -Name $ServiceName).WaitForStatus("Running", [TimeSpan]::FromSeconds(20))
     Start-Sleep -Seconds 2
-    if ((Get-Service -Name $ServiceName).Status -ne "Running") { throw "NAT-Link Server failed to start." }
+    if ((Get-Service -Name $ServiceName).Status -ne "Running") { throw "Nrynet Server failed to start." }
     if ($initialPassword) {
         $rawConfig = Get-Content -Raw -LiteralPath $ConfigFile
         $escapedPassword = [regex]::Escape($initialPassword)
@@ -265,7 +362,7 @@ client:
     }
 
     Write-Host ""
-    Write-Host "NAT-Link Server is running: https://${PublicHost}:7000"
+    Write-Host "Nrynet Server is running: https://${PublicHost}:7000"
     Write-Host "Installed version: $targetVersionText"
     Write-Host "Self-signed CA certificate: $CertFile"
     if ($initialPassword) {

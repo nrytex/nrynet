@@ -1,8 +1,8 @@
 import { App as AntApp, ConfigProvider, Form } from "antd";
 import { useEffect, useRef, useState } from "react";
 import "antd/dist/reset.css";
-import { DesktopService } from "../bindings/github.com/nat-link/nat-link/desktop";
-import type { AppConfig, DesktopSnapshot } from "../bindings/github.com/nat-link/nat-link/desktop";
+import { DesktopService } from "../bindings/github.com/nrytex/nrynet/desktop";
+import type { AppConfig, DesktopSnapshot } from "../bindings/github.com/nrytex/nrynet/desktop";
 import { HomeView } from "./HomeView";
 import { SettingsView, type SettingsSection } from "./SettingsView";
 import { TunnelDetailView } from "./TunnelDetailView";

@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nat-link/nat-link/client/agent"
-	"github.com/nat-link/nat-link/internal/config"
-	"github.com/nat-link/nat-link/internal/model"
+	"github.com/nrytex/nrynet/client/agent"
+	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/internal/model"
 )
 
 type DesktopService struct {

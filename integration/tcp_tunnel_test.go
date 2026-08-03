@@ -15,14 +15,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	clientagent "github.com/nat-link/nat-link/client/agent"
-	"github.com/nat-link/nat-link/internal/auth"
-	"github.com/nat-link/nat-link/internal/config"
-	"github.com/nat-link/nat-link/internal/model"
-	"github.com/nat-link/nat-link/internal/storage"
-	clienthub "github.com/nat-link/nat-link/server/client"
-	"github.com/nat-link/nat-link/server/relay"
-	serverTunnel "github.com/nat-link/nat-link/server/tunnel"
+	clientagent "github.com/nrytex/nrynet/client/agent"
+	"github.com/nrytex/nrynet/internal/auth"
+	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/internal/model"
+	"github.com/nrytex/nrynet/internal/storage"
+	clienthub "github.com/nrytex/nrynet/server/client"
+	"github.com/nrytex/nrynet/server/relay"
+	serverTunnel "github.com/nrytex/nrynet/server/tunnel"
 )
 
 func TestTCPTunnelEndToEnd(t *testing.T) {
@@ -57,7 +57,7 @@ func TestTCPTunnelEndToEnd(t *testing.T) {
 	}
 	defer visitor.Close()
 	_ = visitor.SetDeadline(time.Now().Add(5 * time.Second))
-	want := []byte("nat-link-e2e")
+	want := []byte("nrynet-e2e")
 	if _, err := visitor.Write(want); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func waitForTraffic(t *testing.T, store *storage.Store, minimum int64) {
 
 func testServices(t *testing.T) (*storage.Store, *auth.Service) {
 	t.Helper()
-	directory, err := os.MkdirTemp("", "nat-link-integration-")
+	directory, err := os.MkdirTemp("", "nrynet-integration-")
 	if err != nil {
 		t.Fatal(err)
 	}

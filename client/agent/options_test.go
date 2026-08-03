@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"github.com/nat-link/nat-link/internal/config"
+	"github.com/nrytex/nrynet/internal/config"
 )
 
 func TestNewOptionsNormalizesClientIdentity(t *testing.T) {

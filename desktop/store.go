@@ -6,12 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/nat-link/nat-link/internal/config"
+	"github.com/nrytex/nrynet/internal/config"
 	"gopkg.in/yaml.v3"
 )
 
 type fileStore struct {
-	path string
+	path       string
+	legacyPath string
 }
 
 type diskConfig struct {
@@ -24,13 +25,15 @@ func newFileStore() (*fileStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(dir, "NAT-Link", "desktop.yaml")
-	return &fileStore{path: path}, nil
+	return &fileStore{
+		path:       filepath.Join(dir, "Nrynet", "desktop.yaml"),
+		legacyPath: filepath.Join(dir, "NAT-Link", "desktop.yaml"),
+	}, nil
 }
 
 func (s *fileStore) Load() (AppConfig, error) {
 	var cfg diskConfig
-	data, err := os.ReadFile(s.path)
+	data, err := os.ReadFile(s.loadPath())
 	if errors.Is(err, os.ErrNotExist) {
 		return AppConfig{}, nil
 	}
@@ -43,6 +46,14 @@ func (s *fileStore) Load() (AppConfig, error) {
 	out := configFromClient(cfg.Client)
 	out.AutoStart = cfg.AutoStart
 	return out, nil
+}
+
+func (s *fileStore) loadPath() string {
+	_, err := os.Stat(s.path)
+	if err == nil || !errors.Is(err, os.ErrNotExist) || s.legacyPath == "" {
+		return s.path
+	}
+	return s.legacyPath
 }
 
 func (s *fileStore) Save(cfg AppConfig) error {

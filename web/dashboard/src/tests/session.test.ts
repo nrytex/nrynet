@@ -11,14 +11,21 @@ describe("session", () => {
   });
 
   it("clears invalid stored session", () => {
-    localStorage.setItem("nat-link.session", "{bad");
+    localStorage.setItem("nrynet.session", "{bad");
     expect(getSession()).toBeNull();
-    expect(localStorage.getItem("nat-link.session")).toBeNull();
+    expect(localStorage.getItem("nrynet.session")).toBeNull();
   });
 
   it("removes session", () => {
     saveSession("abc");
     clearSession();
     expect(getSession()).toBeNull();
+  });
+
+  it("migrates the legacy session key", () => {
+    localStorage.setItem("nat-link.session", JSON.stringify({ token: "legacy", tokenType: "Bearer" }));
+    expect(getSession()).toEqual({ token: "legacy", tokenType: "Bearer" });
+    expect(localStorage.getItem("nrynet.session")).toContain("legacy");
+    expect(localStorage.getItem("nat-link.session")).toBeNull();
   });
 });
