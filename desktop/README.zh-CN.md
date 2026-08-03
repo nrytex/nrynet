@@ -4,6 +4,8 @@ NAT-Link Desktop 是基于 Wails v3、Go 和 React 构建的 Windows/macOS 客�
 
 [English](README.md)
 
+服务端、命令行 Agent 和桌面端的完整安装步骤见[中文安装部署指南](../docs/deployment.zh-CN.md)。
+
 ## 界面说明
 
 ### 首页

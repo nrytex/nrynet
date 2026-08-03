@@ -1,5 +1,7 @@
 # NAT-Link operations
 
+[中文安装部署指南](deployment.zh-CN.md)
+
 ## Network ports
 
 The example configuration exposes these server listeners:

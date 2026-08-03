@@ -26,6 +26,7 @@ an embedded React dashboard, and a desktop agent. The implementation follows
 Remote control and data listeners require TLS. Configure the certificate,
 switch the agent URL to `wss://`, and then bind the server listeners publicly.
 See `docs/operations.md` for certificates, systemd, Docker, ports, and builds.
+中文安装与生产部署步骤见 `docs/deployment.zh-CN.md`。
 See `docs/requirements.md` for the versioned acceptance matrix.
 
 ## Test
