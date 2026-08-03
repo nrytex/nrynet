@@ -4,7 +4,9 @@ import type { MouseEvent } from "react";
 import type { DesktopSnapshot } from "../bindings/github.com/nrytex/nrynet/desktop";
 import type { Tunnel } from "../bindings/github.com/nrytex/nrynet/internal/model";
 import { formatBytes } from "./format";
+import { useElapsedTime } from "./elapsedTime";
 import { TrafficSparkline } from "./TrafficChart";
+import { resolveTunnelEndpoint, tunnelPublicHost } from "./tunnelEndpoint";
 import { useTrafficHistory } from "./useTrafficHistory";
 import { connectionStatusMessage } from "./userFeedback";
 import type { SettingsSection } from "./SettingsView";
@@ -24,6 +26,8 @@ export function HomeView(props: HomeViewProps) {
   const config = props.snapshot?.config;
   const tunnels = props.snapshot?.tunnels ?? [];
   const connected = Boolean(status?.connected);
+  const connectionDuration = useElapsedTime(status?.lastStartedAt, connected);
+  const publicHost = tunnelPublicHost(config);
   const statusMessage = connectionStatusMessage(status);
   const { points, rates } = useTrafficHistory(status);
   return (
@@ -41,7 +45,7 @@ export function HomeView(props: HomeViewProps) {
           <div className="connection-state">
             <span className={`status-dot ${connected ? "online" : "offline"}`} />
             <strong>{connected ? "已连接" : "未连接"}</strong>
-            <span className="secondary">连接时长 {connectedDuration(status?.lastStartedAt, connected)}</span>
+            <span className="secondary">连接时长 {connectionDuration}</span>
           </div>
           <Button
             className="connection-button" loading={props.loading}
@@ -66,7 +70,7 @@ export function HomeView(props: HomeViewProps) {
         </div>
         {tunnels.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已分配隧道" /> : (
           <div className="tunnel-list">
-            {tunnels.map((tunnel) => <TunnelRow key={tunnel.id} tunnel={tunnel} onOpen={() => props.onTunnel(tunnel.id)} />)}
+            {tunnels.map((tunnel) => <TunnelRow key={tunnel.id} tunnel={tunnel} publicHost={publicHost} onOpen={() => props.onTunnel(tunnel.id)} />)}
           </div>
         )}
       </section>
@@ -87,20 +91,21 @@ function Metric({ label, value, tone, compact }: { label: string; value: string;
   return <div className={`metric-item ${tone ?? ""}`}><span>{label}</span><strong className={compact ? "compact" : ""}>{value}</strong></div>;
 }
 
-function TunnelRow({ tunnel, onOpen }: { tunnel: Tunnel; onOpen: () => void }) {
+function TunnelRow({ tunnel, publicHost, onOpen }: { tunnel: Tunnel; publicHost: string; onOpen: () => void }) {
   const { message } = App.useApp();
-  const endpoint = tunnel.domain ? `${tunnel.domain}${tunnel.remote_port ? `:${tunnel.remote_port}` : ""}` : `:${tunnel.remote_port}`;
+  const endpoint = resolveTunnelEndpoint(tunnel, publicHost);
   const copy = async (event: MouseEvent) => {
     event.stopPropagation();
-    await navigator.clipboard.writeText(endpoint);
+    if (!endpoint.copyValue) return;
+    await navigator.clipboard.writeText(endpoint.copyValue);
     message.success("访问地址已复制");
   };
   return (
     <div className="tunnel-row">
       <span className={`status-dot ${tunnel.status === "running" ? "online" : "offline"}`} />
-      <button className="tunnel-open" onClick={onOpen}><span className="tunnel-name"><strong>{tunnel.name}</strong><small>{endpoint}</small></span></button>
+      <button className="tunnel-open" onClick={onOpen}><span className="tunnel-name"><strong>{tunnel.name}</strong><small>{endpoint.label}</small></span></button>
       <span className="protocol-badge">{tunnel.protocol.toUpperCase()}</span>
-      <Tooltip title="复制访问地址"><Button aria-label="复制访问地址" icon={<Copy size={16} />} onClick={copy} /></Tooltip>
+      <Tooltip title={endpoint.copyValue ? "复制访问地址" : "请检查服务器公开地址配置"}><Button aria-label="复制访问地址" disabled={!endpoint.copyValue} icon={<Copy size={16} />} onClick={copy} /></Tooltip>
       <MoreHorizontal size={18} />
     </div>
   );
@@ -109,14 +114,6 @@ function TunnelRow({ tunnel, onOpen }: { tunnel: Tunnel; onOpen: () => void }) {
 function formatRate(value: number) {
   if (value >= 1024) return `${(value / 1024).toFixed(1)} MB/s`;
   return `${value.toFixed(1)} KB/s`;
-}
-
-function connectedDuration(start?: string, connected = false) {
-  if (!start || !connected) return "--:--:--";
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(start).getTime()) / 1000));
-  const hours = String(Math.floor(seconds / 3600)).padStart(2, "0");
-  const minutes = String(Math.floor(seconds / 60) % 60).padStart(2, "0");
-  return `${hours}:${minutes}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function serverName(value?: string) {

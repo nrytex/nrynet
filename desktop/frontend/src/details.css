@@ -12,7 +12,8 @@
 .state-pill { padding: 5px 12px; border-radius: 6px; background: #eef1f3; color: #687587; font-size: 12px; font-weight: 650; }
 .state-pill.running { background: #e5f7ed; color: #099656; }
 .endpoint-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 0 20px; color: #657287; font-size: 13px; }
-.endpoint-row .ant-btn { width: 30px; height: 30px; }
+.endpoint-row > span { min-width: 0; overflow-wrap: anywhere; }
+.endpoint-row .ant-btn { width: 30px; height: 30px; flex: 0 0 30px; }
 
 .detail-tabs { margin: 0 24px; }
 .detail-tabs > .ant-tabs-nav { margin-bottom: 14px; }

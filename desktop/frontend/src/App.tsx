@@ -7,6 +7,7 @@ import { completeConfigForSave, emptyConfig } from "./configDraft";
 import { HomeView } from "./HomeView";
 import { SettingsView, type SettingsSection } from "./SettingsView";
 import { TunnelDetailView } from "./TunnelDetailView";
+import { tunnelPublicHost } from "./tunnelEndpoint";
 import { makePreviewSnapshot } from "./previewData";
 import { connectionConfigIssue, userErrorMessage, type FeedbackAction } from "./userFeedback";
 import "./styles.css";
@@ -120,7 +121,7 @@ function DesktopApp() {
     />;
   }
   if (view.name === "tunnel" && selectedTunnel) {
-    return <TunnelDetailView tunnel={selectedTunnel} status={status} onBack={() => setView({ name: "home" })} />;
+    return <TunnelDetailView tunnel={selectedTunnel} status={status} publicHost={tunnelPublicHost(config)} onBack={() => setView({ name: "home" })} />;
   }
   return <HomeView
     snapshot={snapshot} loading={loading}

@@ -1,7 +1,8 @@
 import type { DesktopSnapshot } from "../bindings/github.com/nrytex/nrynet/desktop";
 
+const previewStartedAt = new Date(Date.now() - 83 * 60 * 1000).toISOString();
+
 export function makePreviewSnapshot(tick: number): DesktopSnapshot {
-  const started = new Date(Date.now() - 83 * 60 * 1000).toISOString();
   return {
     config: {
       serverUrl: "wss://vip1.nrynet.app/agent/connect", dataAddress: "vip1.nrynet.app:7001",
@@ -12,7 +13,7 @@ export function makePreviewSnapshot(tick: number): DesktopSnapshot {
     status: {
       connected: true, state: "connected", message: "authenticated session started", version: "2.3.4",
       uploadBytes: 42_440_000 + tick * 1_088_000, downloadBytes: 8_290_000 + tick * 310_000,
-      lastStartedAt: started,
+      lastStartedAt: previewStartedAt,
     },
     tunnels: [
       tunnel("preview-1", "9Router", "tcp", "192.168.1.1", 80, 3007, "vip1.nrynet.app"),
@@ -22,7 +23,7 @@ export function makePreviewSnapshot(tick: number): DesktopSnapshot {
     ],
     logs: [
       { time: new Date().toISOString(), level: "INFO", message: "authenticated session started", fields: null },
-      { time: started, level: "INFO", message: "configuration loaded", fields: null },
+      { time: previewStartedAt, level: "INFO", message: "configuration loaded", fields: null },
     ],
   };
 }
