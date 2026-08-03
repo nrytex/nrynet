@@ -12,10 +12,11 @@ import (
 )
 
 type RouterOptions struct {
-	Runtime       Runtime
-	Settings      []SettingItem
-	RelayRegistry *netx.RelayRegistry
-	RelayToken    string
+	Runtime        Runtime
+	Settings       []SettingItem
+	RelayRegistry  *netx.RelayRegistry
+	RelayToken     string
+	CertificatePin string
 }
 
 func NewRouter(store *storage.Store, authService *auth.Service, startedAt time.Time, runtimes ...Runtime) *gin.Engine {
@@ -34,8 +35,8 @@ func NewRouterWithOptions(store *storage.Store, authService *auth.Service, start
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 	authAPI := authHandler{service: authService}
-	tokenAPI := tokenHandler{store: store, auth: authService, runtime: runtime}
-	clientAPI := clientHandler{store: store, auth: authService, runtime: runtime}
+	tokenAPI := tokenHandler{store: store, auth: authService, runtime: runtime, certificatePin: options.CertificatePin}
+	clientAPI := clientHandler{store: store, auth: authService, runtime: runtime, certificatePin: options.CertificatePin}
 	tunnelAPI := tunnelHandler{store: store, runtime: runtime}
 	overviewAPI := overviewHandler{store: store, runtime: runtime, startedAt: startedAt}
 	trafficAPI := trafficHandler{store: store}

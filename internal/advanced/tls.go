@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"math/big"
+	"net"
 	"time"
 )
 
@@ -38,6 +39,7 @@ func SelfSignedCertificate() (tls.Certificate, error) {
 		NotBefore:    time.Now().Add(-time.Minute),
 		NotAfter:     time.Now().Add(24 * time.Hour),
 		DNSNames:     []string{"localhost"},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
 	}
 	certDER, err := x509.CreateCertificate(
 		rand.Reader, &template, &template, privateKey.Public(), privateKey,

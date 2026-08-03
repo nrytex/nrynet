@@ -6,15 +6,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/nrytex/nrynet/internal/agenttoken"
 	"github.com/nrytex/nrynet/internal/auth"
 	"github.com/nrytex/nrynet/internal/model"
 	"github.com/nrytex/nrynet/internal/storage"
 )
 
 type clientHandler struct {
-	store   *storage.Store
-	auth    *auth.Service
-	runtime Runtime
+	store          *storage.Store
+	auth           *auth.Service
+	runtime        Runtime
+	certificatePin string
 }
 
 type updateClientRequest struct {
@@ -130,6 +132,9 @@ func (h clientHandler) resetToken(c *gin.Context) {
 		return
 	}
 	token, cleartext, err := h.auth.CreateAgentToken(c.Request.Context(), client.Name+" reset")
+	if err == nil && h.certificatePin != "" {
+		cleartext, err = agenttoken.WithCertificatePin(cleartext, h.certificatePin)
+	}
 	if err == nil {
 		err = h.store.UpdateClientToken(c.Request.Context(), client.ID, token.ID)
 	}

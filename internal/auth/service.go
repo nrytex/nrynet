@@ -7,13 +7,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/nrytex/nrynet/internal/agenttoken"
 	"github.com/nrytex/nrynet/internal/config"
 	"github.com/nrytex/nrynet/internal/storage"
 )
@@ -134,9 +134,9 @@ func HashToken(value string) string {
 }
 
 func TokenParts(value string) (string, string, error) {
-	parts := strings.SplitN(value, ".", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", errors.New("invalid agent token")
+	parts, err := agenttoken.Parse(value)
+	if err != nil {
+		return "", "", err
 	}
-	return parts[0], parts[1], nil
+	return parts.ID, parts.Secret, nil
 }

@@ -75,8 +75,6 @@ function NetworkPanel() {
     <Form.Item label="数据通道" name="dataAddress" rules={[{ required: true, message: "请输入数据通道地址" }]}><Input placeholder="server.example.com:7001" /></Form.Item>
     <Form.Item label="传输协议" name="transport"><Select options={[{ value: "websocket", label: "WebSocket" }, { value: "quic", label: "QUIC" }]} /></Form.Item>
     <Form.Item label="QUIC 地址" name="quicAddress"><Input placeholder="server.example.com:7002" /></Form.Item>
-    <Form.Item label="私有 CA 文件" name="caFile"><Input placeholder="C:\\certs\\ca.pem" /></Form.Item>
-    <SwitchRow title="跳过 TLS 证书校验" detail="仅用于受控测试环境，不建议在生产环境启用" name="insecureSkipVerify" danger />
   </div>;
 }
 
@@ -88,8 +86,8 @@ function ConnectionPanel() {
   </div>;
 }
 
-function SwitchRow({ title, detail, name, danger }: { title: string; detail: string; name: keyof AppConfig; danger?: boolean }) {
-  return <div className="switch-row"><div><strong className={danger ? "danger" : ""}>{title}</strong><span>{detail}</span></div><Form.Item name={name} valuePropName="checked" noStyle><Switch /></Form.Item></div>;
+function SwitchRow({ title, detail, name }: { title: string; detail: string; name: keyof AppConfig }) {
+  return <div className="switch-row"><div><strong>{title}</strong><span>{detail}</span></div><Form.Item name={name} valuePropName="checked" noStyle><Switch /></Form.Item></div>;
 }
 
 function LogsPanel({ logs }: { logs: LogEntry[] }) {

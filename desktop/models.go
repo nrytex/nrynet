@@ -3,6 +3,7 @@ package main
 import (
 	"time"
 
+	"github.com/nrytex/nrynet/internal/agenttoken"
 	"github.com/nrytex/nrynet/internal/config"
 	"github.com/nrytex/nrynet/internal/model"
 )
@@ -46,7 +47,7 @@ func (p AppConfigPatch) Apply(base AppConfig) AppConfig {
 	applyPatchValue(&base.DeviceID, p.DeviceID)
 	applyPatchValue(&base.InsecureSkipVerify, p.InsecureSkipVerify)
 	applyPatchValue(&base.AutoStart, p.AutoStart)
-	return base
+	return normalizeCertificateTrust(base)
 }
 
 func applyPatchValue[T any](target *T, value *T) {
@@ -96,11 +97,20 @@ func (c AppConfig) toClientConfig() config.ClientConfig {
 }
 
 func configFromClient(c config.ClientConfig) AppConfig {
-	return AppConfig{
+	return normalizeCertificateTrust(AppConfig{
 		ServerURL: c.ServerURL, DataAddress: c.DataAddress,
 		Transport: c.Transport, QUICAddress: c.QUICAddress,
 		CAFile: c.CAFile,
 		Token:  c.Token, Name: c.Name, DeviceID: c.DeviceID,
 		InsecureSkipVerify: c.InsecureSkipVerify,
+	})
+}
+
+func normalizeCertificateTrust(cfg AppConfig) AppConfig {
+	parts, err := agenttoken.Parse(cfg.Token)
+	if err == nil && parts.CertificatePin != "" {
+		cfg.CAFile = ""
+		cfg.InsecureSkipVerify = false
 	}
+	return cfg
 }

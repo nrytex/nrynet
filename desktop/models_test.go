@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 )
@@ -29,5 +30,16 @@ func TestAppConfigPatchCanClearSubmittedSetting(t *testing.T) {
 	got := patch.Apply(AppConfig{ServerURL: "wss://old.example/agent/connect"})
 	if got.ServerURL != "" {
 		t.Fatalf("submitted empty value was ignored: %+v", got)
+	}
+}
+
+func TestPinnedTokenClearsLegacyTLSOverrides(t *testing.T) {
+	pin := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	token := "id.secret.spki-sha256-" + pin
+	got := (AppConfigPatch{Token: &token}).Apply(AppConfig{
+		CAFile: "old-ca.pem", InsecureSkipVerify: true,
+	})
+	if got.CAFile != "" || got.InsecureSkipVerify {
+		t.Fatalf("legacy TLS overrides survived pinned token: %+v", got)
 	}
 }

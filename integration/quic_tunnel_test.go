@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,8 +14,10 @@ import (
 
 	clientagent "github.com/nrytex/nrynet/client/agent"
 	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/agenttoken"
 	"github.com/nrytex/nrynet/internal/auth"
 	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/internal/tlspin"
 	"github.com/nrytex/nrynet/server/advanced"
 	clienthub "github.com/nrytex/nrynet/server/client"
 	"github.com/nrytex/nrynet/server/relay"
@@ -28,11 +31,15 @@ func TestQUICTunnelEndToEnd(t *testing.T) {
 	cleartext := createToken(t, ctx, authService)
 	hub := clienthub.NewHub(store, authService, 45*time.Second)
 	broker := relay.NewBroker(authService, store, 3*time.Second)
-	quicServer := startQUICServer(t, ctx, authService, hub, broker)
+	quicServer, certificatePin := startQUICServer(t, ctx, authService, hub, broker)
 
 	echo := startEcho(t)
 	defer echo.Close()
-	agent := newQUICAgent(t, quicServer.Addr().String(), cleartext)
+	pinnedToken, err := agenttoken.WithCertificatePin(cleartext, certificatePin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent := newQUICAgent(t, quicServer.Addr().String(), pinnedToken)
 	runAgent(t, ctx, cancel, agent)
 	client := waitForClient(t, store, hub, "quic-device")
 
@@ -74,7 +81,7 @@ func startQUICServer(
 	authService *auth.Service,
 	hub *clienthub.Hub,
 	broker *relay.Broker,
-) *advanced.QUICControlServer {
+) (*advanced.QUICControlServer, string) {
 	t.Helper()
 	cert, err := netx.SelfSignedCertificate()
 	if err != nil {
@@ -88,14 +95,18 @@ func startQUICServer(
 	}
 	go func() { _ = server.Serve(ctx) }()
 	t.Cleanup(func() { _ = server.Close() })
-	return server
+	certificate, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return server, tlspin.FromCertificate(certificate)
 }
 
 func newQUICAgent(t *testing.T, quicAddress, token string) *clientagent.Agent {
 	t.Helper()
 	clientConfig := config.ClientConfig{
 		ServerURL: "ws://127.0.0.1/unused", Transport: "quic", QUICAddress: quicAddress,
-		Token: token, Name: "quic", DeviceID: "quic-device", InsecureSkipVerify: true,
+		Token: token, Name: "quic", DeviceID: "quic-device",
 	}
 	client, err := clientagent.New(clientagent.NewOptions(config.Config{Client: clientConfig}, "test"), slog.Default())
 	if err != nil {

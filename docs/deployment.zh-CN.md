@@ -18,8 +18,8 @@ Server 和 Agent 可以安装在同一台机器用于本地验证，但生产环
 - Go 1.25 或项目 `go.mod` 指定的兼容版本
 - Node.js 和 npm，仅构建 Dashboard/桌面前端时需要
 - Wails v3，仅构建桌面客户端时需要
-- 一个解析到 Server 公网地址的域名
-- 受信任的 TLS 证书和私钥
+- 公网 IP；生产环境推荐使用解析到 Server 的域名
+- 安装器可自动生成自签名 TLS 证书，也可使用受信任 CA 签发的证书
 - Linux 使用 systemd；Windows 使用系统服务保持后台运行
 
 生产环境不要公开使用明文 `ws://`。Nrynet 会拒绝绑定到非回环地址的明文控制和数据监听器。
@@ -94,7 +94,7 @@ SOCKS5h 使用 Windows 自带的 `curl.exe` 下载 Release，并将同一代理�
 
 脚本会在缺少 OpenSSL 时通过 `winget` 安装，注册 `NrynetServer` Windows 服务，并开放 TCP `7000/7001/8080` 和 UDP `7002/7003`。使用 `-SkipFirewall` 可跳过防火墙规则。
 
-首次安装完成后，终端会显示一次性管理员密码。脚本随后会从配置文件中移除明文密码。自动生成的是自签名证书，必须将输出位置的 `fullchain.pem` 安全复制到每台 Agent，并在命令行或桌面客户端中配置为私有 CA。浏览器访问 Dashboard 时也需要信任该证书；正式公网服务可替换为受信任 CA 签发的同名证书。
+首次安装完成后，终端会显示一次性管理员密码。脚本随后会从配置文件中移除明文密码。安装器自动生成的证书是自签名证书；浏览器首次访问 Dashboard 时仍需确认该证书，正式公网服务也可替换为受信任 CA 签发的同名证书。使用安装器自签名证书时，新版 Dashboard 生成的 Agent Token 会携带服务器证书的公钥指纹，命令行 Agent 和桌面客户端会自动完成安全校验，不需要复制 `fullchain.pem`，也不需要填写 `ca_file`。
 
 Windows 服务同样会设置为自动启动并立即运行：
 
@@ -106,10 +106,10 @@ Get-WinEvent -LogName Application -MaxEvents 50
 
 ### 3.3 安装完成后开始使用
 
-1. 在浏览器打开 `https://<public-host>:7000`。使用自签名证书时，先将安装器输出的 `fullchain.pem` 导入受信任根证书，或按浏览器提示确认该证书。
+1. 在浏览器打开 `https://<public-host>:7000`。使用自签名证书时，按浏览器提示确认该证书；使用受信任证书时会直接打开。
 2. 使用安装器终端输出的管理员用户名和一次性密码登录 Dashboard。
 3. 在“访问令牌”页面创建 Agent Token。不要把管理员密码当作 Agent Token 使用。
-4. 在需要暴露内网服务的设备上安装命令行 Agent 或桌面客户端，填写 `wss://<public-host>:7000/agent/connect`、数据地址 `<public-host>:7001`、Agent Token 和 `fullchain.pem`。
+4. 在需要暴露内网服务的设备上安装命令行 Agent 或桌面客户端，填写 `wss://<public-host>:7000/agent/connect`、数据地址 `<public-host>:7001` 和 Agent Token。证书指纹已经包含在 Token 中，无需下载证书文件。
 5. Agent 上线后，在 Dashboard 创建 TCP、UDP、HTTP 或 HTTPS 隧道，选择对应设备和本地服务地址，再启动隧道。
 
 Server 是后台常驻服务，不需要每次手动运行二进制。Linux 命令行 Agent 的完整配置见第 9 节，Windows/macOS 桌面客户端见第 11 节。
@@ -204,7 +204,9 @@ client:
   insecure_skip_verify: false
 ```
 
-证书的 DNS SAN 必须包含客户端使用的域名。使用私有 CA 时，在 Agent 中配置 `ca_file`；公网部署不要启用 `insecure_skip_verify`。
+证书的 DNS SAN 或 IP SAN 必须包含客户端使用的地址。使用安装器生成的自签名证书时，Dashboard 新生成的 Agent Token 会自动携带证书公钥指纹，因此无需配置 `ca_file`。旧版两段式 Token 仍可配合 `ca_file` 使用；升级后建议重新生成 Token。公网部署不要启用 `insecure_skip_verify`。
+
+如果通过 `--renew-cert` 或 `-RenewCertificate` 更换了证书密钥，已有 Token 中的旧指纹会拒绝新证书，这是正常的防劫持保护。请在确认 Server 安全后，从 Dashboard 重新生成 Token 并更新各 Agent。使用受信任 CA 证书时，系统证书链仍会正常验证。
 
 ## 7. 端口与防火墙
 

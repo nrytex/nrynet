@@ -331,7 +331,7 @@ client:
   transport: "websocket"
   quic_address: "${PublicHost}:7002"
   rendezvous_address: "${PublicHost}:7003"
-  ca_file: "$yamlCert"
+  ca_file: ""
   token: ""
   name: ""
   device_id: ""
@@ -383,7 +383,8 @@ client:
         Write-Host "Initial password: $initialPassword"
         Write-Host "Record this password now; it has been removed from config.yaml."
     }
-    Write-Host "Copy fullchain.pem to each client and configure it as ca_file."
+    Write-Host "New Agent Tokens automatically include this server certificate pin; clients do not need ca_file."
+    Write-Host "After certificate renewal, regenerate Agent Tokens in the Dashboard."
 } finally {
     if (Test-Path -LiteralPath $TempDir) { Remove-Item -LiteralPath $TempDir -Recurse -Force }
 }

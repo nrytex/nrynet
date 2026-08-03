@@ -326,7 +326,7 @@ client:
   transport: "websocket"
   quic_address: "$PUBLIC_HOST:7002"
   rendezvous_address: "$PUBLIC_HOST:7003"
-  ca_file: "$CERT_FILE"
+  ca_file: ""
   token: ""
   name: ""
   device_id: ""
@@ -388,4 +388,5 @@ if [ -n "$INITIAL_PASSWORD" ]; then
   echo "Initial password: $INITIAL_PASSWORD"
   echo "Record this password now; it has been removed from config.yaml."
 fi
-echo "Copy fullchain.pem to each client and configure it as ca_file."
+echo "New Agent Tokens automatically include this server certificate pin; clients do not need ca_file."
+echo "After certificate renewal, regenerate Agent Tokens in the Dashboard."

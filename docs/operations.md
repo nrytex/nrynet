@@ -82,10 +82,12 @@ client:
   insecure_skip_verify: false
 ```
 
-Use a certificate whose DNS names include the control and data hosts. Set
-`client.ca_file` when the deployment uses a private certificate authority.
-`insecure_skip_verify` is accepted only for loopback development with
-self-signed certificates. Remote clients must validate the server certificate.
+Use a certificate whose DNS or IP names include the control and data hosts.
+New Agent Tokens carry the server certificate SPKI pin, so agents can securely
+use the installer-generated self-signed certificate without `client.ca_file`.
+Legacy tokens may still use `client.ca_file`. Regenerate Agent Tokens whenever
+the server certificate key changes. `insecure_skip_verify` is accepted only for
+loopback development; remote clients must validate the certificate or token pin.
 HTTPS tunnels are passed through without terminating visitor TLS.
 
 ## QUIC and P2P

@@ -5,14 +5,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/nrytex/nrynet/internal/agenttoken"
 	"github.com/nrytex/nrynet/internal/auth"
 	"github.com/nrytex/nrynet/internal/storage"
 )
 
 type tokenHandler struct {
-	store   *storage.Store
-	auth    *auth.Service
-	runtime Runtime
+	store          *storage.Store
+	auth           *auth.Service
+	runtime        Runtime
+	certificatePin string
 }
 
 type createTokenRequest struct {
@@ -39,6 +41,9 @@ func (h tokenHandler) create(c *gin.Context) {
 		return
 	}
 	token, cleartext, err := h.auth.CreateAgentToken(c.Request.Context(), request.Name)
+	if err == nil && h.certificatePin != "" {
+		cleartext, err = agenttoken.WithCertificatePin(cleartext, h.certificatePin)
+	}
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return

@@ -37,7 +37,7 @@ Nrynet Desktop 是基于 Wails v3、Go 和 React 构建的 Windows/macOS 客户�
 | 区域 | 作用 |
 | --- | --- |
 | 常规设置 | 开机启动和 GitHub 自动更新状态 |
-| 网络设置 | 控制服务器、数据通道、传输协议、QUIC 和私有 CA |
+| 网络设置 | 控制服务器、数据通道、传输协议和 QUIC |
 | 连接设置 | 设备名称、设备 ID 和 Agent Token |
 | 运行日志 | 查看桌面客户端最近的运行记录 |
 | 关于 Nrynet | 查看版本、连接状态并手动检查更新 |
@@ -53,7 +53,7 @@ Nrynet Desktop 是基于 Wails v3、Go 和 React 构建的 Windows/macOS 客户�
 5. 保存设置，返回首页并点击“立即连接”。
 6. 连接成功后，服务端分配的隧道会自动同步到首页。
 
-公网部署必须使用加密连接。控制地址应使用 `wss://`，数据通道、QUIC 和证书配置必须与服务端保持一致。不要在生产环境启用“跳过 TLS 证书校验”。
+公网部署必须使用加密连接。控制地址应使用 `wss://`，数据通道和 QUIC 地址必须与服务端保持一致。使用安装器生成的自签名证书时，新版 Agent Token 会携带服务器证书公钥指纹，桌面端自动校验；使用受信任证书时由系统证书库校验。两种方式都不需要单独下载或配置 CA 文件。
 
 ## 配置字段
 
@@ -63,7 +63,6 @@ Nrynet Desktop 是基于 Wails v3、Go 和 React 构建的 Windows/macOS 客户�
 | 数据通道 | `nat.example.com:7001` | TCP/HTTP 数据连接地址 |
 | 传输协议 | `WebSocket` 或 `QUIC` | 控制通道传输方式 |
 | QUIC 地址 | `nat.example.com:7002` | QUIC 控制和数据地址 |
-| 私有 CA 文件 | `C:\certs\ca.pem` | 自签名或私有 CA 证书路径 |
 | 设备名称 | `Office-PC` | Dashboard 中显示的客户端名称 |
 | 设备 ID | 自动生成 | 设备稳定身份，不应复制给其他设备 |
 | Agent Token | 服务端生成 | Agent 鉴权凭证，禁止公开或提交到仓库 |
@@ -139,9 +138,9 @@ Windows 输出文件默认为 `desktop/bin/nrynet-desktop.exe`。macOS 正式包
 
 桌面端只显示服务端已分配给该 Client 的隧道。请在 Dashboard 中确认隧道的 Client、状态和协议配置。
 
-### 私有证书连接失败
+### 证书连接失败
 
-将签发服务端证书的 CA 文件配置到“私有 CA 文件”，并确保证书域名与服务器地址匹配。不要使用跳过证书校验作为长期解决方案。
+确认桌面端使用的是新版 Dashboard 生成的完整 Agent Token，并确保证书中的域名或 IP 与控制服务器地址一致。升级旧 Server 后需要重新生成一次 Token。若 Server 刚执行过证书续期，请确认服务端安全后重新生成 Token；桌面端不需要配置 CA 文件。
 
 ### 重置 Token 后无法连接
 

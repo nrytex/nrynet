@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -64,6 +65,27 @@ func TestAuthenticationAndTokenLifecycle(t *testing.T) {
 	}
 }
 
+func TestCreatedTokenIncludesServerCertificatePin(t *testing.T) {
+	store, service, session := tokenRouterDependencies(t)
+	pin := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	router := NewRouterWithOptions(store, service, time.Now(), RouterOptions{CertificatePin: pin})
+	created := requestJSON(t, router, http.MethodPost, "/api/tokens", session,
+		map[string]any{"name": "pinned"})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
+	}
+	var response struct {
+		Value string `json:"value"`
+	}
+	decodeJSON(t, created, &response)
+	if !bytes.Contains([]byte(response.Value), []byte(".spki-sha256-"+pin)) {
+		t.Fatalf("created token does not include certificate pin: %q", response.Value)
+	}
+	if _, err := service.AuthenticateAgent(context.Background(), response.Value); err != nil {
+		t.Fatalf("server rejected pinned token: %v", err)
+	}
+}
+
 func TestSettingsUpdatePersistsRestartOverride(t *testing.T) {
 	ctx := context.Background()
 	store, err := storage.Open(filepath.Join(t.TempDir(), "settings.db"))
@@ -118,6 +140,29 @@ func testRouter(t *testing.T) (http.Handler, func()) {
 		t.Fatal(err)
 	}
 	return NewRouter(store, service, time.Now()), func() { _ = store.Close() }
+}
+
+func tokenRouterDependencies(t *testing.T) (*storage.Store, *auth.Service, string) {
+	t.Helper()
+	store, err := storage.Open(filepath.Join(t.TempDir(), "pinned-token.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	service, err := auth.New(context.Background(), store, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Bootstrap(context.Background(), "admin", "test-password"); err != nil {
+		t.Fatal(err)
+	}
+	login := requestJSON(t, NewRouter(store, service, time.Now()), http.MethodPost,
+		"/api/auth/login", "", map[string]any{"username": "admin", "password": "test-password"})
+	var session struct {
+		Token string `json:"token"`
+	}
+	decodeJSON(t, login, &session)
+	return store, service, session.Token
 }
 
 func requestJSON(t *testing.T, handler http.Handler, method, path, token string, body any) *httptest.ResponseRecorder {

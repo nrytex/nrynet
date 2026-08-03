@@ -7,13 +7,22 @@ import (
 	"net"
 	"os"
 
+	"github.com/nrytex/nrynet/internal/agenttoken"
 	"github.com/nrytex/nrynet/internal/config"
+	"github.com/nrytex/nrynet/internal/tlspin"
 )
 
 func secureClientTLS(serverName string, cfg config.ClientConfig, protocols ...string) (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		ServerName: serverName, MinVersion: tls.VersionTLS13,
 		InsecureSkipVerify: cfg.InsecureSkipVerify, NextProtos: protocols,
+	}
+	parts, err := agenttoken.Parse(cfg.Token)
+	if err == nil && parts.CertificatePin != "" {
+		tlsConfig.VerifyConnection = tlspin.VerifyConnection(serverName, parts.CertificatePin, nil)
+		if cfg.CAFile == "" {
+			tlsConfig.InsecureSkipVerify = true
+		}
 	}
 	if cfg.CAFile == "" {
 		return tlsConfig, nil

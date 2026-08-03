@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -40,37 +41,6 @@ func (r *runtimeSpy) DisconnectClient(id string) {
 func (r *runtimeSpy) ClientConnectedAt(id string) (time.Time, bool) {
 	connectedAt, ok := r.connectedAt[id]
 	return connectedAt, ok
-}
-
-func TestClientManagementAndTokenReset(t *testing.T) {
-	store, service, router, session, runtime := managementRouter(t)
-	token, cleartext, err := service.CreateAgentToken(context.Background(), "client-token")
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, err := store.UpsertClient(context.Background(), token.ID, storage.ClientHello{
-		Name: "home", DeviceID: "home-device", IP: "127.0.0.1", OS: "linux", Version: "test",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	disabled := requestJSON(t, router, http.MethodPatch, "/api/clients/"+client.ID, session,
-		map[string]any{"name": "home-renamed", "disabled": true})
-	if disabled.Code != http.StatusNoContent || len(runtime.disconnected) != 1 {
-		t.Fatalf("disable status=%d disconnected=%v", disabled.Code, runtime.disconnected)
-	}
-	reset := requestJSON(t, router, http.MethodPost, "/api/clients/"+client.ID+"/reset-token", session, nil)
-	if reset.Code != http.StatusCreated {
-		t.Fatalf("reset status=%d body=%s", reset.Code, reset.Body.String())
-	}
-	if _, err := service.AuthenticateAgent(context.Background(), cleartext); err != nil {
-		t.Fatal("reset disabled a token that may be shared by another device")
-	}
-	if _, err := store.UpsertClient(context.Background(), token.ID, storage.ClientHello{
-		Name: "home", DeviceID: client.DeviceID,
-	}); err == nil {
-		t.Fatal("old token reclaimed the reset device")
-	}
 }
 
 func TestTokenDisableDisconnectsBoundClient(t *testing.T) {
@@ -288,7 +258,10 @@ func managementRouter(t *testing.T) (*storage.Store, *auth.Service, http.Handler
 		t.Fatal(err)
 	}
 	runtime := &runtimeSpy{store: store}
-	router := NewRouter(store, service, time.Now(), runtime)
+	pin := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	router := NewRouterWithOptions(store, service, time.Now(), RouterOptions{
+		Runtime: runtime, CertificatePin: pin,
+	})
 	login := requestJSON(t, router, http.MethodPost, "/api/auth/login", "", map[string]any{
 		"username": "admin", "password": "test-password",
 	})

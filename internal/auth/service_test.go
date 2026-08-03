@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
 	"path/filepath"
 	"testing"
 	"time"
@@ -38,5 +39,11 @@ func TestBootstrapLoginAndAgentToken(t *testing.T) {
 	authenticated, err := service.AuthenticateAgent(ctx, cleartext)
 	if err != nil || authenticated.ID != token.ID {
 		t.Fatalf("authenticate token: token=%+v err=%v", authenticated, err)
+	}
+	pin := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	withPin := cleartext + ".spki-sha256-" + pin
+	authenticated, err = service.AuthenticateAgent(ctx, withPin)
+	if err != nil || authenticated.ID != token.ID {
+		t.Fatalf("authenticate pinned token: token=%+v err=%v", authenticated, err)
 	}
 }

@@ -85,9 +85,16 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		return nil, auth.BootstrapResult{}, fmt.Errorf("listen for HTTP tunnels: %w", err)
 	}
 	webGateway := gateway.New(store, tunnelManager)
+	certificatePin, err := serverCertificatePin(cfg.Server)
+	if err != nil {
+		_ = dataListener.Close()
+		_ = webListener.Close()
+		store.Close()
+		return nil, auth.BootstrapResult{}, err
+	}
 	router := api.NewRouterWithOptions(store, authService, time.Now(), api.RouterOptions{
 		Runtime: tunnelManager, Settings: safeSettings(cfg),
-		RelayRegistry: registry, RelayToken: relayToken,
+		RelayRegistry: registry, RelayToken: relayToken, CertificatePin: certificatePin,
 	})
 	router.GET("/agent/connect", hub.Handle)
 	dashboardHandler := dashboard.Handler()
