@@ -36,7 +36,7 @@ jobs:
           npm test -- --run
           npm run build
           cd ..
-          go test ./...
+          CGO_ENABLED=0 go test ./...
       - name: Validate installer scripts
         shell: pwsh
         run: |
