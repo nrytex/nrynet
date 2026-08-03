@@ -29,6 +29,21 @@ See `docs/operations.md` for certificates, systemd, Docker, ports, and builds.
 中文安装与生产部署步骤见 `docs/deployment.zh-CN.md`。
 See `docs/requirements.md` for the versioned acceptance matrix.
 
+## One-command server install
+
+Linux systemd hosts can install the latest release and generate a self-signed
+TLS certificate with OpenSSL in one command:
+
+```sh
+curl -fLO https://github.com/nrytex/nrynet/releases/latest/download/install-server.sh
+chmod +x install-server.sh
+sudo ./install-server.sh --public-host nat.example.com
+```
+
+Windows Server users can download `install-server.ps1` from the same release
+and run it from an elevated PowerShell session. Full instructions, certificate
+trust steps, and manual installation options are in `docs/deployment.zh-CN.md`.
+
 ## Test
 
 ```sh

@@ -24,9 +24,43 @@ Server 和 Agent 可以安装在同一台机器用于本地验证，但生产环
 
 生产环境不要公开使用明文 `ws://`。NAT-Link 会拒绝绑定到非回环地址的明文控制和数据监听器。
 
-## 3. 从源码构建
+## 3. 一键安装 Server
 
-### 3.1 构建当前平台
+Release 提供 Linux 和 Windows 一键安装脚本。脚本会下载对应架构的软件包、校验 SHA-256、调用 OpenSSL 生成自签名 TLS 证书、写入 `0.0.0.0` 监听配置，并注册系统服务。整个流程不使用 Docker。
+
+### 3.1 Linux
+
+适用于使用 systemd 的 Linux amd64/arm64 发行版：
+
+```bash
+curl -fLO https://github.com/nrytex/nrynet/releases/latest/download/install-server.sh
+chmod +x install-server.sh
+sudo ./install-server.sh --public-host nat.example.com
+```
+
+脚本会自动安装缺少的 `curl`、`openssl`、`tar` 和校验工具，安装目录默认为 `/opt/nat-link`，服务名为 `nat-link-server`。指定版本或重新生成证书：
+
+```bash
+sudo ./install-server.sh --version 2.3.5 --public-host nat.example.com --renew-cert
+```
+
+### 3.2 Windows
+
+使用管理员身份打开 PowerShell：
+
+```powershell
+Invoke-WebRequest https://github.com/nrytex/nrynet/releases/latest/download/install-server.ps1 -OutFile install-server.ps1
+Set-ExecutionPolicy -Scope Process Bypass
+.\install-server.ps1 -PublicHost nat.example.com
+```
+
+脚本会在缺少 OpenSSL 时通过 `winget` 安装，注册 `NATLinkServer` Windows 服务，并开放 TCP `7000/7001/8080` 和 UDP `7002/7003`。使用 `-SkipFirewall` 可跳过防火墙规则。
+
+首次安装完成后，终端会显示一次性管理员密码。脚本随后会从配置文件中移除明文密码。自动生成的是自签名证书，必须将输出位置的 `fullchain.pem` 安全复制到每台 Agent，并在命令行或桌面客户端中配置为私有 CA。浏览器访问 Dashboard 时也需要信任该证书；正式公网服务可替换为受信任 CA 签发的同名证书。
+
+## 4. 从源码构建
+
+### 4.1 构建当前平台
 
 ```bash
 go build -trimpath -o nat-link-server ./server
@@ -36,7 +70,7 @@ go build -trimpath -o nat-link-relay ./relay
 
 Windows 输出文件名可加 `.exe`。
 
-### 3.2 批量交叉构建
+### 4.2 批量交叉构建
 
 PowerShell：
 
@@ -52,7 +86,7 @@ VERSION=1.0.0 ./scripts/build.sh
 
 产物位于 `bin/<版本>-<系统>-<架构>/`。每个目标目录包含 Server、Client、Relay，以及面向网络部署和本地验证的两份配置示例。
 
-## 4. 本地验证部署
+## 5. 本地验证部署
 
 本地验证只监听 `127.0.0.1`，不需要 TLS：
 
@@ -75,7 +109,7 @@ go run ./client -config config.yaml
 
 本地验证配置不能直接用于公网部署。
 
-## 5. 生产配置
+## 6. 生产配置
 
 以下示例假设域名为 `nat.example.com`，证书存放在 `/opt/nat-link/tls/`：
 
@@ -116,7 +150,7 @@ client:
 
 证书的 DNS SAN 必须包含客户端使用的域名。使用私有 CA 时，在 Agent 中配置 `ca_file`；公网部署不要启用 `insecure_skip_verify`。
 
-## 6. 端口与防火墙
+## 7. 端口与防火墙
 
 | 端口 | 协议 | 用途 |
 | --- | --- | --- |
@@ -129,7 +163,7 @@ client:
 
 仅向管理网段开放 Dashboard 更安全。隧道端口应按业务需要开放，并在 Dashboard 配置 IP 白名单。
 
-## 7. Linux Server 安装
+## 8. Linux Server 手动安装
 
 ```bash
 sudo useradd --system --home /opt/nat-link --shell /usr/sbin/nologin nat-link
@@ -153,7 +187,7 @@ sudo journalctl -u nat-link -f
 
 首次登录后立即修改管理员密码，并妥善保存 Server Secret。
 
-## 8. Linux 命令行 Agent 安装
+## 9. Linux 命令行 Agent 安装
 
 在 Dashboard 为每台设备创建独立 Token。准备只包含 `client` 段的配置文件：
 
@@ -186,7 +220,7 @@ sudo journalctl -u nat-link-client -f
 
 Agent 首次连接后会生成稳定设备 ID。不要将同一个设备 ID 复制给其他机器。
 
-## 9. Windows Server 安装
+## 10. Windows Server 手动安装
 
 将文件放在 `C:\ProgramData\NAT-Link`：
 
@@ -212,7 +246,7 @@ Start-ScheduledTask -TaskName "NAT-Link Server"
 
 防火墙只开放实际使用的端口。首次初始化建议先在前台运行一次，以便安全记录管理员密码和 Server Secret。
 
-## 10. Windows/macOS 桌面客户端
+## 11. Windows/macOS 桌面客户端
 
 Windows 构建：
 
@@ -233,7 +267,7 @@ APP_VERSION=1.0.0 wails3 build GOOS=darwin
 
 正式分发需要使用团队证书进行代码签名和公证。桌面端详细使用说明见 `desktop/README.zh-CN.md`。
 
-## 11. 可选 Relay 节点
+## 12. 可选 Relay 节点
 
 仅需要分布式公网入口时部署 Relay。中央 Server 与所有 Relay 必须配置同一个高强度 `relay_api_token`，且不能复用管理员密码或 Agent Token。
 
@@ -256,7 +290,7 @@ APP_VERSION=1.0.0 wails3 build GOOS=darwin
 
 私有 CA 可通过 `-broker-ca-file` 指定。Relay 的 7100 控制端口只应允许中央 Server 访问。
 
-## 12. 升级、备份与回滚
+## 13. 升级、备份与回滚
 
 升级前备份：
 
@@ -277,7 +311,7 @@ sudo journalctl -u nat-link -n 100 --no-pager
 
 回滚时停止服务，恢复旧二进制和备份数据库，再启动服务。复制 SQLite 数据库前必须停止 Server，或使用 SQLite 在线备份工具。
 
-## 13. 常见部署问题
+## 14. 常见部署问题
 
 ### 服务启动后立即退出
 
