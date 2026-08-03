@@ -9,7 +9,7 @@ describe("connectionConfigIssue", () => {
 
   it("accepts the required WebSocket connection fields", () => {
     expect(connectionConfigIssue({
-      serverUrl: "wss://nat.example/agent/connect",
+      serverUrl: "ws://nat.example/agent/connect",
       dataAddress: "nat.example:7001",
       transport: "websocket",
       token: "secret",
@@ -20,6 +20,7 @@ describe("connectionConfigIssue", () => {
 describe("userErrorMessage", () => {
   it("translates known backend errors", () => {
     expect(userErrorMessage("client.server_url is required", "connect")).toContain("控制服务器");
+    expect(userErrorMessage("remote agent connections require wss", "connect")).toContain("支持 ws:// 和 wss://");
     expect(userErrorMessage(new Error("dial tcp: connection refused"), "connect")).toContain("服务器拒绝连接");
   });
 

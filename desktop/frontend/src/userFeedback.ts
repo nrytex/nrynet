@@ -42,6 +42,7 @@ export function connectionStatusMessage(status?: RuntimeStatus): string | undefi
 
 const errorRules = [
   { pattern: /server_url is required/i, message: "尚未配置控制服务器，请前往“设置 > 网络设置”填写后重试。" },
+  { pattern: /remote agent connections require wss/i, message: "当前核心仍拒绝该控制地址。Nrynet 桌面端支持 ws:// 和 wss://，请确认服务端与核心配置已更新后重试。" },
   { pattern: /data_address is required/i, message: "尚未配置数据通道，请前往“设置 > 网络设置”填写后重试。" },
   { pattern: /quic_address is required/i, message: "已选择 QUIC 传输，但尚未填写 QUIC 地址。" },
   { pattern: /token is required/i, message: "尚未配置 Agent Token，请前往“设置 > 连接设置”填写后重试。" },

@@ -21,11 +21,31 @@ type appWindow struct {
 	quitting *atomic.Bool
 }
 
+const (
+	defaultWindowWidth  = 680
+	defaultWindowHeight = 720
+	minWindowWidth      = 560
+	minWindowHeight     = 560
+)
+
 func (w *appWindow) Show() { w.win.Show().Focus() }
 func (w *appWindow) Hide() { w.win.Hide() }
 func (w *appWindow) Quit() {
 	w.quitting.Store(true)
 	w.app.Quit()
+}
+
+func mainWindowOptions() application.WebviewWindowOptions {
+	return application.WebviewWindowOptions{
+		Title:            "Nrynet",
+		Width:            defaultWindowWidth,
+		Height:           defaultWindowHeight,
+		MinWidth:         minWindowWidth,
+		MinHeight:        minWindowHeight,
+		URL:              "/",
+		InitialPosition:  application.WindowCentered,
+		BackgroundColour: application.NewRGB(238, 245, 242),
+	}
 }
 
 func main() {
@@ -53,10 +73,7 @@ func main() {
 		log.Fatal(err)
 	}
 	app.RegisterService(application.NewService(desktopSvc))
-	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "Nrynet", Width: 680, Height: 860, MinWidth: 600,
-		MinHeight: 620, URL: "/", BackgroundColour: application.NewRGB(238, 245, 242),
-	})
+	win := app.Window.NewWithOptions(mainWindowOptions())
 	var quitting atomic.Bool
 	desktopSvc.setWindow(&appWindow{app: app, win: win, quitting: &quitting})
 	configureCloseToTray(win, &quitting)

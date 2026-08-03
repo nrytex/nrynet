@@ -16,6 +16,8 @@ module.
 
 - Onboarding/config editor for control WebSocket, data address, token, device
   name, device ID and TLS settings.
+- Control WebSocket accepts either `ws://` or `wss://`; use `wss://` when the
+  deployment requires encrypted transport.
 - Real connect/disconnect using `client/agent`.
 - Status, tunnel table and in-memory runtime log views.
 - Windows/macOS tray menu; closing the main window hides it to the tray, while
@@ -51,7 +53,11 @@ wails3 build
 ```
 
 `go test ./...` verifies one-time GitHub updater setup and desktop-only asset
-matching for Windows and universal macOS packages.
+matching for Windows and universal macOS packages. Windows builds use the
+opaque white-background `build/appicon.png` source to regenerate `build/windows/icon.ico`,
+which keeps the taskbar, tray and installer icons free of black corners. The
+main window opens at 680x720 with a 560x560 minimum so it fits common laptop
+screens while remaining resizable.
 
 ## Cross-Platform Builds
 

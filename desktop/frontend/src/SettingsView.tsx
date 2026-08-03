@@ -71,7 +71,7 @@ function GeneralPanel() {
 
 function NetworkPanel() {
   return <div className="settings-group">
-    <Form.Item label="控制服务器" name="serverUrl" rules={[{ required: true, message: "请输入控制服务器地址" }]}><Input placeholder="wss://server.example.com/agent/connect" /></Form.Item>
+    <Form.Item label="控制服务器" name="serverUrl" rules={[{ required: true, message: "请输入控制服务器地址" }]}><Input placeholder="ws:// 或 wss://server.example.com/agent/connect" /></Form.Item>
     <Form.Item label="数据通道" name="dataAddress" rules={[{ required: true, message: "请输入数据通道地址" }]}><Input placeholder="server.example.com:7001" /></Form.Item>
     <Form.Item label="传输协议" name="transport"><Select options={[{ value: "websocket", label: "WebSocket" }, { value: "quic", label: "QUIC" }]} /></Form.Item>
     <Form.Item label="QUIC 地址" name="quicAddress"><Input placeholder="server.example.com:7002" /></Form.Item>

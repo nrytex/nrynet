@@ -53,13 +53,13 @@ Nrynet Desktop 是基于 Wails v3、Go 和 React 构建的 Windows/macOS 客户�
 5. 保存设置，返回首页并点击“立即连接”。
 6. 连接成功后，服务端分配的隧道会自动同步到首页。
 
-公网部署必须使用加密连接。控制地址应使用 `wss://`，数据通道和 QUIC 地址必须与服务端保持一致。使用安装器生成的自签名证书时，新版 Agent Token 会携带服务器证书公钥指纹，桌面端自动校验；使用受信任证书时由系统证书库校验。两种方式都不需要单独下载或配置 CA 文件。
+控制地址支持 `ws://` 和 `wss://`，请按服务端实际监听方式填写；需要加密传输的部署应使用 `wss://`。数据通道和 QUIC 地址必须与服务端保持一致。使用安装器生成的自签名证书时，新版 Agent Token 会携带服务器证书公钥指纹，桌面端自动校验；使用受信任证书时由系统证书库校验。两种方式都不需要单独下载或配置 CA 文件。
 
 ## 配置字段
 
 | 字段 | 示例 | 说明 |
 | --- | --- | --- |
-| 控制服务器 | `wss://nat.example.com:7000/agent/connect` | Agent WebSocket 控制通道 |
+| 控制服务器 | `ws://nat.example.com:7000/agent/connect` 或 `wss://nat.example.com:7000/agent/connect` | Agent WebSocket 控制通道 |
 | 数据通道 | `nat.example.com:7001` | TCP/HTTP 数据连接地址 |
 | 传输协议 | `WebSocket` 或 `QUIC` | 控制通道传输方式 |
 | QUIC 地址 | `nat.example.com:7002` | QUIC 控制和数据地址 |
@@ -126,7 +126,7 @@ $env:APP_VERSION = "1.0.0"
 wails3 build
 ```
 
-Windows 输出文件默认为 `desktop/bin/nrynet-desktop.exe`。macOS 正式包应在 macOS 主机上使用相同 `APP_VERSION` 构建，并同步维护 `build/config.yml` 中的原生包版本。
+Windows 输出文件默认为 `desktop/bin/nrynet-desktop.exe`。Windows 图标由白底全不透明的 `build/appicon.png` 重新生成 `build/windows/icon.ico`，用于任务栏、托盘和安装器，避免四角黑底；主窗口默认以 680x720 打开，最小尺寸为 560x560，适配常见笔记本屏幕并保留可调整空间。macOS 正式包应在 macOS 主机上使用相同 `APP_VERSION` 构建，并同步维护 `build/config.yml` 中的原生包版本。
 
 ## 常见问题
 
