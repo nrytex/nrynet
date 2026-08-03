@@ -77,7 +77,7 @@ install_dependencies() {
   for command in curl openssl tar sha256sum; do
     command -v "$command" >/dev/null 2>&1 || missing="$missing $command"
   done
-  [ -z "$missing" ] && return
+  [ -z "$missing" ] && return 0
   echo "Installing required tools:$missing"
   if command -v apt-get >/dev/null 2>&1; then
     apt-get update
@@ -105,7 +105,7 @@ detect_arch() {
 detect_public_host() {
   if [ -n "$PUBLIC_HOST" ]; then
     printf '%s' "$PUBLIC_HOST"
-    return
+    return 0
   fi
   host="$(hostname -f 2>/dev/null || hostname)"
   [ -n "$host" ] || host="127.0.0.1"
@@ -120,8 +120,8 @@ validate_host() {
 }
 
 migrate_legacy_install() {
-  [ "$INSTALL_DIR_SET" -eq 0 ] || return
-  [ "$INSTALL_DIR" = "/opt/nrynet" ] || return
+  [ "$INSTALL_DIR_SET" -eq 0 ] || return 0
+  [ "$INSTALL_DIR" = "/opt/nrynet" ] || return 0
   legacy_found=0
   if [ -d "$LEGACY_INSTALL_DIR" ] && [ ! -e "$INSTALL_DIR" ]; then
     systemctl stop "$LEGACY_SERVICE" 2>/dev/null || true
@@ -142,11 +142,12 @@ migrate_legacy_install() {
     legacy_found=1
   fi
   MIGRATED_LEGACY="$legacy_found"
+  return 0
 }
 
 preflight_legacy_install() {
-  [ "$INSTALL_DIR_SET" -eq 0 ] || return
-  [ "$INSTALL_DIR" = "/opt/nrynet" ] || return
+  [ "$INSTALL_DIR_SET" -eq 0 ] || return 0
+  [ "$INSTALL_DIR" = "/opt/nrynet" ] || return 0
   if [ -e "$LEGACY_INSTALL_DIR" ] && [ -e "$INSTALL_DIR" ]; then
     echo "Both $LEGACY_INSTALL_DIR and $INSTALL_DIR exist; resolve the legacy installation manually before continuing." >&2
     exit 1
@@ -157,6 +158,7 @@ preflight_legacy_install() {
       exit 1
     fi
   done
+  return 0
 }
 
 preflight_installed_version() {
@@ -168,16 +170,17 @@ preflight_installed_version() {
     [ ! -x "$version_binary" ] && [ -x "$LEGACY_INSTALL_DIR/nat-link-server" ]; then
     version_binary="$LEGACY_INSTALL_DIR/nat-link-server"
   fi
-  [ -x "$version_binary" ] || return
+  [ -x "$version_binary" ] || return 0
   installed_version="$("$version_binary" -version 2>/dev/null || true)"
   installed_version="$(printf '%s' "$installed_version" | tr -d '\r\n ' | sed 's/^v//')"
-  [ -n "$installed_version" ] || return
+  [ -n "$installed_version" ] || return 0
   lowest="$(printf '%s\n%s\n' "$installed_version" "$TARGET_VERSION" | sort -V | head -n 1)"
   if [ "$lowest" = "$TARGET_VERSION" ] && [ "$ALLOW_DOWNGRADE" -ne 1 ] && [ "$installed_version" != "$TARGET_VERSION" ]; then
     echo "Installed version $installed_version is newer than requested $TARGET_VERSION." >&2
     echo "Use --allow-downgrade only when an intentional rollback is required." >&2
     exit 1
   fi
+  return 0
 }
 
 if ! printf '%s' "$ADMIN_USER" | grep -Eq '^[A-Za-z0-9_.-]+$'; then

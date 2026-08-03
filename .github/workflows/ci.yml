@@ -22,6 +22,14 @@ jobs:
       - working-directory: web/dashboard
         run: npm ci && npm test && npm run build
       - run: git diff --exit-code -- server/dashboard/assets
+      - name: Validate Linux installer control flow
+        shell: bash
+        run: |
+          sh -n scripts/install-server.sh
+          if grep -nE '(\|\||&&)[[:space:]]+return[[:space:]]*$' scripts/install-server.sh; then
+            echo "Guard clauses must use an explicit return status under set -e." >&2
+            exit 1
+          fi
 
   cross-build:
     runs-on: ubuntu-latest

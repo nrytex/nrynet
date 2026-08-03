@@ -47,6 +47,12 @@ jobs:
             [ref]$errors
           )
           if ($errors.Count) { $errors | Format-List; exit 1 }
+          $implicitReturns = Select-String -Path scripts/install-server.sh `
+            -Pattern '(\|\||&&)\s+return\s*$'
+          if ($implicitReturns) {
+            $implicitReturns | Format-List
+            throw "Guard clauses must use an explicit return status under set -e."
+          }
 
   cli-bundles:
     needs: validate
