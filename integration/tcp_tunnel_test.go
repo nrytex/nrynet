@@ -39,7 +39,7 @@ func TestTCPTunnelEndToEnd(t *testing.T) {
 	defer echo.Close()
 	agent := newAgent(t, control.URL, dataListener.Addr().String(), cleartext)
 	runAgent(t, ctx, cancel, agent)
-	client := waitForClient(t, store, "integration-device")
+	client := waitForClient(t, store, hub, "integration-device")
 
 	remotePort := reservePort(t)
 	manager := serverTunnel.NewManager(store, hub, broker)
@@ -75,41 +75,6 @@ func TestTCPTunnelEndToEnd(t *testing.T) {
 	}
 	_ = visitor.Close()
 	waitForTraffic(t, store, int64(len(want)*2))
-}
-
-func runBroker(t *testing.T, listener net.Listener, broker *relay.Broker) {
-	t.Helper()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_ = broker.Run(listener)
-	}()
-	t.Cleanup(func() {
-		_ = listener.Close()
-		waitForShutdown(t, done, "relay broker")
-	})
-}
-
-func runAgent(t *testing.T, ctx context.Context, cancel context.CancelFunc, agent *clientagent.Agent) {
-	t.Helper()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_ = agent.Run(ctx)
-	}()
-	t.Cleanup(func() {
-		cancel()
-		waitForShutdown(t, done, "client agent")
-	})
-}
-
-func waitForShutdown(t *testing.T, done <-chan struct{}, component string) {
-	t.Helper()
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Errorf("%s did not stop before test cleanup", component)
-	}
 }
 
 func waitForTraffic(t *testing.T, store *storage.Store, minimum int64) {
@@ -167,12 +132,17 @@ func newAgent(t *testing.T, serverURL, dataAddress, token string) *clientagent.A
 	return client
 }
 
-func waitForClient(t *testing.T, store *storage.Store, deviceID string) model.Client {
+func waitForClient(t *testing.T, store *storage.Store, hub *clienthub.Hub, deviceID string) model.Client {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		client, err := store.GetClientByDevice(context.Background(), deviceID)
-		if err == nil && client.Status == "online" {
+		if err != nil {
+			time.Sleep(25 * time.Millisecond)
+			continue
+		}
+		_, connected := hub.ConnectedAt(client.ID)
+		if client.Status == "online" && connected {
 			return client
 		}
 		time.Sleep(25 * time.Millisecond)

@@ -33,8 +33,8 @@ func TestQUICTunnelEndToEnd(t *testing.T) {
 	echo := startEcho(t)
 	defer echo.Close()
 	agent := newQUICAgent(t, quicServer.Addr().String(), cleartext)
-	go func() { _ = agent.Run(ctx) }()
-	client := waitForClient(t, store, "quic-device")
+	runAgent(t, ctx, cancel, agent)
+	client := waitForClient(t, store, hub, "quic-device")
 
 	remotePort := reservePort(t)
 	manager := serverTunnel.NewManager(store, hub, broker)

@@ -28,19 +28,17 @@ import (
 
 func TestHTTPAndHTTPSTunnelsEndToEnd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	store, authService := testServices(t)
 	cleartext := createToken(t, ctx, authService)
 	hub := clienthub.NewHub(store, authService, 2*time.Second)
 	control := httptest.NewServer(controlRouter(hub))
 	defer control.Close()
 	dataListener := listenTCP(t)
-	defer dataListener.Close()
 	broker := relay.NewBroker(authService, store, 3*time.Second)
-	go func() { _ = broker.Run(dataListener) }()
+	runBroker(t, dataListener, broker)
 	agent := newHTTPAgent(t, control.URL, dataListener.Addr().String(), cleartext)
-	go func() { _ = agent.Run(ctx) }()
-	client := waitForClient(t, store, "http-device")
+	runAgent(t, ctx, cancel, agent)
+	client := waitForClient(t, store, hub, "http-device")
 
 	plain := httptest.NewServer(responseHandler("plain-response"))
 	defer plain.Close()

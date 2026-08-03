@@ -23,7 +23,6 @@ import (
 
 func TestTLSControlAndDataTunnelEndToEnd(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	store, authService := testServices(t)
 	cleartext := createToken(t, ctx, authService)
 	hub := clienthub.NewHub(store, authService, 2*time.Second)
@@ -33,14 +32,13 @@ func TestTLSControlAndDataTunnelEndToEnd(t *testing.T) {
 	dataListener := tls.NewListener(rawData, &tls.Config{
 		Certificates: control.TLS.Certificates, MinVersion: tls.VersionTLS13,
 	})
-	defer dataListener.Close()
 	broker := relay.NewBroker(authService, store, 3*time.Second)
-	go func() { _ = broker.Run(dataListener) }()
+	runBroker(t, dataListener, broker)
 
 	caFile := writeTestCA(t, control.Certificate().Raw)
 	agent := newTLSAgent(t, control.URL, dataListener.Addr().String(), cleartext, caFile)
-	go func() { _ = agent.Run(ctx) }()
-	client := waitForClient(t, store, "tls-device")
+	runAgent(t, ctx, cancel, agent)
+	client := waitForClient(t, store, hub, "tls-device")
 	echo := startEcho(t)
 	defer echo.Close()
 	remotePort := reservePort(t)

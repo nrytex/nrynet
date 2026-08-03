@@ -19,7 +19,6 @@ import (
 
 func TestRelayNodeReassignsRealVisitorStreams(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	store, authService := testServices(t)
 	cleartext := createToken(t, ctx, authService)
 	hub := clienthub.NewHub(store, authService, 20*time.Second)
@@ -27,11 +26,10 @@ func TestRelayNodeReassignsRealVisitorStreams(t *testing.T) {
 	defer control.Close()
 	broker := relay.NewBroker(authService, store, 3*time.Second)
 	data := listenTCP(t)
-	defer data.Close()
-	go func() { _ = broker.Run(data) }()
+	runBroker(t, data, broker)
 	agent := newAgent(t, control.URL, data.Addr().String(), cleartext)
-	go func() { _ = agent.Run(ctx) }()
-	client := waitForClient(t, store, "integration-device")
+	runAgent(t, ctx, cancel, agent)
+	client := waitForClient(t, store, hub, "integration-device")
 	echo := startEcho(t)
 	defer echo.Close()
 	registry := netx.NewRelayRegistry(30 * time.Second)
