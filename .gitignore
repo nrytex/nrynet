@@ -23,6 +23,8 @@ Thumbs.db
 .DS_Store
 desktop/.task/
 desktop/bin/
+NAT-Link PRD.pdf
+design-qa.md
 *.db
 *.db-shm
 *.db-wal
