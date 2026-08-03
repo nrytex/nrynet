@@ -1,7 +1,7 @@
 import { Button, Form, Input, List, Select, Switch, Typography } from "antd";
 import type { FormInstance } from "antd";
 import { ArrowLeft, CircleUserRound, Info, Network, RadioTower, Save, ScrollText, Settings } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { AppConfig, LogEntry, RuntimeStatus } from "../bindings/github.com/nrytex/nrynet/desktop";
 import { formatTime, logLine } from "./format";
@@ -18,10 +18,13 @@ export function SettingsView({ form, config, status, logs, loading, initialSecti
   loading: boolean;
   initialSection: SettingsSection;
   onBack: () => void;
-  onSave: (values: AppConfig) => void;
+  onSave: (values: Partial<AppConfig>) => void;
   onCheckUpdate: () => void;
 }) {
   const [section, setSection] = useState(initialSection);
+  useEffect(() => {
+    if (!form.isFieldsTouched()) form.setFieldsValue(config);
+  }, [config, form]);
   return (
     <main className="desktop-frame settings-view">
       <header className="view-header">
@@ -41,7 +44,7 @@ export function SettingsView({ form, config, status, logs, loading, initialSecti
           {section === "logs" ? <LogsPanel logs={logs} /> : section === "about" ? (
             <AboutPanel status={status} onCheckUpdate={onCheckUpdate} />
           ) : (
-            <Form form={form} layout="vertical" initialValues={config} onFinish={onSave}>
+            <Form form={form} layout="vertical" initialValues={config} onFinish={() => onSave(form.getFieldsValue(true))}>
               <Typography.Title level={4}>{sectionTitle(section)}</Typography.Title>
               {section === "general" && <GeneralPanel />}
               {section === "network" && <NetworkPanel />}

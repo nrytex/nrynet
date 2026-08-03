@@ -8,6 +8,7 @@ export {
 
 export type {
     AppConfig,
+    AppConfigPatch,
     DesktopSnapshot,
     LogEntry,
     RuntimeStatus,

@@ -18,6 +18,19 @@ export interface AppConfig {
     "autoStart": boolean;
 }
 
+export interface AppConfigPatch {
+    "serverUrl": string | null;
+    "dataAddress": string | null;
+    "transport": string | null;
+    "quicAddress": string | null;
+    "caFile": string | null;
+    "token": string | null;
+    "name": string | null;
+    "deviceId": string | null;
+    "insecureSkipVerify": boolean | null;
+    "autoStart": boolean | null;
+}
+
 export interface DesktopSnapshot {
     "config": AppConfig;
     "status": RuntimeStatus;

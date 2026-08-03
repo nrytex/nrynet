@@ -3,18 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import "antd/dist/reset.css";
 import { DesktopService } from "../bindings/github.com/nrytex/nrynet/desktop";
 import type { AppConfig, DesktopSnapshot } from "../bindings/github.com/nrytex/nrynet/desktop";
+import { completeConfigForSave, emptyConfig } from "./configDraft";
 import { HomeView } from "./HomeView";
 import { SettingsView, type SettingsSection } from "./SettingsView";
 import { TunnelDetailView } from "./TunnelDetailView";
 import { makePreviewSnapshot } from "./previewData";
 import { connectionConfigIssue, userErrorMessage, type FeedbackAction } from "./userFeedback";
 import "./styles.css";
-
-const emptyConfig: AppConfig = {
-  serverUrl: "", dataAddress: "", token: "", name: "", deviceId: "",
-  transport: "websocket", quicAddress: "", caFile: "", insecureSkipVerify: false,
-  autoStart: false,
-};
 
 type View =
   | { name: "home" }
@@ -84,15 +79,17 @@ function DesktopApp() {
     }
   };
 
-  const saveConfig = async (values: AppConfig) => {
+  const saveConfig = async (values: Partial<AppConfig>) => {
+    const completeConfig = completeConfigForSave(snapshot?.config, values);
     setLoading(true);
     try {
-      const next = await DesktopService.SaveConfig(values);
+      const next = await DesktopService.SaveConfig(completeConfig);
       setSnapshot(next);
+      form.setFieldsValue(next.config);
       message.success("设置已保存");
     } catch (error) {
       if (import.meta.env.DEV) {
-        setSnapshot((current) => current ? { ...current, config: values } : current);
+        setSnapshot((current) => current ? { ...current, config: completeConfig } : current);
         message.success("预览设置已保存");
       } else showError(error, "save");
     } finally {

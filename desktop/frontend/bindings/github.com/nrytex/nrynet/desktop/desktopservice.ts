@@ -29,8 +29,8 @@ export function Quit(): $CancellablePromise<void> {
     return $Call.ByID(1821349302);
 }
 
-export function SaveConfig(cfg: $models.AppConfig): $CancellablePromise<$models.DesktopSnapshot> {
-    return $Call.ByID(2379168358, cfg);
+export function SaveConfig(patch: $models.AppConfigPatch): $CancellablePromise<$models.DesktopSnapshot> {
+    return $Call.ByID(2379168358, patch);
 }
 
 export function ShowWindow(): $CancellablePromise<void> {

@@ -60,7 +60,10 @@ func (s *DesktopService) Snapshot() DesktopSnapshot {
 	return DesktopSnapshot{Config: cfg, Status: status, Tunnels: tunnels, Logs: s.logs.Snapshot()}
 }
 
-func (s *DesktopService) SaveConfig(cfg AppConfig) (DesktopSnapshot, error) {
+func (s *DesktopService) SaveConfig(patch AppConfigPatch) (DesktopSnapshot, error) {
+	s.mu.Lock()
+	cfg := patch.Apply(s.cfg)
+	s.mu.Unlock()
 	if err := s.store.Save(cfg); err != nil {
 		return DesktopSnapshot{}, err
 	}
