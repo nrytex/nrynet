@@ -20,10 +20,10 @@
               }
             }
           ],
-          "image-name" : "wails_icon_vector.svg",
-          "name" : "wails_icon_vector",
+          "image-name" : "nrynet-mark.png",
+          "name" : "nrynet-mark",
           "position" : {
-            "scale" : 1.5,
+            "scale" : 1.0,
             "translation-in-points" : [
               0.0,
               0.0

@@ -18,7 +18,8 @@ module.
   name, device ID and TLS settings.
 - Real connect/disconnect using `client/agent`.
 - Status, tunnel table and in-memory runtime log views.
-- Windows/macOS tray menu plus hide/show behavior.
+- Windows/macOS tray menu; closing the main window hides it to the tray, while
+  the tray's Quit command exits the application.
 - Open-at-login setting: Windows `HKCU\...\Run`, macOS LaunchAgent.
 - Wails updater backed directly by public `nrytex/nrynet` GitHub Releases. It
   selects the matching desktop asset and verifies its SHA-256 digest from

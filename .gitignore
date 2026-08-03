@@ -23,6 +23,7 @@ Thumbs.db
 .DS_Store
 desktop/.task/
 desktop/bin/
+desktop/build/darwin/Assets.car
 NAT-Link PRD.pdf
 Nrynet PRD.pdf
 design-qa.md
