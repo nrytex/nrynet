@@ -17,9 +17,6 @@ jobs:
         with:
           go-version: "1.25.x"
           cache: true
-          cache-dependency-path: |
-            go.sum
-            desktop/go.sum
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -32,19 +29,12 @@ jobs:
         working-directory: web/dashboard
         run: npm ci && npm test && npm run build
       - run: git diff --exit-code -- server/dashboard/assets
-      - name: Validate desktop
+      - name: Validate desktop frontend
         run: |
           cd desktop/frontend
           npm ci
           npm test -- --run
           npm run build
-          cd ..
-          for attempt in 1 2 3; do
-            if go mod download; then break; fi
-            if [ "$attempt" -eq 3 ]; then exit 1; fi
-            sleep $((attempt * 10))
-          done
-          CGO_ENABLED=0 go test ./...
       - name: Validate installer scripts
         shell: pwsh
         run: |
@@ -136,6 +126,9 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/frontend/package-lock.json
       - run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.120
+      - name: Test desktop service
+        working-directory: desktop
+        run: go test ./...
       - name: Build desktop application
         working-directory: desktop
         shell: bash
