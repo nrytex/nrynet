@@ -26,7 +26,7 @@ Usage: sudo ./install-server.sh [options]
   --force-config       Replace an existing config.yaml
   --renew-cert         Replace the generated TLS certificate
   --allow-downgrade    Permit replacing a newer installed version
-  --proxy URL          HTTP(S) proxy for package installation and GitHub downloads
+  --proxy URL          HTTP(S) or SOCKS5h proxy for dependencies and downloads
   -h, --help           Show this help
 EOF
 }
@@ -61,8 +61,8 @@ esac
 
 if [ -n "$PROXY" ]; then
   case "$PROXY" in
-    http://*|https://*) ;;
-    *) echo "--proxy must be an HTTP(S) proxy URL." >&2; exit 2 ;;
+    http://*|https://*|socks5h://*) ;;
+    *) echo "--proxy must be an HTTP(S) or SOCKS5h proxy URL." >&2; exit 2 ;;
   esac
   # Package managers and curl honor these standard proxy environment variables.
   export HTTP_PROXY="$PROXY" HTTPS_PROXY="$PROXY" ALL_PROXY="$PROXY"

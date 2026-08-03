@@ -41,9 +41,9 @@ chmod +x install-server.sh
 sudo ./install-server.sh --public-host nat.example.com
 ```
 
-Add `--proxy http://127.0.0.1:7890` when release downloads must use an
-HTTP(S) proxy. The Windows installer accepts both `--proxy URL` and its native
-PowerShell spelling, `-Proxy URL`.
+Add `--proxy http://127.0.0.1:7890` or `--proxy socks5h://127.0.0.1:1080`
+when dependencies and release downloads must use a proxy. The Windows installer
+accepts both `--proxy URL` and its native PowerShell spelling, `-Proxy URL`.
 
 Windows Server users can download `install-server.ps1` from the same release
 and run it from an elevated PowerShell session. Full instructions, certificate

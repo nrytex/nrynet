@@ -3,7 +3,7 @@
 Installs the Nrynet Server Windows service.
 
 .PARAMETER Proxy
-HTTP(S) proxy URL used for package installation and GitHub downloads. Both
+HTTP(S) or SOCKS5h proxy URL used for package installation and GitHub downloads. Both
 `-Proxy URL` and `--proxy URL` are accepted.
 #>
 [CmdletBinding(PositionalBinding = $false)]
@@ -33,7 +33,7 @@ $LegacyDataDir = "$env:ProgramData\NAT-Link"
 
 if ($ExtraArgs) {
     if ($ExtraArgs.Count -ne 2 -or $ExtraArgs[0] -ne "--proxy" -or $Proxy) {
-        throw "Unknown arguments. Use -Proxy URL or --proxy URL for an HTTP(S) proxy."
+        throw "Unknown arguments. Use -Proxy URL or --proxy URL for an HTTP(S) or SOCKS5h proxy."
     }
     $Proxy = $ExtraArgs[1]
 }
@@ -46,7 +46,7 @@ function Assert-Administrator {
     }
 }
 
-function Find-OpenSSL {
+function Find-OpenSSL([string]$ProxyUri) {
     $command = Get-Command openssl.exe -ErrorAction SilentlyContinue
     if ($command) { return $command.Source }
     $knownPaths = @(
@@ -61,8 +61,12 @@ function Find-OpenSSL {
         throw "OpenSSL is required. Install OpenSSL and ensure openssl.exe is in PATH."
     }
     Write-Host "Installing OpenSSL with winget..."
-    & $winget.Source install --id ShiningLight.OpenSSL.Light --exact --silent `
-        --accept-package-agreements --accept-source-agreements
+    $arguments = @(
+        "install", "--id", "ShiningLight.OpenSSL.Light", "--exact", "--silent",
+        "--accept-package-agreements", "--accept-source-agreements"
+    )
+    if ($ProxyUri) { $arguments += @("--proxy", $ProxyUri) }
+    & $winget.Source @arguments
     if ($LASTEXITCODE -ne 0) { throw "winget could not install OpenSSL." }
     foreach ($path in $knownPaths) {
         if (Test-Path -LiteralPath $path) { return $path }
@@ -78,13 +82,22 @@ function Resolve-Proxy([string]$Value) {
     }
     $uri = $null
     if (-not [uri]::TryCreate($candidate, [UriKind]::Absolute, [ref]$uri) -or
-        $uri.Scheme -notin @("http", "https") -or -not $uri.Host) {
-        throw "Proxy must be a valid HTTP(S) proxy URL."
+        $uri.Scheme -notin @("http", "https", "socks5h") -or -not $uri.Host) {
+        throw "Proxy must be a valid HTTP(S) or SOCKS5h proxy URL."
     }
     return $uri.AbsoluteUri.TrimEnd('/')
 }
 
 function Invoke-Download([string]$Uri, [string]$OutFile, [string]$ProxyUri) {
+    if ($ProxyUri -and ([uri]$ProxyUri).Scheme -eq "socks5h") {
+        $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+        if (-not $curl) {
+            throw "curl.exe is required when using a SOCKS5h proxy."
+        }
+        & $curl.Source --fail --location --retry 3 --proxy $ProxyUri --output $OutFile $Uri
+        if ($LASTEXITCODE -ne 0) { throw "Download through the SOCKS5h proxy failed." }
+        return
+    }
     if ($ProxyUri) {
         Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $OutFile -Proxy $ProxyUri
         return
@@ -205,7 +218,7 @@ if ($ResolvedProxy) {
     $env:https_proxy = $ResolvedProxy
     $env:all_proxy = $ResolvedProxy
 }
-$OpenSSL = Find-OpenSSL
+$OpenSSL = Find-OpenSSL $ResolvedProxy
 $Asset = "nrynet-windows-amd64.zip"
 $DownloadBase = Get-DownloadBase
 $TempDir = Join-Path ([IO.Path]::GetTempPath()) ("nrynet-install-" + [guid]::NewGuid())

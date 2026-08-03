@@ -44,10 +44,16 @@ sudo ./install-server.sh --public-host nat.example.com
 sudo ./install-server.sh --version 1.0.0 --public-host nat.example.com --renew-cert
 ```
 
-通过 HTTP(S) 代理下载安装依赖和 GitHub Release：
+通过 HTTP(S) 或 SOCKS5h 代理下载安装依赖和 GitHub Release：
 
 ```bash
 sudo ./install-server.sh --public-host nat.example.com --proxy http://127.0.0.1:7890
+```
+
+SOCKS5h 会让代理端完成 DNS 解析，避免本机 DNS 泄漏：
+
+```bash
+sudo ./install-server.sh --public-host nat.example.com --proxy socks5h://127.0.0.1:1080
 ```
 
 再次执行同一个脚本即可升级。安装器会读取已安装 Server 的版本，和 Release 软件包内的 `VERSION` 比较：相同版本不会重复替换二进制，只允许正常升级，并保留现有数据库、配置和证书。需要明确回滚时才使用 `--allow-downgrade`；Windows 对应参数为 `-AllowDowngrade`。
@@ -79,6 +85,12 @@ Set-ExecutionPolicy -Scope Process Bypass
 ```
 
 PowerShell 原生写法 `-Proxy http://127.0.0.1:7890` 同样支持。
+
+SOCKS5h 使用 Windows 自带的 `curl.exe` 下载 Release，并将同一代理传给 `winget`：
+
+```powershell
+.\install-server.ps1 -PublicHost nat.example.com --proxy socks5h://127.0.0.1:1080
+```
 
 脚本会在缺少 OpenSSL 时通过 `winget` 安装，注册 `NrynetServer` Windows 服务，并开放 TCP `7000/7001/8080` 和 UDP `7002/7003`。使用 `-SkipFirewall` 可跳过防火墙规则。
 
