@@ -26,21 +26,19 @@ import (
 func TestTCPTunnelEndToEnd(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	store, authService := testServices(t)
 	cleartext := createToken(t, ctx, authService)
 	hub := clienthub.NewHub(store, authService, 2*time.Second)
 	control := httptest.NewServer(controlRouter(hub))
 	defer control.Close()
 	dataListener := listenTCP(t)
-	defer dataListener.Close()
 	broker := relay.NewBroker(authService, store, 3*time.Second)
-	go func() { _ = broker.Run(dataListener) }()
+	runBroker(t, dataListener, broker)
 
 	echo := startEcho(t)
 	defer echo.Close()
 	agent := newAgent(t, control.URL, dataListener.Addr().String(), cleartext)
-	go func() { _ = agent.Run(ctx) }()
+	runAgent(t, ctx, cancel, agent)
 	client := waitForClient(t, store, "integration-device")
 
 	remotePort := reservePort(t)
@@ -77,6 +75,41 @@ func TestTCPTunnelEndToEnd(t *testing.T) {
 	}
 	_ = visitor.Close()
 	waitForTraffic(t, store, int64(len(want)*2))
+}
+
+func runBroker(t *testing.T, listener net.Listener, broker *relay.Broker) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = broker.Run(listener)
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		waitForShutdown(t, done, "relay broker")
+	})
+}
+
+func runAgent(t *testing.T, ctx context.Context, cancel context.CancelFunc, agent *clientagent.Agent) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = agent.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		waitForShutdown(t, done, "client agent")
+	})
+}
+
+func waitForShutdown(t *testing.T, done <-chan struct{}, component string) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Errorf("%s did not stop before test cleanup", component)
+	}
 }
 
 func waitForTraffic(t *testing.T, store *storage.Store, minimum int64) {
