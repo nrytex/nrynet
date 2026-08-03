@@ -14,9 +14,16 @@ import (
 	"github.com/nat-link/nat-link/server/app"
 )
 
+var version = "1.0.0"
+
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to YAML configuration")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatal(err)

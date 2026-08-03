@@ -89,10 +89,11 @@ jobs:
           if [[ "$GOOS" == "windows" ]]; then extension=".exe"; fi
           stage="bundle-$GOOS-$GOARCH"
           mkdir -p "$stage" release-assets
-          go build -trimpath -ldflags "-s -w" -o "$stage/nat-link-server$extension" ./server
+          go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$stage/nat-link-server$extension" ./server
           go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$stage/nat-link-client$extension" ./client
-          go build -trimpath -ldflags "-s -w" -o "$stage/nat-link-relay$extension" ./relay
+          go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$stage/nat-link-relay$extension" ./relay
           cp config.example.yaml config.local.example.yaml README.md "$stage/"
+          printf '%s\n' "$version" > "$stage/VERSION"
           asset="nat-link-$GOOS-$GOARCH"
           if [[ "${{ matrix.archive }}" == "zip" ]]; then
             (cd "$stage" && zip -q -r "../release-assets/$asset.zip" .)

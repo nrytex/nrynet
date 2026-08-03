@@ -14,7 +14,7 @@ import (
 	"github.com/nat-link/nat-link/internal/config"
 )
 
-var version = "0.1.0"
+var version = "1.0.0"
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to YAML configuration")

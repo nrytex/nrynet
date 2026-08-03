@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -10,7 +11,10 @@ import (
 	"github.com/nat-link/nat-link/relay/runtime"
 )
 
+var version = "1.0.0"
+
 func main() {
+	showVersion := flag.Bool("version", false, "print version and exit")
 	server := flag.String("server", "http://127.0.0.1:7000", "central control API URL")
 	id := flag.String("id", "", "relay node id")
 	address := flag.String("address", "", "advertised public relay address")
@@ -27,6 +31,10 @@ func main() {
 	token := flag.String("token", "", "relay control and data-plane token")
 	interval := flag.Duration("heartbeat", 10*time.Second, "heartbeat interval")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 	node, err := runtime.New(runtime.Config{ID: *id, Address: *address, ControlListen: *controlListen, ControlAddress: *controlAddress, BindHost: *bindHost, BrokerAddress: *broker, Token: *token, BrokerTLS: *brokerTLS, BrokerServerName: *brokerServerName, BrokerCAFile: *brokerCAFile, ControlTLS: *controlTLS, ControlCertFile: *controlCertFile, ControlKeyFile: *controlKeyFile})
 	if err != nil {
 		log.Fatal(err)

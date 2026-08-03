@@ -8,6 +8,7 @@ PUBLIC_HOST=""
 ADMIN_USER="admin"
 FORCE_CONFIG=0
 RENEW_CERT=0
+ALLOW_DOWNGRADE=0
 
 usage() {
   cat <<'EOF'
@@ -15,11 +16,12 @@ Install NAT-Link Server as a systemd service.
 
 Usage: sudo ./install-server.sh [options]
   --public-host HOST   DNS name or IPv4 address advertised to clients
-  --version VERSION    Release version such as 2.3.5 (default: latest)
+  --version VERSION    Release version such as 1.0.0 (default: latest)
   --install-dir PATH   Installation directory (default: /opt/nat-link)
   --admin-user NAME    Initial administrator name (default: admin)
   --force-config       Replace an existing config.yaml
   --renew-cert         Replace the generated TLS certificate
+  --allow-downgrade    Permit replacing a newer installed version
   -h, --help           Show this help
 EOF
 }
@@ -32,6 +34,7 @@ while [ "$#" -gt 0 ]; do
     --admin-user) ADMIN_USER="$2"; shift 2 ;;
     --force-config) FORCE_CONFIG=1; shift ;;
     --renew-cert) RENEW_CERT=1; shift ;;
+    --allow-downgrade) ALLOW_DOWNGRADE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -125,6 +128,31 @@ printf '%s  %s\n' "$EXPECTED" "$TEMP_DIR/$ASSET" | sha256sum -c -
 mkdir -p "$TEMP_DIR/package"
 tar -xzf "$TEMP_DIR/$ASSET" -C "$TEMP_DIR/package"
 [ -f "$TEMP_DIR/package/nat-link-server" ] || { echo "Release archive is missing nat-link-server." >&2; exit 1; }
+[ -f "$TEMP_DIR/package/VERSION" ] || { echo "Release archive is missing VERSION." >&2; exit 1; }
+TARGET_VERSION="$(tr -d '\r\n ' < "$TEMP_DIR/package/VERSION")"
+TARGET_VERSION="${TARGET_VERSION#v}"
+[ -n "$TARGET_VERSION" ] || { echo "Release version is empty." >&2; exit 1; }
+
+INSTALLED_VERSION=""
+if [ -x "$INSTALL_DIR/nat-link-server" ]; then
+  INSTALLED_VERSION="$("$INSTALL_DIR/nat-link-server" -version 2>/dev/null || true)"
+  INSTALLED_VERSION="$(printf '%s' "$INSTALLED_VERSION" | tr -d '\r\n ' | sed 's/^v//')"
+fi
+REPLACE_BINARY=1
+if [ "$INSTALLED_VERSION" = "$TARGET_VERSION" ]; then
+  REPLACE_BINARY=0
+  echo "NAT-Link Server $TARGET_VERSION is already installed."
+elif [ -n "$INSTALLED_VERSION" ]; then
+  LOWEST="$(printf '%s\n%s\n' "$INSTALLED_VERSION" "$TARGET_VERSION" | sort -V | head -n 1)"
+  if [ "$LOWEST" = "$TARGET_VERSION" ] && [ "$ALLOW_DOWNGRADE" -ne 1 ]; then
+    echo "Installed version $INSTALLED_VERSION is newer than requested $TARGET_VERSION." >&2
+    echo "Use --allow-downgrade only when an intentional rollback is required." >&2
+    exit 1
+  fi
+  echo "Upgrading NAT-Link Server from $INSTALLED_VERSION to $TARGET_VERSION..."
+else
+  echo "Installing NAT-Link Server $TARGET_VERSION..."
+fi
 
 if ! getent group nat-link >/dev/null 2>&1; then
   groupadd --system nat-link
@@ -134,7 +162,12 @@ if ! id -u nat-link >/dev/null 2>&1; then
 fi
 install -d -m 0750 -o nat-link -g nat-link "$INSTALL_DIR" "$INSTALL_DIR/data" "$INSTALL_DIR/logs"
 install -d -m 0750 -o root -g nat-link "$INSTALL_DIR/tls"
-install -m 0755 "$TEMP_DIR/package/nat-link-server" "$INSTALL_DIR/nat-link-server"
+if [ "$REPLACE_BINARY" -eq 1 ]; then
+  if systemctl is-active --quiet nat-link-server 2>/dev/null; then
+    systemctl stop nat-link-server
+  fi
+  install -m 0755 "$TEMP_DIR/package/nat-link-server" "$INSTALL_DIR/nat-link-server"
+fi
 
 CERT_FILE="$INSTALL_DIR/tls/fullchain.pem"
 KEY_FILE="$INSTALL_DIR/tls/privkey.pem"
@@ -222,7 +255,12 @@ WantedBy=multi-user.target
 EOF
 install -m 0644 "$TEMP_DIR/nat-link-server.service" /etc/systemd/system/nat-link-server.service
 systemctl daemon-reload
-systemctl enable --now nat-link-server
+systemctl enable nat-link-server
+if systemctl is-active --quiet nat-link-server 2>/dev/null; then
+  systemctl restart nat-link-server
+else
+  systemctl start nat-link-server
+fi
 sleep 2
 if ! systemctl is-active --quiet nat-link-server; then
   journalctl -u nat-link-server -n 40 --no-pager >&2 || true
@@ -235,6 +273,7 @@ fi
 
 echo
 echo "NAT-Link Server is running: https://$PUBLIC_HOST:7000"
+echo "Installed version: $TARGET_VERSION"
 echo "Self-signed CA certificate: $CERT_FILE"
 if [ -n "$INITIAL_PASSWORD" ]; then
   echo "Administrator: $ADMIN_USER"

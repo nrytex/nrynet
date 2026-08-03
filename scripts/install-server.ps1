@@ -7,6 +7,7 @@ param(
     [string]$AdminUser = "admin",
     [switch]$ForceConfig,
     [switch]$RenewCertificate,
+    [switch]$AllowDowngrade,
     [switch]$SkipFirewall
 )
 
@@ -93,6 +94,10 @@ try {
     Expand-Archive -LiteralPath $Archive -DestinationPath $PackageDir -Force
     $PackagedServer = Join-Path $PackageDir "nat-link-server.exe"
     if (-not (Test-Path -LiteralPath $PackagedServer)) { throw "Release archive is missing nat-link-server.exe." }
+    $PackageVersionFile = Join-Path $PackageDir "VERSION"
+    if (-not (Test-Path -LiteralPath $PackageVersionFile)) { throw "Release archive is missing VERSION." }
+    $targetVersionText = (Get-Content -Raw -LiteralPath $PackageVersionFile).Trim().TrimStart("v")
+    try { $targetVersion = [version]$targetVersionText } catch { throw "Release version '$targetVersionText' is invalid." }
 
     New-Item -ItemType Directory -Force -Path $InstallDir, $DataDir | Out-Null
     $DatabaseDir = Join-Path $DataDir "data"
@@ -100,7 +105,31 @@ try {
     $TlsDir = Join-Path $DataDir "tls"
     New-Item -ItemType Directory -Force -Path $DatabaseDir, $LogDir, $TlsDir | Out-Null
     $ServerExe = Join-Path $InstallDir "nat-link-server.exe"
-    Copy-Item -LiteralPath $PackagedServer -Destination $ServerExe -Force
+    $installedVersionText = ""
+    if (Test-Path -LiteralPath $ServerExe) {
+        $installedVersionText = (& $ServerExe -version 2>$null | Out-String).Trim().TrimStart("v")
+    }
+    $replaceBinary = $true
+    if ($installedVersionText) {
+        try { $installedVersion = [version]$installedVersionText } catch { $installedVersion = [version]"0.0.0" }
+        if ($installedVersion -eq $targetVersion) {
+            $replaceBinary = $false
+            Write-Host "NAT-Link Server $targetVersionText is already installed."
+        } elseif ($installedVersion -gt $targetVersion -and -not $AllowDowngrade) {
+            throw "Installed version $installedVersion is newer than requested $targetVersion. Use -AllowDowngrade only for an intentional rollback."
+        } else {
+            Write-Host "Upgrading NAT-Link Server from $installedVersion to $targetVersion..."
+        }
+    } else {
+        Write-Host "Installing NAT-Link Server $targetVersion..."
+    }
+    $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if ($replaceBinary) {
+        if ($existingService -and $existingService.Status -ne "Stopped") {
+            Stop-Service -Name $ServiceName -Force
+        }
+        Copy-Item -LiteralPath $PackagedServer -Destination $ServerExe -Force
+    }
 
     $CertFile = Join-Path $TlsDir "fullchain.pem"
     $KeyFile = Join-Path $TlsDir "privkey.pem"
@@ -197,6 +226,7 @@ client:
 
     Write-Host ""
     Write-Host "NAT-Link Server is running: https://${PublicHost}:7000"
+    Write-Host "Installed version: $targetVersionText"
     Write-Host "Self-signed CA certificate: $CertFile"
     if ($initialPassword) {
         Write-Host "Administrator: $AdminUser"

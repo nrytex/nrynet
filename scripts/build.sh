@@ -11,9 +11,10 @@ for target in linux/amd64 linux/arm64 windows/amd64 darwin/amd64 darwin/arm64; d
   extension=""
   if [ "$os" = "windows" ]; then extension=".exe"; fi
   mkdir -p "$directory"
-  CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w" -o "$directory/nat-link-server$extension" ./server
+  CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$directory/nat-link-server$extension" ./server
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$directory/nat-link-client$extension" ./client
-  CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w" -o "$directory/nat-link-relay$extension" ./relay
+  CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$directory/nat-link-relay$extension" ./relay
   cp config.example.yaml "$directory/config.example.yaml"
   cp config.local.example.yaml "$directory/config.local.example.yaml"
+  printf '%s\n' "$VERSION" > "$directory/VERSION"
 done

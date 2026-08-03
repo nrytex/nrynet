@@ -19,14 +19,15 @@ foreach ($target in $targets) {
     $directory = Join-Path $Output "$Version-$($target.OS)-$($target.Arch)"
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
     $extension = if ($target.OS -eq "windows") { ".exe" } else { "" }
-    go build -trimpath -ldflags "-s -w" -o (Join-Path $directory "nat-link-server$extension") ./server
+    go build -trimpath -ldflags "-s -w -X main.version=$Version" -o (Join-Path $directory "nat-link-server$extension") ./server
     if ($LASTEXITCODE -ne 0) { throw "server build failed for $($target.OS)/$($target.Arch)" }
     go build -trimpath -ldflags "-s -w -X main.version=$Version" -o (Join-Path $directory "nat-link-client$extension") ./client
     if ($LASTEXITCODE -ne 0) { throw "client build failed for $($target.OS)/$($target.Arch)" }
-    go build -trimpath -ldflags "-s -w" -o (Join-Path $directory "nat-link-relay$extension") ./relay
+    go build -trimpath -ldflags "-s -w -X main.version=$Version" -o (Join-Path $directory "nat-link-relay$extension") ./relay
     if ($LASTEXITCODE -ne 0) { throw "relay build failed for $($target.OS)/$($target.Arch)" }
     Copy-Item -LiteralPath "config.example.yaml" -Destination (Join-Path $directory "config.example.yaml") -Force
     Copy-Item -LiteralPath "config.local.example.yaml" -Destination (Join-Path $directory "config.local.example.yaml") -Force
+    Set-Content -LiteralPath (Join-Path $directory "VERSION") -Value $Version -Encoding ASCII
 }
 
 Remove-Item Env:GOOS, Env:GOARCH, Env:CGO_ENABLED -ErrorAction SilentlyContinue
