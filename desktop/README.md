@@ -1,5 +1,7 @@
 # NAT-Link Desktop
 
+[中文说明](README.zh-CN.md)
+
 Wails v3 desktop client for NAT-Link. The Go module is intentionally isolated
 under `desktop/` and uses:
 
