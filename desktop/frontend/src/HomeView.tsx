@@ -1,11 +1,12 @@
 import { App, Button, Empty, Switch, Tooltip, Typography } from "antd";
-import { Copy, Database, MoreHorizontal, Power, Settings, SlidersHorizontal } from "lucide-react";
+import { CircleAlert, Copy, Database, MoreHorizontal, Power, Settings, SlidersHorizontal } from "lucide-react";
 import type { MouseEvent } from "react";
 import type { DesktopSnapshot } from "../bindings/github.com/nat-link/nat-link/desktop";
 import type { Tunnel } from "../bindings/github.com/nat-link/nat-link/internal/model";
 import { formatBytes } from "./format";
 import { TrafficSparkline } from "./TrafficChart";
 import { useTrafficHistory } from "./useTrafficHistory";
+import { connectionStatusMessage } from "./userFeedback";
 import type { SettingsSection } from "./SettingsView";
 import brandMark from "./assets/nat-link-mark.png";
 
@@ -23,6 +24,7 @@ export function HomeView(props: HomeViewProps) {
   const config = props.snapshot?.config;
   const tunnels = props.snapshot?.tunnels ?? [];
   const connected = Boolean(status?.connected);
+  const statusMessage = connectionStatusMessage(status);
   const { points, rates } = useTrafficHistory(status);
   return (
     <main className="desktop-frame home-view">
@@ -47,6 +49,7 @@ export function HomeView(props: HomeViewProps) {
             icon={<Power size={15} />}
           >{connected ? "断开连接" : "立即连接"}</Button>
         </div>
+        {statusMessage && <div className="connection-feedback" role="status"><CircleAlert size={15} /><span>{statusMessage}</span></div>}
         <div className="metric-strip">
           <Metric label="隧道数" value={String(tunnels.length)} />
           <Metric label="上传速率" value={formatRate(rates.upload)} tone="green" />

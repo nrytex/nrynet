@@ -88,8 +88,10 @@ func (s *DesktopService) Connect() (RuntimeStatus, error) {
 	s.mu.Unlock()
 	client, err := s.newAgent(cfg)
 	if err != nil {
-		s.setStopped(fmt.Sprintf("config error: %v", err))
-		return s.Status(), err
+		s.logs.append(LogEntry{Time: time.Now(), Level: "ERROR", Message: "connection configuration invalid", Fields: map[string]any{"error": err.Error()}})
+		message := connectionErrorMessage(err)
+		s.setStopped(message)
+		return s.Status(), errors.New(message)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
@@ -107,7 +109,7 @@ func (s *DesktopService) Disconnect() RuntimeStatus {
 	if cancel != nil {
 		cancel()
 	}
-	s.setStopped("disconnected by user")
+	s.setStopped("已由用户断开连接。")
 	return s.Status()
 }
 
@@ -192,17 +194,20 @@ func (s *DesktopService) onSessionStarted() {
 	defer s.mu.Unlock()
 	s.status.Connected = true
 	s.status.State = "connected"
-	s.status.Message = "authenticated session started"
+	s.status.Message = "已连接并通过身份验证。"
 }
 
 func (s *DesktopService) onSessionEnded(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.cancel == nil {
+		return
+	}
 	s.status.Connected = false
 	s.status.State = "reconnecting"
-	s.status.Message = "session ended"
+	s.status.Message = "连接已中断，客户端正在尝试重新连接。"
 	if err != nil {
-		s.status.Message = err.Error()
+		s.status.Message = connectionErrorMessage(err)
 	}
 }
 

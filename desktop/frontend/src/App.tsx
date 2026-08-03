@@ -7,6 +7,7 @@ import { HomeView } from "./HomeView";
 import { SettingsView, type SettingsSection } from "./SettingsView";
 import { TunnelDetailView } from "./TunnelDetailView";
 import { makePreviewSnapshot } from "./previewData";
+import { connectionConfigIssue, userErrorMessage, type FeedbackAction } from "./userFeedback";
 import "./styles.css";
 
 const emptyConfig: AppConfig = {
@@ -39,6 +40,10 @@ function DesktopApp() {
   const [form] = Form.useForm<AppConfig>();
   const previewTick = useRef(0);
 
+  const showError = (error: unknown, action: FeedbackAction) => {
+    message.error({ content: userErrorMessage(error, action), duration: 6 });
+  };
+
   const refresh = async () => {
     let next: DesktopSnapshot;
     try {
@@ -51,19 +56,25 @@ function DesktopApp() {
   };
 
   useEffect(() => {
-    refresh().catch((error) => message.error(String(error)));
+    refresh().catch((error) => showError(error, "load"));
     const id = window.setInterval(() => refresh().catch(() => undefined), 2000);
     return () => window.clearInterval(id);
   }, []);
 
   const runConnectionAction = async (action: "connect" | "disconnect") => {
+    const issue = action === "connect" ? connectionConfigIssue(snapshot?.config) : undefined;
+    if (issue) {
+      message.warning({ content: issue.message, duration: 5 });
+      setView({ name: "settings", section: issue.section });
+      return;
+    }
     setLoading(true);
     try {
       if (action === "connect") await DesktopService.Connect();
       else await DesktopService.Disconnect();
       await refresh();
     } catch (error) {
-      if (!import.meta.env.DEV) message.error(String(error));
+      if (!import.meta.env.DEV) showError(error, "connect");
       setSnapshot((current) => current ? {
         ...current,
         status: { ...current.status, connected: action === "connect", state: action === "connect" ? "connected" : "disconnected" },
@@ -83,7 +94,7 @@ function DesktopApp() {
       if (import.meta.env.DEV) {
         setSnapshot((current) => current ? { ...current, config: values } : current);
         message.success("预览设置已保存");
-      } else message.error(String(error));
+      } else showError(error, "save");
     } finally {
       setLoading(false);
     }
@@ -94,7 +105,8 @@ function DesktopApp() {
       const result = await DesktopService.CheckForUpdate();
       message.success(result.message);
     } catch (error) {
-      message.info(import.meta.env.DEV ? "当前已是最新版本" : String(error));
+      if (import.meta.env.DEV) message.info("当前已是最新版本");
+      else showError(error, "update");
     }
   };
 

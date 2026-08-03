@@ -61,7 +61,7 @@ func (s *UpdateService) CheckAndInstall(cfg AppConfig) (UpdateResult, error) {
 	if err := s.runner.CheckAndInstall(context.Background()); err != nil {
 		return UpdateResult{}, err
 	}
-	return UpdateResult{Started: true, Message: "update check completed"}, nil
+	return UpdateResult{Started: true, Message: "更新检查已完成。"}, nil
 }
 
 func (s *UpdateService) ensureConfigured(cfg AppConfig) error {

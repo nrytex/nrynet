@@ -66,10 +66,12 @@ func (a *Agent) Run(ctx context.Context) error {
 func (a *Agent) runSession(ctx context.Context) error {
 	conn, err := a.dialControl(ctx)
 	if err != nil {
+		a.notifySessionEnded(err)
 		return err
 	}
 	defer conn.close()
 	if err := a.sendHello(conn); err != nil {
+		a.notifySessionEnded(err)
 		return err
 	}
 	a.notifySessionStarted()

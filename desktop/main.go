@@ -58,11 +58,11 @@ func configureTray(app *application.App, svc *DesktopService, win *application.W
 	tray.SetTooltip("NAT-Link")
 	tray.AttachWindow(win)
 	menu := application.NewMenu()
-	menu.Add("Show").OnClick(func(*application.Context) { svc.ShowWindow() })
-	menu.Add("Connect").OnClick(func(*application.Context) { _, _ = svc.Connect() })
-	menu.Add("Disconnect").OnClick(func(*application.Context) { svc.Disconnect() })
+	menu.Add("显示主窗口").OnClick(func(*application.Context) { svc.ShowWindow() })
+	menu.Add("连接").OnClick(func(*application.Context) { _, _ = svc.Connect() })
+	menu.Add("断开连接").OnClick(func(*application.Context) { svc.Disconnect() })
 	menu.AddSeparator()
-	menu.Add("Quit").OnClick(func(*application.Context) { svc.Quit() })
+	menu.Add("退出").OnClick(func(*application.Context) { svc.Quit() })
 	tray.SetMenu(menu)
 	tray.OnClick(func() { svc.ShowWindow() })
 }
@@ -71,10 +71,10 @@ func configureMenu(app *application.App, svc *DesktopService) {
 	menu := app.Menu.New()
 	app.Menu.SetApplicationMenu(menu)
 	appMenu := menu.AddSubmenu("NAT-Link")
-	appMenu.Add("Show").OnClick(func(*application.Context) { svc.ShowWindow() })
-	appMenu.Add("Check for Updates").OnClick(func(*application.Context) {
+	appMenu.Add("显示主窗口").OnClick(func(*application.Context) { svc.ShowWindow() })
+	appMenu.Add("检查更新").OnClick(func(*application.Context) {
 		_, _ = svc.CheckForUpdate()
 	})
 	appMenu.AddSeparator()
-	appMenu.Add("Quit").OnClick(func(*application.Context) { svc.Quit() })
+	appMenu.Add("退出").OnClick(func(*application.Context) { svc.Quit() })
 }

@@ -9,7 +9,7 @@ import (
 )
 
 func TestDesktopObserverUpdatesSessionTunnelsAndTraffic(t *testing.T) {
-	svc := &DesktopService{logs: newMemoryLogHandler(), status: RuntimeStatus{Version: appVersion}}
+	svc := &DesktopService{logs: newMemoryLogHandler(), status: RuntimeStatus{Version: appVersion}, cancel: func() {}}
 	svc.onSessionStarted()
 	if got := svc.Status(); !got.Connected || got.State != "connected" {
 		t.Fatalf("unexpected started status: %+v", got)
@@ -25,5 +25,16 @@ func TestDesktopObserverUpdatesSessionTunnelsAndTraffic(t *testing.T) {
 	svc.onSessionEnded(errors.New("closed"))
 	if got := svc.Status(); got.Connected || got.State != "reconnecting" {
 		t.Fatalf("unexpected ended status: %+v", got)
+	}
+}
+
+func TestDesktopObserverIgnoresSessionEndAfterUserDisconnect(t *testing.T) {
+	svc := &DesktopService{
+		logs:   newMemoryLogHandler(),
+		status: RuntimeStatus{State: "disconnected", Message: "已由用户断开连接。"},
+	}
+	svc.onSessionEnded(errors.New("connection reset"))
+	if got := svc.Status(); got.State != "disconnected" || got.Message != "已由用户断开连接。" {
+		t.Fatalf("late session end replaced intentional disconnect: %+v", got)
 	}
 }

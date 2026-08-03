@@ -53,6 +53,20 @@ button, input, textarea, select { letter-spacing: 0; }
 .status-dot.offline { background: #aab4c0; }
 .connection-button { height: 38px; border-color: #26b875; color: #0da35f; }
 .connection-button:hover { border-color: #0b9b59 !important; color: #0b9b59 !important; }
+.connection-feedback {
+  display: flex;
+  align-items: flex-start;
+  margin-top: 14px;
+  padding: 9px 11px;
+  gap: 8px;
+  border: 1px solid #f3d4a4;
+  border-radius: 6px;
+  background: #fff9ed;
+  color: #7c5312;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.connection-feedback svg { flex: none; margin-top: 1px; }
 
 .metric-strip {
   display: grid;
