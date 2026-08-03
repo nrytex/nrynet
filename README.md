@@ -1,8 +1,8 @@
 # NAT-Link
 
 NAT-Link is a self-hosted NAT traversal system made of a Go server, a Go agent,
-an embedded React dashboard, and a desktop agent. The implementation follows
-`NAT-Link PRD.pdf` and targets Linux, Windows, and macOS.
+an embedded React dashboard, and a desktop agent targeting Linux, Windows,
+and macOS.
 
 ## Components
 
@@ -25,14 +25,15 @@ an embedded React dashboard, and a desktop agent. The implementation follows
 
 Remote control and data listeners require TLS. Configure the certificate,
 switch the agent URL to `wss://`, and then bind the server listeners publicly.
-See `docs/operations.md` for certificates, systemd, Docker, ports, and builds.
+See `docs/operations.md` for certificates, systemd, ports, and builds.
 中文安装与生产部署步骤见 `docs/deployment.zh-CN.md`。
 See `docs/requirements.md` for the versioned acceptance matrix.
 
 ## One-command server install
 
 Linux systemd hosts can install the latest release and generate a self-signed
-TLS certificate with OpenSSL in one command:
+TLS certificate with OpenSSL in one command. The installer registers,
+enables, and starts the `nat-link-server` systemd service:
 
 ```sh
 curl -fLO https://github.com/nrytex/nrynet/releases/latest/download/install-server.sh

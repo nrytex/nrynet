@@ -20,7 +20,7 @@ Server 和 Agent 可以安装在同一台机器用于本地验证，但生产环
 - Wails v3，仅构建桌面客户端时需要
 - 一个解析到 Server 公网地址的域名
 - 受信任的 TLS 证书和私钥
-- Linux 使用 systemd；Windows 可使用任务计划程序保持后台运行
+- Linux 使用 systemd；Windows 使用系统服务保持后台运行
 
 生产环境不要公开使用明文 `ws://`。NAT-Link 会拒绝绑定到非回环地址的明文控制和数据监听器。
 
@@ -46,6 +46,14 @@ sudo ./install-server.sh --version 1.0.0 --public-host nat.example.com --renew-c
 
 再次执行同一个脚本即可升级。安装器会读取已安装 Server 的版本，和 Release 软件包内的 `VERSION` 比较：相同版本不会重复替换二进制，只允许正常升级，并保留现有数据库、配置和证书。需要明确回滚时才使用 `--allow-downgrade`；Windows 对应参数为 `-AllowDowngrade`。
 
+安装脚本不只是复制文件。它会创建 `/etc/systemd/system/nat-link-server.service`，执行 `daemon-reload`，设置开机启动并立即启动 Server。安装后可直接管理服务：
+
+```bash
+sudo systemctl status nat-link-server
+sudo systemctl restart nat-link-server
+sudo journalctl -u nat-link-server -f
+```
+
 ### 3.2 Windows
 
 使用管理员身份打开 PowerShell：
@@ -59,6 +67,24 @@ Set-ExecutionPolicy -Scope Process Bypass
 脚本会在缺少 OpenSSL 时通过 `winget` 安装，注册 `NATLinkServer` Windows 服务，并开放 TCP `7000/7001/8080` 和 UDP `7002/7003`。使用 `-SkipFirewall` 可跳过防火墙规则。
 
 首次安装完成后，终端会显示一次性管理员密码。脚本随后会从配置文件中移除明文密码。自动生成的是自签名证书，必须将输出位置的 `fullchain.pem` 安全复制到每台 Agent，并在命令行或桌面客户端中配置为私有 CA。浏览器访问 Dashboard 时也需要信任该证书；正式公网服务可替换为受信任 CA 签发的同名证书。
+
+Windows 服务同样会设置为自动启动并立即运行：
+
+```powershell
+Get-Service NATLinkServer
+Restart-Service NATLinkServer
+Get-WinEvent -LogName Application -MaxEvents 50
+```
+
+### 3.3 安装完成后开始使用
+
+1. 在浏览器打开 `https://<public-host>:7000`。使用自签名证书时，先将安装器输出的 `fullchain.pem` 导入受信任根证书，或按浏览器提示确认该证书。
+2. 使用安装器终端输出的管理员用户名和一次性密码登录 Dashboard。
+3. 在“访问令牌”页面创建 Agent Token。不要把管理员密码当作 Agent Token 使用。
+4. 在需要暴露内网服务的设备上安装命令行 Agent 或桌面客户端，填写 `wss://<public-host>:7000/agent/connect`、数据地址 `<public-host>:7001`、Agent Token 和 `fullchain.pem`。
+5. Agent 上线后，在 Dashboard 创建 TCP、UDP、HTTP 或 HTTPS 隧道，选择对应设备和本地服务地址，再启动隧道。
+
+Server 是后台常驻服务，不需要每次手动运行二进制。Linux 命令行 Agent 的完整配置见第 9 节，Windows/macOS 桌面客户端见第 11 节。
 
 ## 4. 从源码构建
 
@@ -174,17 +200,17 @@ sudo install -o nat-link -g nat-link -m 0755 nat-link-server /opt/nat-link/
 sudo install -o nat-link -g nat-link -m 0600 config.yaml /opt/nat-link/
 sudo install -o nat-link -g nat-link -m 0644 fullchain.pem /opt/nat-link/tls/
 sudo install -o nat-link -g nat-link -m 0600 privkey.pem /opt/nat-link/tls/
-sudo install -m 0644 deploy/nat-link-server.service /etc/systemd/system/nat-link.service
+sudo install -m 0644 deploy/nat-link-server.service /etc/systemd/system/nat-link-server.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now nat-link
+sudo systemctl enable --now nat-link-server
 ```
 
 查看首次密码和运行日志：
 
 ```bash
-sudo systemctl status nat-link
-sudo journalctl -u nat-link -n 100 --no-pager
-sudo journalctl -u nat-link -f
+sudo systemctl status nat-link-server
+sudo journalctl -u nat-link-server -n 100 --no-pager
+sudo journalctl -u nat-link-server -f
 ```
 
 首次登录后立即修改管理员密码，并妥善保存 Server Secret。
@@ -305,18 +331,18 @@ sudo ./install-server.sh --public-host nat.example.com
 升级前备份：
 
 ```bash
-sudo systemctl stop nat-link
+sudo systemctl stop nat-link-server
 sudo tar -czf nat-link-backup.tgz /opt/nat-link/config.yaml /opt/nat-link/data /opt/nat-link/tls
-sudo systemctl start nat-link
+sudo systemctl start nat-link-server
 ```
 
 升级二进制：
 
 ```bash
-sudo systemctl stop nat-link
+sudo systemctl stop nat-link-server
 sudo install -o nat-link -g nat-link -m 0755 nat-link-server /opt/nat-link/nat-link-server
-sudo systemctl start nat-link
-sudo journalctl -u nat-link -n 100 --no-pager
+sudo systemctl start nat-link-server
+sudo journalctl -u nat-link-server -n 100 --no-pager
 ```
 
 回滚时停止服务，恢复旧二进制和备份数据库，再启动服务。复制 SQLite 数据库前必须停止 Server，或使用 SQLite 在线备份工具。
@@ -325,7 +351,7 @@ sudo journalctl -u nat-link -n 100 --no-pager
 
 ### 服务启动后立即退出
 
-执行 `journalctl -u nat-link -n 100`，重点检查端口冲突、配置语法、数据库目录权限和证书文件权限。
+执行 `journalctl -u nat-link-server -n 100`，重点检查端口冲突、配置语法、数据库目录权限和证书文件权限。
 
 ### 公网 Agent 无法连接
 
