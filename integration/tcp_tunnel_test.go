@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -92,16 +94,37 @@ func waitForTraffic(t *testing.T, store *storage.Store, minimum int64) {
 
 func testServices(t *testing.T) (*storage.Store, *auth.Service) {
 	t.Helper()
-	store, err := storage.Open(t.TempDir() + "/integration.db")
+	directory, err := os.MkdirTemp("", "nat-link-integration-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
+	store, err := storage.Open(filepath.Join(directory, "integration.db"))
+	if err != nil {
+		_ = os.RemoveAll(directory)
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+		removeIntegrationDirectory(t, directory)
+	})
 	service, err := auth.New(context.Background(), store, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return store, service
+}
+
+func removeIntegrationDirectory(t *testing.T, directory string) {
+	t.Helper()
+	var err error
+	for attempt := 0; attempt < 20; attempt++ {
+		err = os.RemoveAll(directory)
+		if err == nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Errorf("remove integration directory: %v", err)
 }
 
 func createToken(t *testing.T, ctx context.Context, service *auth.Service) string {
