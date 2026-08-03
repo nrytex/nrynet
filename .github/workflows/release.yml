@@ -126,9 +126,6 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/frontend/package-lock.json
       - run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.120
-      - name: Test desktop service
-        working-directory: desktop
-        run: go test ./...
       - name: Build desktop application
         working-directory: desktop
         shell: bash
@@ -140,6 +137,9 @@ jobs:
           else
             wails3 build "APP_VERSION=$version"
           fi
+      - name: Test desktop service
+        working-directory: desktop
+        run: go test ./...
       - name: Package Windows desktop
         if: runner.os == 'Windows'
         shell: pwsh
