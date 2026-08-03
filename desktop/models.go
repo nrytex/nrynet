@@ -7,7 +7,7 @@ import (
 	"github.com/nat-link/nat-link/internal/model"
 )
 
-var appVersion = "0.1.0"
+var appVersion = "1.0.0"
 
 type AppConfig struct {
 	ServerURL          string `json:"serverUrl"`
@@ -19,9 +19,6 @@ type AppConfig struct {
 	Name               string `json:"name"`
 	DeviceID           string `json:"deviceId"`
 	InsecureSkipVerify bool   `json:"insecureSkipVerify"`
-	UpdateManifestURL  string `json:"updateManifestUrl"`
-	UpdatePublicKey    string `json:"updatePublicKey"`
-	UpdateChannel      string `json:"updateChannel"`
 	AutoStart          bool   `json:"autoStart"`
 }
 

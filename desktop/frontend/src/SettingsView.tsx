@@ -60,17 +60,10 @@ function NavItem({ icon, label, active, onClick }: { icon: ReactNode; label: str
 }
 
 function GeneralPanel() {
-  return <>
-    <div className="settings-group">
-      <SwitchRow title="开机启动" detail="系统启动时自动运行 NAT-Link" name="autoStart" />
-      <Form.Item label="更新通道" name="updateChannel"><Select options={[{ value: "stable", label: "稳定版" }, { value: "beta", label: "测试版" }]} /></Form.Item>
-    </div>
-    <Typography.Title level={4} className="subsection-title">自动更新</Typography.Title>
-    <div className="settings-group">
-      <Form.Item label="更新清单地址" name="updateManifestUrl"><Input placeholder="https://updates.example.com/manifest.json" /></Form.Item>
-      <Form.Item label="Ed25519 公钥" name="updatePublicKey"><Input.TextArea rows={4} placeholder="PEM 或 Base64 格式" /></Form.Item>
-    </div>
-  </>;
+  return <div className="settings-group">
+    <SwitchRow title="开机启动" detail="系统启动时自动运行 NAT-Link" name="autoStart" />
+    <div className="switch-row"><div><strong>自动更新</strong><span>每 6 小时检查一次 GitHub 正式版本</span></div><Switch checked disabled /></div>
+  </div>;
 }
 
 function NetworkPanel() {
@@ -111,7 +104,7 @@ function AboutPanel({ status, onCheckUpdate }: { status?: RuntimeStatus; onCheck
     <Typography.Title level={4}>关于 NAT-Link</Typography.Title>
     <div className="about-lockup"><img src={brandMark} alt="" /><div><strong>NAT-Link</strong><span>安全、稳定的私有网络隧道客户端</span></div></div>
     <div className="settings-group about-details">
-      <div><span>当前版本</span><strong>{status?.version ?? "0.1.0"}</strong></div>
+      <div><span>当前版本</span><strong>{status?.version ?? "1.0.0"}</strong></div>
       <div><span>连接状态</span><strong>{status?.connected ? "已连接" : "未连接"}</strong></div>
       <div><span>上次启动</span><strong>{formatTime(status?.lastStartedAt)}</strong></div>
     </div>

@@ -15,11 +15,8 @@ type fileStore struct {
 }
 
 type diskConfig struct {
-	Client            config.ClientConfig `yaml:"client"`
-	UpdateManifestURL string              `yaml:"update_manifest_url"`
-	UpdatePublicKey   string              `yaml:"update_public_key"`
-	UpdateChannel     string              `yaml:"update_channel"`
-	AutoStart         bool                `yaml:"auto_start"`
+	Client    config.ClientConfig `yaml:"client"`
+	AutoStart bool                `yaml:"auto_start"`
 }
 
 func newFileStore() (*fileStore, error) {
@@ -44,9 +41,6 @@ func (s *fileStore) Load() (AppConfig, error) {
 		return AppConfig{}, fmt.Errorf("parse desktop config: %w", err)
 	}
 	out := configFromClient(cfg.Client)
-	out.UpdateManifestURL = cfg.UpdateManifestURL
-	out.UpdatePublicKey = cfg.UpdatePublicKey
-	out.UpdateChannel = cfg.UpdateChannel
 	out.AutoStart = cfg.AutoStart
 	return out, nil
 }
@@ -56,9 +50,7 @@ func (s *fileStore) Save(cfg AppConfig) error {
 		return err
 	}
 	raw := diskConfig{
-		Client: cfg.toClientConfig(), UpdateManifestURL: cfg.UpdateManifestURL,
-		UpdatePublicKey: cfg.UpdatePublicKey, UpdateChannel: cfg.UpdateChannel,
-		AutoStart: cfg.AutoStart,
+		Client: cfg.toClientConfig(), AutoStart: cfg.AutoStart,
 	}
 	data, err := yaml.Marshal(raw)
 	if err != nil {

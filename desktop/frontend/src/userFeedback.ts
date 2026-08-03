@@ -50,9 +50,6 @@ const errorRules = [
   { pattern: /no such host/i, message: "找不到服务器域名，请检查地址拼写和 DNS 网络设置。" },
   { pattern: /connection refused|actively refused/i, message: "服务器拒绝连接，请确认服务端已启动且端口可访问。" },
   { pattern: /timeout|deadline exceeded/i, message: "连接服务器超时，请检查网络、防火墙和服务器端口。" },
-  { pattern: /manifest url is required/i, message: "尚未配置更新清单地址，请在“常规设置 > 自动更新”中填写。" },
-  { pattern: /public key is required/i, message: "尚未配置更新签名公钥，请在“常规设置 > 自动更新”中填写。" },
-  { pattern: /public key.*pem or base64|public key parse|must be ed25519/i, message: "更新签名公钥格式不正确，请填写 Ed25519 PEM 或 Base64 公钥。" },
   { pattern: /update check is already running/i, message: "正在检查更新，请稍候。" },
   { pattern: /update settings changed/i, message: "更新设置已变更，请重启 NAT-Link 后再检查更新。" },
 ];
@@ -61,7 +58,7 @@ const fallbackMessages: Record<FeedbackAction, string> = {
   load: "客户端信息加载失败，请重启 NAT-Link；若问题仍然存在，请查看运行日志。",
   connect: "连接失败，请检查服务器地址、网络和服务端状态后重试。",
   save: "设置保存失败，请检查填写内容和系统权限后重试。",
-  update: "检查更新失败，请检查更新地址和网络后重试。",
+  update: "检查更新失败，请检查网络连接和 GitHub Release 状态后重试。",
 };
 
 function errorText(error: unknown): string {

@@ -15,9 +15,6 @@ export interface AppConfig {
     "name": string;
     "deviceId": string;
     "insecureSkipVerify": boolean;
-    "updateManifestUrl": string;
-    "updatePublicKey": string;
-    "updateChannel": string;
     "autoStart": boolean;
 }
 

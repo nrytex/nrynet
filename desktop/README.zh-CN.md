@@ -36,7 +36,7 @@ NAT-Link Desktop 是基于 Wails v3、Go 和 React 构建的 Windows/macOS 客�
 
 | 区域 | 作用 |
 | --- | --- |
-| 常规设置 | 开机启动、更新通道、更新清单和签名公钥 |
+| 常规设置 | 开机启动和 GitHub 自动更新状态 |
 | 网络设置 | 控制服务器、数据通道、传输协议、QUIC 和私有 CA |
 | 连接设置 | 设备名称、设备 ID 和 Agent Token |
 | 运行日志 | 查看桌面客户端最近的运行记录 |
@@ -83,13 +83,13 @@ NAT-Link Desktop 是基于 Wails v3、Go 和 React 构建的 Windows/macOS 客�
 
 ## 自动更新
 
-桌面端使用 Wails Updater 从自托管更新地址获取版本。更新包必须同时通过：
+桌面端使用 Wails Updater 直接检查 `nrytex/nrynet` 的 GitHub Release，不需要用户填写更新地址或密钥。更新包必须通过：
 
 - 版本比较和防降级检查
 - SHA-256 摘要校验
-- Ed25519 数字签名校验
+- Release 中 `SHA256SUMS` 的文件摘要校验
 
-配置有效的更新清单地址和公钥后，客户端每 6 小时自动检查一次；“关于 NAT-Link”页面仍可手动检查。生产构建必须通过 `APP_VERSION` 注入真实版本号，否则更新比较将不可靠。
+客户端每 6 小时自动检查一次最新正式版本；“关于 NAT-Link”页面仍可手动检查。生产构建必须通过 `APP_VERSION` 注入真实版本号，否则更新比较将不可靠。
 
 ## 本地开发
 

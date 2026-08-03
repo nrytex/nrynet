@@ -13,7 +13,7 @@ import "./styles.css";
 const emptyConfig: AppConfig = {
   serverUrl: "", dataAddress: "", token: "", name: "", deviceId: "",
   transport: "websocket", quicAddress: "", caFile: "", insecureSkipVerify: false,
-  updateManifestUrl: "", updatePublicKey: "", updateChannel: "stable", autoStart: false,
+  autoStart: false,
 };
 
 type View =

@@ -41,8 +41,10 @@ sudo ./install-server.sh --public-host nat.example.com
 脚本会自动安装缺少的 `curl`、`openssl`、`tar` 和校验工具，安装目录默认为 `/opt/nat-link`，服务名为 `nat-link-server`。指定版本或重新生成证书：
 
 ```bash
-sudo ./install-server.sh --version 2.3.5 --public-host nat.example.com --renew-cert
+sudo ./install-server.sh --version 1.0.0 --public-host nat.example.com --renew-cert
 ```
+
+再次执行同一个脚本即可升级。安装器会读取已安装 Server 的版本，和 Release 软件包内的 `VERSION` 比较：相同版本不会重复替换二进制，只允许正常升级，并保留现有数据库、配置和证书。需要明确回滚时才使用 `--allow-downgrade`；Windows 对应参数为 `-AllowDowngrade`。
 
 ### 3.2 Windows
 
@@ -292,6 +294,14 @@ APP_VERSION=1.0.0 wails3 build GOOS=darwin
 
 ## 13. 升级、备份与回滚
 
+使用一键安装的环境，升级到最新正式版只需重新运行安装命令：
+
+```bash
+sudo ./install-server.sh --public-host nat.example.com
+```
+
+安装器会校验软件包摘要和版本，在停止服务后替换二进制，并在升级完成后恢复服务。下面的步骤用于手动升级或回滚。
+
 升级前备份：
 
 ```bash
@@ -331,4 +341,4 @@ sudo journalctl -u nat-link -n 100 --no-pager
 
 ### 桌面客户端更新失败
 
-检查 `APP_VERSION`、更新清单 URL、Ed25519 公钥、文件摘要和签名。更新配置保存后，客户端会每 6 小时自动检查一次。
+检查 `APP_VERSION`、GitHub Release 是否发布成功，以及对应桌面软件包是否出现在 `SHA256SUMS` 中。客户端不需要填写更新地址或公钥，每 6 小时自动检查一次正式版本。

@@ -26,7 +26,6 @@
 .settings-group .ant-form-item { margin: 14px 0; }
 .settings-group .ant-form-item-label { padding-bottom: 5px; }
 .settings-group .ant-form-item-label > label { color: #3b4758; font-size: 13px; font-weight: 600; }
-.subsection-title { margin-top: 22px !important; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; min-height: 68px; gap: 20px; border-bottom: 1px solid #edf1ef; }
 .switch-row > div { display: flex; flex-direction: column; gap: 3px; }
 .switch-row strong { font-size: 13px; }

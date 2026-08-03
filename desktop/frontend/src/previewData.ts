@@ -7,8 +7,7 @@ export function makePreviewSnapshot(tick: number): DesktopSnapshot {
       serverUrl: "wss://vip1.nat-link.app/agent/connect", dataAddress: "vip1.nat-link.app:7001",
       transport: "websocket", quicAddress: "vip1.nat-link.app:7002", caFile: "",
       token: "ntk_demo_token", name: "Studio Client", deviceId: "studio-desktop",
-      insecureSkipVerify: false, updateManifestUrl: "", updatePublicKey: "",
-      updateChannel: "stable", autoStart: true,
+      insecureSkipVerify: false, autoStart: true,
     },
     status: {
       connected: true, state: "connected", message: "authenticated session started", version: "2.3.4",

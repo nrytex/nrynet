@@ -36,7 +36,7 @@ func NewDesktopService(store *fileStore, logs *memoryLogHandler, updater *Update
 	if err != nil {
 		return nil, err
 	}
-	if err := updater.ConfigureAutomatic(cfg); err != nil {
+	if err := updater.ConfigureAutomatic(); err != nil {
 		return nil, fmt.Errorf("configure automatic updates: %w", err)
 	}
 	return &DesktopService{
@@ -61,9 +61,6 @@ func (s *DesktopService) Snapshot() DesktopSnapshot {
 }
 
 func (s *DesktopService) SaveConfig(cfg AppConfig) (DesktopSnapshot, error) {
-	if err := s.updater.ConfigureAutomatic(cfg); err != nil {
-		return DesktopSnapshot{}, fmt.Errorf("configure automatic updates: %w", err)
-	}
 	if err := s.store.Save(cfg); err != nil {
 		return DesktopSnapshot{}, err
 	}
@@ -120,10 +117,7 @@ func (s *DesktopService) Status() RuntimeStatus {
 }
 
 func (s *DesktopService) CheckForUpdate() (UpdateResult, error) {
-	s.mu.Lock()
-	cfg := s.cfg
-	s.mu.Unlock()
-	return s.updater.CheckAndInstall(cfg)
+	return s.updater.CheckAndInstall()
 }
 
 func (s *DesktopService) ShowWindow() {
