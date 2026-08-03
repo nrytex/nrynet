@@ -17,6 +17,9 @@ jobs:
         with:
           go-version: "1.25.x"
           cache: true
+          cache-dependency-path: |
+            go.sum
+            desktop/go.sum
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -36,6 +39,11 @@ jobs:
           npm test -- --run
           npm run build
           cd ..
+          for attempt in 1 2 3; do
+            if go mod download; then break; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
           CGO_ENABLED=0 go test ./...
       - name: Validate installer scripts
         shell: pwsh
