@@ -204,7 +204,7 @@ client:
   insecure_skip_verify: false
 ```
 
-证书的 DNS SAN 或 IP SAN 必须包含客户端使用的地址。使用安装器生成的自签名证书时，Dashboard 新生成的 Agent Token 会自动携带证书公钥指纹，因此无需配置 `ca_file`。旧版两段式 Token 仍可配合 `ca_file` 使用；升级后建议重新生成 Token。公网部署不要启用 `insecure_skip_verify`。
+使用受信任 CA 证书时，证书的 DNS SAN 或 IP SAN 必须包含客户端使用的地址。使用安装器生成的自签名证书时，Dashboard 新生成的 Agent Token 会自动携带证书公钥指纹，客户端直接校验公钥，不要求访问地址出现在证书 SAN 中，也无需配置 `ca_file`。旧版两段式 Token 仍可配合 `ca_file` 使用；升级后建议重新生成 Token。公网部署不要启用 `insecure_skip_verify`。
 
 如果通过 `--renew-cert` 或 `-RenewCertificate` 更换了证书密钥，已有 Token 中的旧指纹会拒绝新证书，这是正常的防劫持保护。请在确认 Server 安全后，从 Dashboard 重新生成 Token 并更新各 Agent。使用受信任 CA 证书时，系统证书链仍会正常验证。
 

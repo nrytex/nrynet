@@ -13,21 +13,18 @@ import (
 func TestVerifyConnectionAcceptsMatchingSelfSignedCertificate(t *testing.T) {
 	certificate := testCertificate(t)
 	state := tls.ConnectionState{PeerCertificates: []*x509.Certificate{certificate}}
-	verify := VerifyConnection("localhost", FromCertificate(certificate), time.Now)
+	verify := VerifyConnection(FromCertificate(certificate), time.Now)
 	if err := verify(state); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestVerifyConnectionRejectsMismatchedPinAndHostname(t *testing.T) {
+func TestVerifyConnectionRejectsMismatchedPin(t *testing.T) {
 	certificate := testCertificate(t)
 	state := tls.ConnectionState{PeerCertificates: []*x509.Certificate{certificate}}
 	wrongPin := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
-	if err := VerifyConnection("localhost", wrongPin, time.Now)(state); err == nil {
+	if err := VerifyConnection(wrongPin, time.Now)(state); err == nil {
 		t.Fatal("mismatched pin was accepted")
-	}
-	if err := VerifyConnection("other.example", FromCertificate(certificate), time.Now)(state); err == nil {
-		t.Fatal("mismatched hostname was accepted")
 	}
 }
 

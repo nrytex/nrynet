@@ -39,7 +39,7 @@ func FromSelfSignedPEMFile(path string) (string, error) {
 	return FromCertificate(certificate), nil
 }
 
-func VerifyConnection(serverName, expectedPin string, now func() time.Time) func(tls.ConnectionState) error {
+func VerifyConnection(expectedPin string, now func() time.Time) func(tls.ConnectionState) error {
 	return func(state tls.ConnectionState) error {
 		if len(state.PeerCertificates) == 0 {
 			return errors.New("server did not provide a TLS certificate")
@@ -51,9 +51,6 @@ func VerifyConnection(serverName, expectedPin string, now func() time.Time) func
 		}
 		if currentTime.Before(certificate.NotBefore) || currentTime.After(certificate.NotAfter) {
 			return errors.New("server TLS certificate is expired or not yet valid")
-		}
-		if err := certificate.VerifyHostname(serverName); err != nil {
-			return fmt.Errorf("verify server TLS certificate hostname: %w", err)
 		}
 		actual := FromCertificate(certificate)
 		if subtle.ConstantTimeCompare([]byte(actual), []byte(expectedPin)) != 1 {

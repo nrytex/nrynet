@@ -19,7 +19,7 @@ func secureClientTLS(serverName string, cfg config.ClientConfig, protocols ...st
 	}
 	parts, err := agenttoken.Parse(cfg.Token)
 	if err == nil && parts.CertificatePin != "" {
-		tlsConfig.VerifyConnection = tlspin.VerifyConnection(serverName, parts.CertificatePin, nil)
+		tlsConfig.VerifyConnection = tlspin.VerifyConnection(parts.CertificatePin, nil)
 		if cfg.CAFile == "" {
 			tlsConfig.InsecureSkipVerify = true
 		}

@@ -82,9 +82,10 @@ client:
   insecure_skip_verify: false
 ```
 
-Use a certificate whose DNS or IP names include the control and data hosts.
-New Agent Tokens carry the server certificate SPKI pin, so agents can securely
-use the installer-generated self-signed certificate without `client.ca_file`.
+Publicly trusted certificates must include the control and data hosts in their
+DNS or IP names. New Agent Tokens carry the installer-generated self-signed
+certificate SPKI pin, so pinned agents can safely use an IP or alternate host
+without `client.ca_file` or a matching certificate SAN.
 Legacy tokens may still use `client.ca_file`. Regenerate Agent Tokens whenever
 the server certificate key changes. `insecure_skip_verify` is accepted only for
 loopback development; remote clients must validate the certificate or token pin.
@@ -92,8 +93,9 @@ HTTPS tunnels are passed through without terminating visitor TLS.
 
 ## QUIC and P2P
 
-QUIC always uses TLS 1.3. For production, enable server TLS with a certificate
-whose DNS names include the host in `client.quic_address`, then select the
+QUIC always uses TLS 1.3. For production, enable server TLS with a publicly
+trusted certificate matching `client.quic_address` or use a pinned Agent Token,
+then select the
 transport on the CLI or desktop agent:
 
 ```yaml

@@ -50,6 +50,24 @@ func TestSecureClientTLSRejectsCertificateNotPinnedByToken(t *testing.T) {
 	}
 }
 
+func TestSecureClientTLSPinAllowsAlternateServerAddress(t *testing.T) {
+	certificate := clientTestCertificate(t)
+	certificate.DNSNames = []string{"nat.nrytex.com"}
+	certificate.IPAddresses = nil
+	token, err := agenttoken.WithCertificatePin("id.secret", tlspin.FromCertificate(certificate))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlsConfig, err := secureClientTLS("150.158.46.132", config.ClientConfig{Token: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := tls.ConnectionState{PeerCertificates: []*x509.Certificate{certificate}}
+	if err := tlsConfig.VerifyConnection(state); err != nil {
+		t.Fatalf("matching pin was rejected for an alternate address: %v", err)
+	}
+}
+
 func TestSecureClientTLSKeepsCAValidationWhenCAFileIsConfigured(t *testing.T) {
 	certificate := clientTestCertificate(t)
 	path := filepath.Join(t.TempDir(), "ca.pem")
