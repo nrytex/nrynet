@@ -13,8 +13,9 @@ and macOS.
 
 ## Quick start
 
-1. Copy `config.local.example.yaml` to `config.yaml` for a safe loopback-only
-   evaluation. `config.example.yaml` listens on `0.0.0.0` and requires TLS.
+1. Copy `config.local.example.yaml` to `config.yaml` for a loopback-only
+   evaluation. `config.example.yaml` listens on `0.0.0.0` with WSS/TLS ports;
+   WS/plaintext ports stay disabled until explicitly configured.
 2. Start the server with `go run ./server -config config.yaml`.
 3. Record the one-time administrator password printed on first start, then open
    `http://127.0.0.1:7000`.
@@ -23,9 +24,10 @@ and macOS.
    `go run ./client -config config.yaml`.
 6. Create and start a TCP, HTTP, HTTPS, or UDP tunnel in the dashboard.
 
-Remote control and data listeners require TLS. Configure the certificate,
-switch the agent URL to `wss://`, and then bind the server listeners publicly.
-See `docs/operations.md` for certificates, systemd, ports, and builds.
+For WSS agents, use `wss://host:7000/agent/connect` with data port `7001`.
+For WS agents, use `ws://host:7004/agent/connect` with plaintext data port
+`7005`. See `docs/operations.md` for certificates, certbot, systemd, ports,
+and builds.
 中文安装与生产部署步骤见 `docs/deployment.zh-CN.md`。
 See `docs/requirements.md` for the versioned acceptance matrix.
 
@@ -39,6 +41,18 @@ enables, and starts the `nrynet-server` systemd service:
 curl -fLO https://github.com/nrytex/nrynet/releases/latest/download/install-server.sh
 chmod +x install-server.sh
 sudo ./install-server.sh --public-host nat.example.com
+```
+
+For a Let's Encrypt certificate, run:
+
+```sh
+sudo ./install-server.sh --certbot-domain nat.example.com --certbot-email admin@example.com
+```
+
+To support domain WSS and explicit IP WS at the same time, run:
+
+```sh
+sudo ./install-server.sh --certbot-domain nat.example.com --certbot-email admin@example.com --enable-ws
 ```
 
 Add `--proxy http://127.0.0.1:7890` or `--proxy socks5h://127.0.0.1:1080`

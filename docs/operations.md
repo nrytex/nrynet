@@ -12,6 +12,8 @@ The example configuration exposes these server listeners:
 | 7001 | TLS | Per-connection TCP relay data channel |
 | 7002 | UDP/QUIC | Authenticated QUIC control and data streams |
 | 7003 | UDP | P2P endpoint rendezvous and hole punching |
+| 7004 | HTTP/WS | Optional plaintext Dashboard, API, and agent control |
+| 7005 | TCP | Optional plaintext relay data channel for WS agents |
 | 8080 | TCP | Shared HTTP Host and HTTPS SNI gateway |
 | 7100 | HTTPS | Distributed relay control API (relay node only) |
 | tunnel-defined | TCP or UDP | Public visitor ports |
@@ -64,13 +66,22 @@ permitting remote credentials or tunneled bytes on a plaintext control plane.
 Expose only the administration address ranges that need Dashboard access.
 Tunnel IP allowlists are enforced independently for visitors.
 
-## TLS
+## WS, WSS, And TLS
 
-Agent control and TCP data listeners use the same certificate. Non-loopback
-listeners are rejected unless TLS is enabled:
+`server.listen` and `server.data_listen` remain the primary pair. With
+`server.tls.enabled: true` they serve HTTPS/WSS control and TLS data. With TLS
+disabled they serve HTTP/WS control and plaintext data. To run both transports
+at the same time, keep TLS enabled on the primary pair and configure the
+plaintext pair too. A single empty plaintext setting disables the plaintext
+pair, which lets Dashboard settings be saved one field at a time without
+creating an unstartable server:
 
 ```yaml
 server:
+  listen: "0.0.0.0:7000"
+  data_listen: "0.0.0.0:7001"
+  plain_listen: "0.0.0.0:7004"
+  plain_data_listen: "0.0.0.0:7005"
   tls:
     enabled: true
     cert_file: "/opt/nrynet/tls/fullchain.pem"
@@ -82,6 +93,13 @@ client:
   insecure_skip_verify: false
 ```
 
+WS agents must use `server_url: "ws://host:7004/agent/connect"` together with
+`data_address: "host:7005"`. WSS agents must use
+`server_url: "wss://host:7000/agent/connect"` together with
+`data_address: "host:7001"`. Mixing WS control with the TLS data port, or WSS
+control with the plaintext data port, will fail because the agent deliberately
+chooses data-channel TLS from the WebSocket scheme.
+
 Publicly trusted certificates must include the control and data hosts in their
 DNS or IP names. New Agent Tokens carry the installer-generated self-signed
 certificate SPKI pin, so pinned agents can safely use an IP or alternate host
@@ -90,6 +108,30 @@ Legacy tokens may still use `client.ca_file`. Regenerate Agent Tokens whenever
 the server certificate key changes. `insecure_skip_verify` is accepted only for
 loopback development; remote clients must validate the certificate or token pin.
 HTTPS tunnels are passed through without terminating visitor TLS.
+
+For a domain certificate on Linux, use certbot through the installer:
+
+```sh
+sudo ./install-server.sh \
+  --certbot-domain nat.example.com \
+  --certbot-email admin@example.com \
+  --enable-ws
+```
+
+This command gives domain users `wss://nat.example.com:7000/agent/connect` and
+also enables IP users to connect with `ws://<server-ip>:7004/agent/connect`.
+Omit `--enable-ws` when plaintext WS/API should stay disabled.
+
+Certbot uses the standalone HTTP-01 challenge, so `nat.example.com` must resolve
+to this server and inbound TCP/80 must reach it while the installer runs. The
+installer runs certbot with `--reuse-key`, copies the renewed `fullchain.pem`
+and `privkey.pem` into `/opt/nrynet/tls`, and registers a deploy hook that
+restarts `nrynet-server` only for the target certificate lineage. Reusing the
+key preserves Agent Token SPKI pins across normal renewals. Switching from an
+existing self-signed certificate to certbot usually changes the SPKI; the
+installer backs up the old certificate and warns that Agent Tokens must be
+regenerated when it detects that change. If certbot fails, check DNS and TCP/80
+before retrying.
 
 ## QUIC and P2P
 

@@ -2,28 +2,24 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/url"
 	"strings"
 )
 
 func ValidateServerTransport(cfg ServerConfig) error {
+	if strings.TrimSpace(cfg.Listen) == "" || strings.TrimSpace(cfg.DataListen) == "" {
+		return errors.New("server.listen and server.data_listen are required")
+	}
 	if cfg.TLS.Enabled {
 		if strings.TrimSpace(cfg.TLS.CertFile) == "" || strings.TrimSpace(cfg.TLS.KeyFile) == "" {
 			return errors.New("server TLS certificate and key are required")
 		}
+	}
+	if cfg.TLS.Enabled || hasPlaintextListeners(cfg) {
 		return nil
 	}
-	for name, address := range map[string]string{
-		"server.listen":      cfg.Listen,
-		"server.data_listen": cfg.DataListen,
-	} {
-		if !IsLoopbackAddress(address) {
-			return fmt.Errorf("%s may use plaintext only on loopback; configure server.tls for remote access", name)
-		}
-	}
-	return nil
+	return errors.New("server must expose TLS listeners or plaintext listeners")
 }
 
 func ValidateSecureWebSocketURL(rawURL, dataAddress string) error {
@@ -31,13 +27,10 @@ func ValidateSecureWebSocketURL(rawURL, dataAddress string) error {
 	if err != nil || parsed.Hostname() == "" {
 		return errors.New("client.server_url must be a valid WebSocket URL")
 	}
-	if parsed.Scheme == "wss" {
+	if parsed.Scheme == "ws" || parsed.Scheme == "wss" {
 		return nil
 	}
-	if parsed.Scheme != "ws" || !isLoopbackHost(parsed.Hostname()) || !IsLoopbackAddress(dataAddress) {
-		return errors.New("remote agent connections require wss and TLS data transport")
-	}
-	return nil
+	return errors.New("client.server_url must use ws or wss")
 }
 
 func ValidateSecureHTTPURL(rawURL string) error {
@@ -59,6 +52,9 @@ func ValidateTLSVerification(cfg ClientConfig) error {
 		return nil
 	}
 	parsed, err := url.Parse(cfg.ServerURL)
+	if cfg.Transport != "quic" && err == nil && parsed.Scheme == "ws" {
+		return nil
+	}
 	if cfg.Transport != "quic" && err == nil && isLoopbackHost(parsed.Hostname()) && IsLoopbackAddress(cfg.DataAddress) {
 		return nil
 	}
@@ -73,4 +69,8 @@ func IsLoopbackAddress(address string) bool {
 func isLoopbackHost(host string) bool {
 	host = strings.Trim(host, "[]")
 	return strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback()
+}
+
+func hasPlaintextListeners(cfg ServerConfig) bool {
+	return strings.TrimSpace(cfg.Listen) != "" && strings.TrimSpace(cfg.DataListen) != ""
 }

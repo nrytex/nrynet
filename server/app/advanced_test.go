@@ -32,16 +32,14 @@ func TestAppStartsRendezvousAndRelayAPI(t *testing.T) {
 	assertRelayVisible(t, baseURL, session)
 }
 
-func TestAppRejectsRemotePlaintextControlListeners(t *testing.T) {
+func TestAppAllowsRemotePlaintextControlListeners(t *testing.T) {
 	cfg := advancedTestConfig(t)
 	cfg.Server.Listen = "0.0.0.0:0"
 	app, _, err := New(context.Background(), cfg)
-	if app != nil {
-		_ = app.Shutdown(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err == nil {
-		t.Fatal("remote plaintext server listener was accepted")
-	}
+	_ = app.Shutdown(context.Background())
 }
 
 func advancedTestConfig(t *testing.T) config.Config {

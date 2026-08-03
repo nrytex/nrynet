@@ -25,7 +25,9 @@ type BootstrapConfig struct {
 
 type ServerConfig struct {
 	Listen            string          `yaml:"listen"`
+	PlainListen       string          `yaml:"plain_listen"`
 	DataListen        string          `yaml:"data_listen"`
+	PlainDataListen   string          `yaml:"plain_data_listen"`
 	PublicDataAddress string          `yaml:"public_data_address"`
 	QUICListen        string          `yaml:"quic_listen"`
 	PublicQUICAddress string          `yaml:"public_quic_address"`

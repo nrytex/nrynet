@@ -13,6 +13,10 @@ FORCE_CONFIG=0
 RENEW_CERT=0
 ALLOW_DOWNGRADE=0
 PROXY=""
+CERTBOT_DOMAIN=""
+CERTBOT_EMAIL=""
+CERTBOT_STAGING=0
+ENABLE_WS=0
 
 usage() {
   cat <<'EOF'
@@ -25,6 +29,11 @@ Usage: sudo ./install-server.sh [options]
   --admin-user NAME    Initial administrator name (default: admin)
   --force-config       Replace an existing config.yaml
   --renew-cert         Replace the generated TLS certificate
+  --certbot-domain DNS Obtain/renew a Let's Encrypt certificate for this DNS name
+  --certbot-email EMAIL
+                       Email address for Let's Encrypt registration
+  --certbot-staging    Use the Let's Encrypt staging directory
+  --enable-ws          Also expose plaintext HTTP/WS on 7004 and data on 7005
   --allow-downgrade    Permit replacing a newer installed version
   --proxy URL          HTTP(S) or SOCKS5h proxy for dependencies and downloads
   -h, --help           Show this help
@@ -39,6 +48,10 @@ while [ "$#" -gt 0 ]; do
     --admin-user) ADMIN_USER="$2"; shift 2 ;;
     --force-config) FORCE_CONFIG=1; shift ;;
     --renew-cert) RENEW_CERT=1; shift ;;
+    --certbot-domain) CERTBOT_DOMAIN="$2"; shift 2 ;;
+    --certbot-email) CERTBOT_EMAIL="$2"; shift 2 ;;
+    --certbot-staging) CERTBOT_STAGING=1; shift ;;
+    --enable-ws) ENABLE_WS=1; shift ;;
     --allow-downgrade) ALLOW_DOWNGRADE=1; shift ;;
     --proxy)
       [ "$#" -ge 2 ] || { echo "--proxy requires a URL." >&2; exit 2; }
@@ -77,17 +90,20 @@ install_dependencies() {
   for command in curl openssl tar sha256sum; do
     command -v "$command" >/dev/null 2>&1 || missing="$missing $command"
   done
+  if [ -n "$CERTBOT_DOMAIN" ] && ! command -v certbot >/dev/null 2>&1; then
+    missing="$missing certbot"
+  fi
   [ -z "$missing" ] && return 0
   echo "Installing required tools:$missing"
   if command -v apt-get >/dev/null 2>&1; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates openssl tar coreutils
+    DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates openssl tar coreutils ${CERTBOT_DOMAIN:+certbot}
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y curl ca-certificates openssl tar coreutils
+    dnf install -y curl ca-certificates openssl tar coreutils ${CERTBOT_DOMAIN:+certbot}
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y curl ca-certificates openssl tar coreutils
+    yum install -y curl ca-certificates openssl tar coreutils ${CERTBOT_DOMAIN:+certbot}
   elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache curl ca-certificates openssl tar coreutils
+    apk add --no-cache curl ca-certificates openssl tar coreutils ${CERTBOT_DOMAIN:+certbot}
   else
     echo "Install curl, openssl, tar and sha256sum, then run this script again." >&2
     exit 1
@@ -107,6 +123,10 @@ detect_public_host() {
     printf '%s' "$PUBLIC_HOST"
     return 0
   fi
+  if [ -n "$CERTBOT_DOMAIN" ]; then
+    printf '%s' "$CERTBOT_DOMAIN"
+    return 0
+  fi
   host="$(hostname -f 2>/dev/null || hostname)"
   [ -n "$host" ] || host="127.0.0.1"
   printf '%s' "$host"
@@ -116,6 +136,108 @@ validate_host() {
   if ! printf '%s' "$1" | grep -Eq '^[A-Za-z0-9.-]+$'; then
     echo "Public host must be a DNS name or IPv4 address." >&2
     exit 2
+  fi
+}
+
+validate_certbot_options() {
+  [ -n "$CERTBOT_DOMAIN" ] || return 0
+  if [ -z "$CERTBOT_EMAIL" ]; then
+    echo "--certbot-email is required with --certbot-domain." >&2
+    exit 2
+  fi
+  if printf '%s' "$CERTBOT_DOMAIN" | grep -Eq '^[0-9.]+$'; then
+    echo "--certbot-domain must be a DNS name; Let's Encrypt cannot issue for an IP address." >&2
+    exit 2
+  fi
+}
+
+certificate_spki() {
+  [ -s "$1" ] || return 1
+  openssl x509 -in "$1" -pubkey -noout |
+    openssl pkey -pubin -outform DER |
+    openssl dgst -sha256 -binary |
+    openssl base64 -A
+}
+
+backup_existing_certificate() {
+  [ -s "$CERT_FILE" ] || return 0
+  [ -s "$KEY_FILE" ] || return 0
+  backup_dir="$INSTALL_DIR/tls/backup-$(date -u +%Y%m%d%H%M%S)"
+  install -d -m 0750 -o root -g nrynet "$backup_dir"
+  install -m 0644 -o root -g nrynet "$CERT_FILE" "$backup_dir/fullchain.pem"
+  install -m 0640 -o root -g nrynet "$KEY_FILE" "$backup_dir/privkey.pem"
+  echo "Backed up the previous TLS certificate to $backup_dir"
+}
+
+enable_ws_in_config() {
+  [ -f "$CONFIG_FILE" ] || return 0
+  tmp_config="$CONFIG_FILE.tmp.$$"
+  awk '
+    function emit_missing() {
+      if (in_server) {
+        if (!seen_plain_listen) print "  plain_listen: \"0.0.0.0:7004\""
+        if (!seen_plain_data) print "  plain_data_listen: \"0.0.0.0:7005\""
+      }
+    }
+    /^server:[[:space:]]*$/ { print; in_server=1; seen_plain_listen=0; seen_plain_data=0; next }
+    in_server && /^[^[:space:]#][^:]*:/ { emit_missing(); in_server=0 }
+    in_server && /^[[:space:]]+plain_listen:/ {
+      print "  plain_listen: \"0.0.0.0:7004\""; seen_plain_listen=1; next
+    }
+    in_server && /^[[:space:]]+plain_data_listen:/ {
+      print "  plain_data_listen: \"0.0.0.0:7005\""; seen_plain_data=1; next
+    }
+    { print }
+    END { emit_missing() }
+  ' "$CONFIG_FILE" > "$tmp_config"
+  chown root:nrynet "$tmp_config"
+  chmod 0640 "$tmp_config"
+  mv -f "$tmp_config" "$CONFIG_FILE"
+}
+
+config_ws_enabled() {
+  [ -f "$CONFIG_FILE" ] || return 1
+  grep -Eq '^[[:space:]]+plain_listen:[[:space:]]+"0\.0\.0\.0:7004"[[:space:]]*$' "$CONFIG_FILE" &&
+    grep -Eq '^[[:space:]]+plain_data_listen:[[:space:]]+"0\.0\.0\.0:7005"[[:space:]]*$' "$CONFIG_FILE"
+}
+
+install_certbot_certificate() {
+  [ -n "$CERTBOT_DOMAIN" ] || return 1
+  staging=""
+  [ "$CERTBOT_STAGING" -eq 0 ] || staging="--staging"
+  hook="/etc/letsencrypt/renewal-hooks/deploy/nrynet-server.sh"
+  old_spki="$(certificate_spki "$CERT_FILE" 2>/dev/null || true)"
+  if [ -n "$old_spki" ]; then
+    backup_existing_certificate
+  fi
+  install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+  cat >"$TEMP_DIR/nrynet-certbot-deploy-hook.sh" <<EOF
+#!/usr/bin/env sh
+set -eu
+target_lineage="/etc/letsencrypt/live/$CERTBOT_DOMAIN"
+lineage="\${RENEWED_LINEAGE:-\$target_lineage}"
+resolved_lineage="\$(readlink -f "\$lineage")"
+resolved_target="\$(readlink -f "\$target_lineage")"
+[ "\$resolved_lineage" = "\$resolved_target" ] || exit 0
+install -m 0644 -o root -g nrynet "\$resolved_lineage/fullchain.pem" "$CERT_FILE"
+install -m 0640 -o root -g nrynet "\$resolved_lineage/privkey.pem" "$KEY_FILE"
+if systemctl list-unit-files nrynet-server.service >/dev/null 2>&1; then
+  systemctl restart nrynet-server.service
+fi
+EOF
+  install -m 0755 "$TEMP_DIR/nrynet-certbot-deploy-hook.sh" "$hook"
+  echo "Requesting a Let's Encrypt certificate for $CERTBOT_DOMAIN with certbot..."
+  certbot certonly --standalone --non-interactive --agree-tos --reuse-key \
+    -m "$CERTBOT_EMAIL" -d "$CERTBOT_DOMAIN" $staging || {
+      echo "Certbot failed. Verify $CERTBOT_DOMAIN resolves to this server and inbound TCP/80 reaches this host for the standalone HTTP-01 challenge." >&2
+      exit 1
+    }
+  install -m 0644 -o root -g nrynet "/etc/letsencrypt/live/$CERTBOT_DOMAIN/fullchain.pem" "$CERT_FILE"
+  install -m 0640 -o root -g nrynet "/etc/letsencrypt/live/$CERTBOT_DOMAIN/privkey.pem" "$KEY_FILE"
+  new_spki="$(certificate_spki "$CERT_FILE" 2>/dev/null || true)"
+  if [ -n "$old_spki" ] && [ -n "$new_spki" ] && [ "$old_spki" != "$new_spki" ]; then
+    echo "WARNING: The TLS certificate public key changed while switching to certbot."
+    echo "Existing pinned Agent Tokens will reject the new certificate; regenerate Agent Tokens in the Dashboard and update agents."
   fi
 }
 
@@ -187,6 +309,7 @@ if ! printf '%s' "$ADMIN_USER" | grep -Eq '^[A-Za-z0-9_.-]+$'; then
   echo "Administrator name may contain only letters, numbers, dot, underscore and hyphen." >&2
   exit 2
 fi
+validate_certbot_options
 
 install_dependencies
 command -v systemctl >/dev/null 2>&1 || { echo "This installer requires a systemd-based Linux distribution." >&2; exit 1; }
@@ -274,18 +397,20 @@ fi
 
 CERT_FILE="$INSTALL_DIR/tls/fullchain.pem"
 KEY_FILE="$INSTALL_DIR/tls/privkey.pem"
-if [ ! -s "$CERT_FILE" ] || [ ! -s "$KEY_FILE" ] || [ "$RENEW_CERT" -eq 1 ]; then
-  case "$PUBLIC_HOST" in
-    *[!0-9.]*) PRIMARY_SAN="DNS:$PUBLIC_HOST" ;;
-    *) PRIMARY_SAN="IP:$PUBLIC_HOST" ;;
-  esac
-  echo "Generating a self-signed TLS certificate with OpenSSL..."
-  openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 825 \
-    -keyout "$KEY_FILE" -out "$CERT_FILE" -subj "/CN=$PUBLIC_HOST" \
-    -addext "subjectAltName=$PRIMARY_SAN,DNS:localhost,IP:127.0.0.1"
-  chown root:nrynet "$CERT_FILE" "$KEY_FILE"
-  chmod 0644 "$CERT_FILE"
-  chmod 0640 "$KEY_FILE"
+if [ -n "$CERTBOT_DOMAIN" ]; then
+  install_certbot_certificate
+elif [ ! -s "$CERT_FILE" ] || [ ! -s "$KEY_FILE" ] || [ "$RENEW_CERT" -eq 1 ]; then
+    case "$PUBLIC_HOST" in
+      *[!0-9.]*) PRIMARY_SAN="DNS:$PUBLIC_HOST" ;;
+      *) PRIMARY_SAN="IP:$PUBLIC_HOST" ;;
+    esac
+    echo "Generating a self-signed TLS certificate with OpenSSL..."
+    openssl req -x509 -newkey rsa:3072 -sha256 -nodes -days 825 \
+      -keyout "$KEY_FILE" -out "$CERT_FILE" -subj "/CN=$PUBLIC_HOST" \
+      -addext "subjectAltName=$PRIMARY_SAN,DNS:localhost,IP:127.0.0.1"
+    chown root:nrynet "$CERT_FILE" "$KEY_FILE"
+    chmod 0644 "$CERT_FILE"
+    chmod 0640 "$KEY_FILE"
 fi
 chown root:nrynet "$CERT_FILE" "$KEY_FILE"
 chmod 0644 "$CERT_FILE"
@@ -298,10 +423,17 @@ INITIAL_PASSWORD=""
 if [ ! -f "$CONFIG_FILE" ] || [ "$FORCE_CONFIG" -eq 1 ]; then
   RELAY_TOKEN="$(openssl rand -hex 32)"
   [ "$NEW_DATABASE" -eq 0 ] || INITIAL_PASSWORD="$(openssl rand -hex 18)"
+  PLAIN_CONFIG='  plain_listen: ""
+  plain_data_listen: ""'
+  if [ "$ENABLE_WS" -eq 1 ]; then
+    PLAIN_CONFIG='  plain_listen: "0.0.0.0:7004"
+  plain_data_listen: "0.0.0.0:7005"'
+  fi
   cat >"$TEMP_DIR/config.yaml" <<EOF
 server:
   listen: "0.0.0.0:7000"
   data_listen: "0.0.0.0:7001"
+$PLAIN_CONFIG
   public_data_address: "$PUBLIC_HOST:7001"
   quic_listen: "0.0.0.0:7002"
   public_quic_address: "$PUBLIC_HOST:7002"
@@ -334,8 +466,15 @@ client:
 EOF
   install -m 0640 -o root -g nrynet "$TEMP_DIR/config.yaml" "$CONFIG_FILE"
 fi
+if [ "$ENABLE_WS" -eq 1 ]; then
+  enable_ws_in_config
+fi
 chown root:nrynet "$CONFIG_FILE"
 chmod 0640 "$CONFIG_FILE"
+WS_CONFIG_ENABLED=0
+if config_ws_enabled; then
+  WS_CONFIG_ENABLED=1
+fi
 
 cat >"$TEMP_DIR/nrynet-server.service" <<EOF
 [Unit]
@@ -381,12 +520,20 @@ fi
 
 echo
 echo "Nrynet Server is running: https://$PUBLIC_HOST:7000"
+if [ "$WS_CONFIG_ENABLED" -eq 1 ]; then
+  echo "Plaintext console/control is enabled: http://$PUBLIC_HOST:7004"
+fi
 echo "Installed version: $TARGET_VERSION"
-echo "Self-signed CA certificate: $CERT_FILE"
+if [ -n "$CERTBOT_DOMAIN" ]; then
+  echo "Let's Encrypt certificate: $CERT_FILE"
+  echo "Certbot renewals reuse the same private key and restart nrynet-server after copying renewed files."
+else
+  echo "Self-signed CA certificate: $CERT_FILE"
+fi
 if [ -n "$INITIAL_PASSWORD" ]; then
   echo "Administrator: $ADMIN_USER"
   echo "Initial password: $INITIAL_PASSWORD"
   echo "Record this password now; it has been removed from config.yaml."
 fi
 echo "New Agent Tokens automatically include this server certificate pin; clients do not need ca_file."
-echo "After certificate renewal, regenerate Agent Tokens in the Dashboard."
+echo "If the TLS private key changes, regenerate Agent Tokens in the Dashboard."

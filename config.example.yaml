@@ -1,7 +1,11 @@
 server:
-  # Listen on all IPv4 interfaces. TLS is mandatory for public control and data listeners.
+  # TLS control/API/dashboard and TLS data listeners. Use these for WSS agents.
   listen: "0.0.0.0:7000"
   data_listen: "0.0.0.0:7001"
+  # Optional plaintext HTTP/WS control and plaintext data listeners.
+  # Configure both together only when you intentionally want ws:// access.
+  plain_listen: ""
+  plain_data_listen: ""
   public_data_address: "127.0.0.1:7001"
   quic_listen: "0.0.0.0:7002"
   public_quic_address: "127.0.0.1:7002"

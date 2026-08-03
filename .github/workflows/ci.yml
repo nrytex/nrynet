@@ -30,6 +30,9 @@ jobs:
             echo "Guard clauses must use an explicit return status under set -e." >&2
             exit 1
           fi
+      - name: Validate installer transport options
+        shell: pwsh
+        run: ./scripts/validate-install-server.ps1
 
   cross-build:
     runs-on: ubuntu-latest

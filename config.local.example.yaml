@@ -2,6 +2,8 @@ server:
   # Loopback-only development configuration. It is safe to run without TLS.
   listen: "127.0.0.1:7000"
   data_listen: "127.0.0.1:7001"
+  plain_listen: ""
+  plain_data_listen: ""
   public_data_address: "127.0.0.1:7001"
   quic_listen: "127.0.0.1:7002"
   public_quic_address: "127.0.0.1:7002"

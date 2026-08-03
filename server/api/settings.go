@@ -70,11 +70,14 @@ func (h *settingsHandler) update(c *gin.Context) {
 
 func validateSetting(key string, value any) (string, error) {
 	text := settingText(value)
+	if text == "" && isOptionalAddressSetting(key) {
+		return "", nil
+	}
 	if text == "" {
 		return "", errors.New("setting value cannot be empty")
 	}
 	switch key {
-	case "server.listen", "server.data_listen", "server.quic_listen",
+	case "server.listen", "server.plain_listen", "server.data_listen", "server.plain_data_listen", "server.quic_listen",
 		"server.rendezvous_listen", "server.http_listen", "server.public_data_address",
 		"server.public_quic_address", "server.public_rendezvous_address":
 		if _, _, err := net.SplitHostPort(text); err != nil {
@@ -87,6 +90,10 @@ func validateSetting(key string, value any) (string, error) {
 		}
 	}
 	return text, nil
+}
+
+func isOptionalAddressSetting(key string) bool {
+	return key == "server.plain_listen" || key == "server.plain_data_listen"
 }
 
 func settingText(value any) string {

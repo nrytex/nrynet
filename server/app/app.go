@@ -3,12 +3,10 @@ package app
 import (
 	"context"
 	"crypto/tls"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -31,7 +29,10 @@ type App struct {
 	config    config.Config
 	store     *storage.Store
 	server    *http.Server
+	plain     *http.Server
+	plainCtrl net.Listener
 	data      net.Listener
+	plainData net.Listener
 	web       net.Listener
 	broker    *relay.Broker
 	gateway   *gateway.Gateway
@@ -50,6 +51,7 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		store.Close()
 		return nil, auth.BootstrapResult{}, err
 	}
+	normalizePlaintextPair(&cfg.Server)
 	if err := config.ValidateServerTransport(cfg.Server); err != nil {
 		store.Close()
 		return nil, auth.BootstrapResult{}, err
@@ -73,14 +75,21 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 	binder := &serveradvanced.RemoteRelayNode{Token: relayToken, BrokerAddress: cfg.Server.PublicDataAddress, BrokerTLS: cfg.Server.TLS.Enabled, BrokerServerName: publicDataHostname(cfg.Server.PublicDataAddress), Registry: registry}
 	tunnelManager.SetRelayRegistry(registry, binder)
 	broker.SetRelayVisitorHandler(relayToken, tunnelManager.RouteRelayVisitor)
-	dataListener, err := listenData(cfg.Server)
+	dataListener, err := listenData(cfg.Server.DataListen, cfg.Server.TLS)
 	if err != nil {
 		store.Close()
 		return nil, auth.BootstrapResult{}, fmt.Errorf("listen for data connections: %w", err)
 	}
+	plainDataListener, err := listenPlainData(cfg.Server)
+	if err != nil {
+		_ = dataListener.Close()
+		store.Close()
+		return nil, auth.BootstrapResult{}, err
+	}
 	webListener, err := net.Listen("tcp", cfg.Server.HTTPListen)
 	if err != nil {
 		_ = dataListener.Close()
+		_ = closeOptionalListener(plainDataListener)
 		store.Close()
 		return nil, auth.BootstrapResult{}, fmt.Errorf("listen for HTTP tunnels: %w", err)
 	}
@@ -88,6 +97,7 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 	certificatePin, err := serverCertificatePin(cfg.Server)
 	if err != nil {
 		_ = dataListener.Close()
+		_ = closeOptionalListener(plainDataListener)
 		_ = webListener.Close()
 		store.Close()
 		return nil, auth.BootstrapResult{}, err
@@ -109,9 +119,19 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		Addr: cfg.Server.Listen, Handler: router, ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13},
 	}
+	plainServer, plainControlListener, err := listenPlainControl(cfg.Server.PlainListen, router)
+	if err != nil {
+		_ = dataListener.Close()
+		_ = closeOptionalListener(plainDataListener)
+		_ = webListener.Close()
+		store.Close()
+		return nil, auth.BootstrapResult{}, err
+	}
 	quicServer, err := listenQUIC(cfg.Server, authService, hub, broker)
 	if err != nil {
 		_ = dataListener.Close()
+		_ = closeOptionalListener(plainDataListener)
+		_ = closeOptionalListener(plainControlListener)
 		_ = webListener.Close()
 		store.Close()
 		return nil, auth.BootstrapResult{}, err
@@ -119,30 +139,16 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 	rdv, err := serveradvanced.ListenRendezvous(cfg.Server.RendezvousListen)
 	if err != nil {
 		_ = dataListener.Close()
+		_ = closeOptionalListener(plainDataListener)
+		_ = closeOptionalListener(plainControlListener)
 		_ = webListener.Close()
 		_ = quicServer.Close()
 		store.Close()
 		return nil, auth.BootstrapResult{}, err
 	}
-	return &App{config: cfg, store: store, server: server, data: dataListener, web: webListener,
+	return &App{config: cfg, store: store, server: server, plain: plainServer, plainCtrl: plainControlListener,
+		data: dataListener, plainData: plainDataListener, web: webListener,
 		broker: broker, gateway: webGateway, tunnels: tunnelManager, quic: quicServer, rdv: rdv, relayDone: make(chan struct{})}, bootstrap, nil
-}
-
-func safeSettings(cfg config.Config) []api.SettingItem {
-	return []api.SettingItem{
-		{Key: "server.listen", Value: cfg.Server.Listen, Description: "Dashboard and control API address; restart required", Mutable: true},
-		{Key: "server.data_listen", Value: cfg.Server.DataListen, Description: "TCP relay data address; restart required", Mutable: true},
-		{Key: "server.public_data_address", Value: cfg.Server.PublicDataAddress, Description: "Data address advertised to agents and relays; restart required", Mutable: true},
-		{Key: "server.quic_listen", Value: cfg.Server.QUICListen, Description: "QUIC control and data stream address; restart required", Mutable: true},
-		{Key: "server.public_quic_address", Value: cfg.Server.PublicQUICAddress, Description: "QUIC address advertised to agents; restart required", Mutable: true},
-		{Key: "server.rendezvous_listen", Value: cfg.Server.RendezvousListen, Description: "UDP rendezvous address; restart required", Mutable: true},
-		{Key: "server.public_rendezvous_address", Value: cfg.Server.PublicRendezvous, Description: "Rendezvous address advertised to agents; restart required", Mutable: true},
-		{Key: "server.http_listen", Value: cfg.Server.HTTPListen, Description: "HTTP and HTTPS gateway; restart required", Mutable: true},
-		{Key: "server.tls.enabled", Value: cfg.Server.TLS.Enabled, Description: "Required for non-loopback control and data listeners; restart required", Mutable: true},
-		{Key: "server.tls.cert_file", Value: cfg.Server.TLS.CertFile, Description: "TLS certificate chain path; restart required", Mutable: true},
-		{Key: "server.tls.key_file", Value: cfg.Server.TLS.KeyFile, Description: "TLS private key path; restart required", Mutable: true},
-		{Key: "server.heartbeat_timeout", Value: cfg.Server.HeartbeatText, Description: "Agent offline timeout; restart required", Mutable: true},
-	}
 }
 
 func listenQUIC(
@@ -169,89 +175,30 @@ func quicCertificate(cfg config.ServerConfig) (tls.Certificate, error) {
 	return cert, nil
 }
 
-func applyStoredSettings(ctx context.Context, store *storage.Store, cfg *config.Config) error {
-	stringSettings := []struct {
-		key    string
-		target *string
-	}{
-		{"server.listen", &cfg.Server.Listen},
-		{"server.data_listen", &cfg.Server.DataListen},
-		{"server.public_data_address", &cfg.Server.PublicDataAddress},
-		{"server.quic_listen", &cfg.Server.QUICListen},
-		{"server.public_quic_address", &cfg.Server.PublicQUICAddress},
-		{"server.rendezvous_listen", &cfg.Server.RendezvousListen},
-		{"server.public_rendezvous_address", &cfg.Server.PublicRendezvous},
-		{"server.http_listen", &cfg.Server.HTTPListen},
-		{"server.tls.cert_file", &cfg.Server.TLS.CertFile},
-		{"server.tls.key_file", &cfg.Server.TLS.KeyFile},
-		{"server.heartbeat_timeout", &cfg.Server.HeartbeatText},
-	}
-	for _, setting := range stringSettings {
-		value, err := store.GetSetting(ctx, "config."+setting.key)
-		if err == nil {
-			*setting.target = value
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-	}
-	duration, err := time.ParseDuration(cfg.Server.HeartbeatText)
-	if err != nil {
-		return fmt.Errorf("stored heartbeat timeout: %w", err)
-	}
-	cfg.Server.HeartbeatTimeout = duration
-	if value, err := store.GetSetting(ctx, "config.server.tls.enabled"); err == nil {
-		cfg.Server.TLS.Enabled, err = strconv.ParseBool(value)
-		return err
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	return nil
-}
-
-func listenData(cfg config.ServerConfig) (net.Listener, error) {
-	listener, err := net.Listen("tcp", cfg.DataListen)
-	if err != nil {
-		return nil, fmt.Errorf("listen for data connections: %w", err)
-	}
-	if !cfg.TLS.Enabled {
-		return listener, nil
-	}
-	certificate, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
-	if err != nil {
-		_ = listener.Close()
-		return nil, fmt.Errorf("load data TLS certificate: %w", err)
-	}
-	tlsConfig := &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS13}
-	return tls.NewListener(listener, tlsConfig), nil
-}
-
-func publicDataHostname(address string) string {
-	host, _, err := net.SplitHostPort(address)
-	if err == nil {
-		return host
-	}
-	return address
-}
-
 func (a *App) Run() error {
 	if err := a.tunnels.Restore(context.Background()); err != nil {
 		fmt.Printf("restore tunnels: %v\n", err)
 	}
-	go func() { _ = a.broker.Run(a.data) }()
-	go func() { _ = a.gateway.Run(a.web) }()
-	go func() { _ = a.quic.Serve(context.Background()) }()
-	go func() { _ = a.rdv.Run(context.Background()) }()
+	errCh := make(chan error, 8)
+	go reportServeError(errCh, "data listener", func() error { return a.broker.Run(a.data) })
+	if a.plainData != nil {
+		go reportServeError(errCh, "plaintext data listener", func() error { return a.broker.Run(a.plainData) })
+	}
+	go reportServeError(errCh, "HTTP tunnel gateway", func() error { return a.gateway.Run(a.web) })
+	go reportServeError(errCh, "QUIC listener", func() error { return a.quic.Serve(context.Background()) })
+	go reportServeError(errCh, "rendezvous listener", func() error { return a.rdv.Run(context.Background()) })
+	if a.plain != nil {
+		go reportServeError(errCh, "plaintext control server", func() error { return a.plain.Serve(a.plainCtrl) })
+	}
 	go a.monitorRelays()
-	var err error
 	if a.config.Server.TLS.Enabled {
-		err = a.server.ListenAndServeTLS(a.config.Server.TLS.CertFile, a.config.Server.TLS.KeyFile)
+		go reportServeError(errCh, "control server", func() error {
+			return a.server.ListenAndServeTLS(a.config.Server.TLS.CertFile, a.config.Server.TLS.KeyFile)
+		})
 	} else {
-		err = a.server.ListenAndServe()
+		go reportServeError(errCh, "control server", a.server.ListenAndServe)
 	}
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
-	return err
+	return <-errCh
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
@@ -261,13 +208,28 @@ func (a *App) Shutdown(ctx context.Context) error {
 		close(a.relayDone)
 	}
 	serverErr := a.server.Shutdown(ctx)
+	plainErr := shutdownOptionalServer(ctx, a.plain)
+	plainCtrlErr := closeOptionalListener(a.plainCtrl)
 	dataErr := a.data.Close()
+	plainDataErr := closeOptionalListener(a.plainData)
 	webErr := a.web.Close()
 	quicErr := a.quic.Close()
 	rdvErr := a.rdv.Close()
 	tunnelErr := a.tunnels.Close()
 	storeErr := a.store.Close()
-	return errors.Join(serverErr, dataErr, webErr, quicErr, rdvErr, tunnelErr, storeErr)
+	return errors.Join(serverErr, plainErr, plainCtrlErr, dataErr, plainDataErr, webErr, quicErr, rdvErr, tunnelErr, storeErr)
+}
+
+func reportServeError(errCh chan<- error, name string, serve func() error) {
+	if err := serve(); err != nil && !isNormalServeClose(err) {
+		errCh <- fmt.Errorf("%s: %w", name, err)
+		return
+	}
+	errCh <- nil
+}
+
+func isNormalServeClose(err error) bool {
+	return errors.Is(err, http.ErrServerClosed) || errors.Is(err, net.ErrClosed)
 }
 
 func (a *App) monitorRelays() {

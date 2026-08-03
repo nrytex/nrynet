@@ -17,6 +17,7 @@ param(
     [switch]$RenewCertificate,
     [switch]$AllowDowngrade,
     [switch]$SkipFirewall,
+    [switch]$EnableWS,
     [string]$Proxy,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ExtraArgs
@@ -31,11 +32,16 @@ $DefaultDataDir = "$env:ProgramData\Nrynet"
 $LegacyInstallDir = "$env:ProgramFiles\NAT-Link"
 $LegacyDataDir = "$env:ProgramData\NAT-Link"
 
-if ($ExtraArgs) {
-    if ($ExtraArgs.Count -ne 2 -or $ExtraArgs[0] -ne "--proxy" -or $Proxy) {
-        throw "Unknown arguments. Use -Proxy URL or --proxy URL for an HTTP(S) or SOCKS5h proxy."
+while ($ExtraArgs) {
+    if ($ExtraArgs[0] -eq "--proxy" -and $ExtraArgs.Count -ge 2 -and -not $Proxy) {
+        $Proxy = $ExtraArgs[1]
+        $ExtraArgs = @($ExtraArgs | Select-Object -Skip 2)
+    } elseif ($ExtraArgs[0] -eq "--enable-ws") {
+        $EnableWS = $true
+        $ExtraArgs = @($ExtraArgs | Select-Object -Skip 1)
+    } else {
+        throw "Unknown arguments. Use -Proxy URL, --proxy URL, -EnableWS, or --enable-ws."
     }
-    $Proxy = $ExtraArgs[1]
 }
 
 function Assert-Administrator {
@@ -121,6 +127,59 @@ function New-RandomHex([string]$OpenSSL, [int]$Bytes) {
     $value = (& $OpenSSL rand -hex $Bytes | Out-String).Trim()
     if ($LASTEXITCODE -ne 0 -or -not $value) { throw "OpenSSL failed to generate a secret." }
     return $value
+}
+
+function Enable-WSConfigPair([string]$ConfigPath) {
+    if (-not (Test-Path -LiteralPath $ConfigPath)) { return }
+    $lines = @(Get-Content -LiteralPath $ConfigPath)
+    $output = [System.Collections.Generic.List[string]]::new()
+    $inServer = $false
+    $seenPlainListen = $false
+    $seenPlainData = $false
+
+    function Add-MissingPlainFields {
+        if ($inServer) {
+            if (-not $seenPlainListen) { $output.Add('  plain_listen: "0.0.0.0:7004"') }
+            if (-not $seenPlainData) { $output.Add('  plain_data_listen: "0.0.0.0:7005"') }
+        }
+    }
+
+    foreach ($line in $lines) {
+        if ($line -match '^server:\s*$') {
+            $output.Add($line)
+            $inServer = $true
+            $seenPlainListen = $false
+            $seenPlainData = $false
+            continue
+        }
+        if ($inServer -and $line -match '^\S[^:]*:') {
+            Add-MissingPlainFields
+            $inServer = $false
+        }
+        if ($inServer -and $line -match '^\s+plain_listen:') {
+            $output.Add('  plain_listen: "0.0.0.0:7004"')
+            $seenPlainListen = $true
+            continue
+        }
+        if ($inServer -and $line -match '^\s+plain_data_listen:') {
+            $output.Add('  plain_data_listen: "0.0.0.0:7005"')
+            $seenPlainData = $true
+            continue
+        }
+        $output.Add($line)
+    }
+    Add-MissingPlainFields
+
+    $tempPath = "$ConfigPath.tmp.$PID"
+    Set-Content -LiteralPath $tempPath -Value $output -Encoding UTF8
+    Move-Item -LiteralPath $tempPath -Destination $ConfigPath -Force
+}
+
+function Test-WSConfigEnabled([string]$ConfigPath) {
+    if (-not (Test-Path -LiteralPath $ConfigPath)) { return $false }
+    $raw = Get-Content -Raw -LiteralPath $ConfigPath
+    return $raw -match '(?m)^\s+plain_listen:\s*"0\.0\.0\.0:7004"\s*$' -and
+        $raw -match '(?m)^\s+plain_data_listen:\s*"0\.0\.0\.0:7005"\s*$'
 }
 
 function Move-LegacyInstallation {
@@ -303,10 +362,17 @@ try {
         $yamlLogs = ConvertTo-YamlPath $LogDir
         $yamlCert = ConvertTo-YamlPath $CertFile
         $yamlKey = ConvertTo-YamlPath $KeyFile
+        $plainConfig = '  plain_listen: ""
+  plain_data_listen: ""'
+        if ($EnableWS) {
+            $plainConfig = '  plain_listen: "0.0.0.0:7004"
+  plain_data_listen: "0.0.0.0:7005"'
+        }
         $config = @"
 server:
   listen: "0.0.0.0:7000"
   data_listen: "0.0.0.0:7001"
+$plainConfig
   public_data_address: "${PublicHost}:7001"
   quic_listen: "0.0.0.0:7002"
   public_quic_address: "${PublicHost}:7002"
@@ -339,6 +405,10 @@ client:
 "@
         Set-Content -LiteralPath $ConfigFile -Value $config -Encoding UTF8
     }
+    if ($EnableWS) {
+        Enable-WSConfigPair $ConfigFile
+    }
+    $wsConfigEnabled = Test-WSConfigEnabled $ConfigFile
 
     $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     $binaryPath = "`"$ServerExe`" -config `"$ConfigFile`""
@@ -352,8 +422,9 @@ client:
     }
 
     if (-not $SkipFirewall) {
+        $tcpPorts = if ($wsConfigEnabled) { "7000,7001,7004,7005,8080" } else { "7000,7001,8080" }
         $rules = @(
-            @{ Name = "Nrynet TCP"; Protocol = "TCP"; Ports = "7000,7001,8080" },
+            @{ Name = "Nrynet TCP"; Protocol = "TCP"; Ports = $tcpPorts },
             @{ Name = "Nrynet UDP"; Protocol = "UDP"; Ports = "7002,7003" }
         )
         foreach ($rule in $rules) {
@@ -376,6 +447,7 @@ client:
 
     Write-Host ""
     Write-Host "Nrynet Server is running: https://${PublicHost}:7000"
+    if ($wsConfigEnabled) { Write-Host "Plaintext console/control is enabled: http://${PublicHost}:7004" }
     Write-Host "Installed version: $targetVersionText"
     Write-Host "Self-signed CA certificate: $CertFile"
     if ($initialPassword) {
@@ -384,7 +456,7 @@ client:
         Write-Host "Record this password now; it has been removed from config.yaml."
     }
     Write-Host "New Agent Tokens automatically include this server certificate pin; clients do not need ca_file."
-    Write-Host "After certificate renewal, regenerate Agent Tokens in the Dashboard."
+    Write-Host "If the TLS private key changes, regenerate Agent Tokens in the Dashboard."
 } finally {
     if (Test-Path -LiteralPath $TempDir) { Remove-Item -LiteralPath $TempDir -Recurse -Force }
 }

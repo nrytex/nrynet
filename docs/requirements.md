@@ -12,7 +12,7 @@ end-to-end verification.
 - [x] Tokens authenticate agents and can be created, disabled, and deleted.
 - [ ] A Go agent runs on Windows, Linux, and macOS and maintains a heartbeat.
 - [x] A TCP tunnel exposes a configured public port and relays bidirectional bytes.
-- [x] Remote agent/server and relay communication requires authenticated TLS and rejects invalid credentials.
+- [x] Agents can choose WS/plaintext or WSS/TLS control and data pairs, and invalid credentials are rejected.
 - [x] P2P datagrams are encrypted with an authenticated, replay-protected session cipher.
 - [x] The dashboard shows server health, online clients, tunnels, connections, bandwidth, and daily traffic.
 
@@ -51,6 +51,7 @@ end-to-end verification.
 - [x] Server and agent binaries have reproducible cross-platform build commands.
 - [x] A systemd unit and documented directory layout support `/opt/nrynet`.
 - [x] SQLite persists configuration and metrics across server restarts.
+- [x] Linux installer can request certbot certificates with key reuse and renewal restart hooks.
 - [x] Automated tests cover authentication, storage, protocol framing, and TCP/HTTP/UDP end-to-end paths.
 
 Platform-specific runtime rows remain open until the binaries and GUI are exercised on every named operating system; cross-build and CI configuration alone are not recorded as runtime proof.
