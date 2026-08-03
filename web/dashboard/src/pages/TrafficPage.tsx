@@ -14,16 +14,16 @@ export function TrafficPage() {
   const tunnels = state.data?.tunnels ?? [];
 
   return (
-    <Page title="Traffic" loading={state.loading} error={state.error} onReload={state.reload}
-      extra={<Segmented value={range} options={[{ label: "Today", value: "today" }, { label: "Month", value: "month" }]} onChange={setRange} />}>
+    <Page title="流量" loading={state.loading} error={state.error} onReload={state.reload}
+      extra={<Segmented value={range} options={[{ label: "今日", value: "today" }, { label: "本月", value: "month" }]} onChange={setRange} />}>
       <Row gutter={[16, 16]} className="metrics">
-        <Col xs={12} md={8}><div className="metric"><Statistic title="Upload" value={formatBytes(summary.upload)} /></div></Col>
-        <Col xs={12} md={8}><div className="metric"><Statistic title="Download" value={formatBytes(summary.download)} /></div></Col>
-        <Col xs={12} md={8}><div className="metric"><Statistic title="Total" value={formatBytes(summary.upload + summary.download)} /></div></Col>
+        <Col xs={12} md={8}><div className="metric"><Statistic title="上传" value={formatBytes(summary.upload)} /></div></Col>
+        <Col xs={12} md={8}><div className="metric"><Statistic title="下载" value={formatBytes(summary.download)} /></div></Col>
+        <Col xs={12} md={8}><div className="metric"><Statistic title="总计" value={formatBytes(summary.upload + summary.download)} /></div></Col>
       </Row>
       <Tabs items={[
-        { key: "clients", label: "By Client", children: <TrafficTable label="Client" rows={clients} /> },
-        { key: "tunnels", label: "By Tunnel", children: <TrafficTable label="Tunnel" rows={tunnels} /> },
+        { key: "clients", label: "按客户端", children: <TrafficTable label="客户端" rows={clients} /> },
+        { key: "tunnels", label: "按隧道", children: <TrafficTable label="隧道" rows={tunnels} /> },
       ]} />
     </Page>
   );
@@ -34,12 +34,12 @@ function TrafficTable({ label, rows }: { label: string; rows: TrafficTarget[] })
     <Table<TrafficTarget>
       rowKey="id"
       dataSource={rows}
-      locale={{ emptyText: `No ${label.toLowerCase()} traffic in this range` }}
+      locale={{ emptyText: `当前范围内没有${label}流量` }}
       columns={[
         { title: label, dataIndex: "name" },
-        { title: "Upload", dataIndex: "upload", render: formatBytes },
-        { title: "Download", dataIndex: "download", render: formatBytes },
-        { title: "Total", render: (_, row) => formatBytes(row.upload + row.download) },
+        { title: "上传", dataIndex: "upload", render: formatBytes },
+        { title: "下载", dataIndex: "download", render: formatBytes },
+        { title: "总计", render: (_, row) => formatBytes(row.upload + row.download) },
       ]}
     />
   );

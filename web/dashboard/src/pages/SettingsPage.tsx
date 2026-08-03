@@ -9,18 +9,18 @@ export function SettingsPage() {
   const rows = state.data ?? [];
 
   return (
-    <Page title="Settings" loading={state.loading} error={state.error} empty={!rows.length} onReload={state.reload}>
+    <Page title="设置" loading={state.loading} error={state.error} empty={!rows.length} onReload={state.reload}>
       <PasswordForm />
       <Divider />
-      <Typography.Title level={4}>Server configuration</Typography.Title>
+      <Typography.Title level={4}>服务端配置</Typography.Title>
       <Table<SettingItem>
         rowKey="key"
         dataSource={rows}
         pagination={false}
         columns={[
-          { title: "Key", dataIndex: "key" },
-          { title: "Value", render: (_, item) => <ValueEditor item={item} onSaved={state.reload} /> },
-          { title: "Description", dataIndex: "description", render: (v) => v || "-" },
+          { title: "配置项", dataIndex: "key" },
+          { title: "值", render: (_, item) => <ValueEditor item={item} onSaved={state.reload} /> },
+          { title: "说明", dataIndex: "description", render: (v) => v || "-" },
         ]}
       />
     </Page>
@@ -31,16 +31,16 @@ function PasswordForm() {
   const [form] = Form.useForm();
   const submit = async (values: { current: string; password: string }) => {
     await api.changePassword(values.current, values.password);
-    message.success("Administrator password changed");
+    message.success("管理员密码已修改");
     form.resetFields();
   };
   return (
     <section className="password-settings">
-      <Typography.Title level={4}>Administrator password</Typography.Title>
+      <Typography.Title level={4}>管理员密码</Typography.Title>
       <Form form={form} layout="inline" onFinish={submit}>
-        <Form.Item name="current" rules={[{ required: true }]}><Input.Password placeholder="Current password" /></Form.Item>
-        <Form.Item name="password" rules={[{ required: true, min: 12 }]}><Input.Password placeholder="New password" /></Form.Item>
-        <Button type="primary" htmlType="submit">Change</Button>
+        <Form.Item name="current" rules={[{ required: true }]}><Input.Password placeholder="当前密码" /></Form.Item>
+        <Form.Item name="password" rules={[{ required: true, min: 12 }]}><Input.Password placeholder="新密码" /></Form.Item>
+        <Button type="primary" htmlType="submit">修改</Button>
       </Form>
     </section>
   );
@@ -51,7 +51,7 @@ function ValueEditor({ item, onSaved }: { item: SettingItem; onSaved: () => void
   const [form] = Form.useForm();
   const save = async ({ value }: { value: SettingItem["value"] }) => {
     await api.updateSetting(item.key, value);
-    message.success("Setting saved; restart Nrynet to apply it");
+    message.success("设置已保存，重启 Nrynet 后生效");
     onSaved();
   };
   return (

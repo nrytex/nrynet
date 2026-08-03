@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatDuration, isOnline, sumBy } from "../utils/format";
+import { formatBytes, formatDuration, formatRate, isOnline, sumBy } from "../utils/format";
 
 describe("format helpers", () => {
   it("formats bytes", () => {
     expect(formatBytes(0)).toBe("0 B");
     expect(formatBytes(1536)).toBe("1.5 KB");
+  });
+
+  it("formats rates with Chinese units", () => {
+    expect(formatRate(1024)).toBe("1.0 KB/秒");
   });
 
   it("detects online state", () => {
@@ -14,8 +18,8 @@ describe("format helpers", () => {
   });
 
   it("formats connection duration", () => {
-    expect(formatDuration(65)).toBe("1m");
-    expect(formatDuration(90061)).toBe("1d 1h");
+    expect(formatDuration(65)).toBe("1分钟");
+    expect(formatDuration(90061)).toBe("1天 1小时");
   });
 
   it("sums selected values", () => {

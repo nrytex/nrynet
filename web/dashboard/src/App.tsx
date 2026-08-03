@@ -1,4 +1,5 @@
 import { App, Button, ConfigProvider, Layout, Menu, Typography, theme } from "antd";
+import zhCN from "antd/locale/zh_CN";
 import {
   Activity,
   ChartNoAxesCombined,
@@ -24,18 +25,18 @@ import { RelaysPage } from "./pages/RelaysPage";
 
 const pages = [
   { key: "overview", label: "概览", icon: <Gauge size={17} />, component: <OverviewPage /> },
-  { key: "clients", label: "Clients", icon: <MonitorSmartphone size={17} />, component: <ClientsPage /> },
-  { key: "tokens", label: "Tokens", icon: <KeyRound size={17} />, component: <TokensPage /> },
-  { key: "tunnels", label: "Tunnels", icon: <Network size={17} />, component: <TunnelsPage /> },
-  { key: "relays", label: "Relays", icon: <RadioTower size={17} />, component: <RelaysPage /> },
-  { key: "traffic", label: "Traffic", icon: <ChartNoAxesCombined size={17} />, component: <TrafficPage /> },
-  { key: "logs", label: "Logs", icon: <FileText size={17} />, component: <LogsPage /> },
-  { key: "settings", label: "Settings", icon: <Settings size={17} />, component: <SettingsPage /> },
+  { key: "clients", label: "客户端", icon: <MonitorSmartphone size={17} />, component: <ClientsPage /> },
+  { key: "tokens", label: "令牌", icon: <KeyRound size={17} />, component: <TokensPage /> },
+  { key: "tunnels", label: "隧道", icon: <Network size={17} />, component: <TunnelsPage /> },
+  { key: "relays", label: "中继", icon: <RadioTower size={17} />, component: <RelaysPage /> },
+  { key: "traffic", label: "流量", icon: <ChartNoAxesCombined size={17} />, component: <TrafficPage /> },
+  { key: "logs", label: "日志", icon: <FileText size={17} />, component: <LogsPage /> },
+  { key: "settings", label: "设置", icon: <Settings size={17} />, component: <SettingsPage /> },
 ];
 
 export function AppRoot() {
   return (
-    <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm, token: { borderRadius: 6, colorPrimary: "#1677ff" } }}>
+    <ConfigProvider locale={zhCN} theme={{ algorithm: theme.defaultAlgorithm, token: { borderRadius: 6, colorPrimary: "#1677ff" } }}>
       <App>
         <DashboardApp />
       </App>
@@ -80,7 +81,7 @@ function DashboardApp() {
               setAuthenticated(false);
             }}
           >
-            退出
+            退出登录
           </Button>
         </Layout.Header>
         <Layout.Content className="content">{activePage.component}</Layout.Content>

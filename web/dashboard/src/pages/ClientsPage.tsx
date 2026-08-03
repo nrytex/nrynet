@@ -3,10 +3,10 @@ import { Eye, KeyRound, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { api } from "../api/client";
 import { Page } from "../components/Page";
+import { StatusTag } from "../components/StatusTag";
 import { useAsync } from "../hooks/useAsync";
 import type { Client, ClientDetail, Tunnel } from "../types";
 import { formatBytes, formatDate, formatDuration } from "../utils/format";
-import { StatusTag } from "./OverviewPage";
 
 export function ClientsPage() {
   const { message, modal } = App.useApp();
@@ -37,34 +37,34 @@ export function ClientsPage() {
   function remove(client: Client) {
     modal.confirm({
       title: `删除 ${client.name}?`,
-      content: "这会停止并删除该 Client 的 Tunnel，同时撤销该设备身份。",
+      content: "这会停止并删除该客户端的隧道，同时撤销该设备身份。",
       okButtonProps: { danger: true },
       onOk: async () => {
         await api.deleteClient(client.id);
-        message.success("Client 已删除");
+        message.success("客户端已删除");
         await state.reload();
       },
     });
   }
 
   return (
-    <Page title="Clients" loading={state.loading} error={state.error} empty={!state.data?.length} onReload={state.reload}>
+    <Page title="客户端" loading={state.loading} error={state.error} empty={!state.data?.length} onReload={state.reload}>
       <Table<Client>
         rowKey="id"
         dataSource={state.data ?? []}
         columns={[
-          { title: "Name", dataIndex: "name" },
-          { title: "Status", render: (_, c) => <StatusTag value={c.disabled ? "disabled" : c.status} /> },
+          { title: "名称", dataIndex: "name" },
+          { title: "状态", render: (_, c) => <StatusTag value={c.disabled ? "disabled" : c.status} /> },
           { title: "IP", dataIndex: "ip" },
-          { title: "OS", dataIndex: "os" },
-          { title: "Version", dataIndex: "version" },
-          { title: "Last Online", dataIndex: "last_online", render: formatDate },
+          { title: "系统", dataIndex: "os" },
+          { title: "版本", dataIndex: "version" },
+          { title: "最后在线", dataIndex: "last_online", render: formatDate },
           { title: "操作", render: (_, c) => <RowActions client={c} onView={loadDetail} onEdit={setEditing} onReset={async () => setTokenValue((await api.resetClientToken(c.id)).value)} onRemove={remove} /> },
         ]}
       />
       <ClientDrawer detail={detail} onClose={closeDetail} />
       <ClientEditor client={editing} onCancel={() => setEditing(undefined)} onSave={saveEdit} />
-      <Modal title="新 Token" open={!!tokenValue} onCancel={() => setTokenValue(undefined)} footer={null}>
+      <Modal title="新令牌" open={!!tokenValue} onCancel={() => setTokenValue(undefined)} footer={null}>
         <Typography.Text copyable code>{tokenValue}</Typography.Text>
       </Modal>
     </Page>
@@ -85,25 +85,25 @@ function RowActions(props: { client: Client; onView: (c: Client) => void; onEdit
 function ClientDrawer({ detail, onClose }: { detail?: ClientDetail; onClose: () => void }) {
   const trafficTotal = (value: { upload: number; download: number }) => formatBytes(value.upload + value.download);
   return (
-    <Drawer title="Client 详情" open={!!detail} onClose={onClose} width={560}>
+    <Drawer title="客户端详情" open={!!detail} onClose={onClose} width={560}>
       {detail && <>
         <Descriptions column={1} bordered items={[
           { key: "id", label: "ID", children: detail.client.id },
-          { key: "device", label: "Device ID", children: detail.client.device_id },
-          { key: "status", label: "Status", children: <StatusTag value={detail.client.disabled ? "disabled" : detail.client.status} /> },
-          { key: "system", label: "System", children: `${detail.client.os || "-"} / ${detail.client.version || "-"}` },
+          { key: "device", label: "设备 ID", children: detail.client.device_id },
+          { key: "status", label: "状态", children: <StatusTag value={detail.client.disabled ? "disabled" : detail.client.status} /> },
+          { key: "system", label: "系统", children: `${detail.client.os || "-"} / ${detail.client.version || "-"}` },
           { key: "ip", label: "IP", children: detail.client.ip || "-" },
-          { key: "connected", label: "Connected", children: detail.connected_at ? formatDuration(detail.connected_seconds) : "Offline" },
-          { key: "today", label: "Traffic today", children: trafficTotal(detail.traffic.today) },
-          { key: "month", label: "Traffic this month", children: trafficTotal(detail.traffic.month) },
-          { key: "last", label: "Last online", children: formatDate(detail.client.last_online) },
+          { key: "connected", label: "已连接时长", children: detail.connected_at ? formatDuration(detail.connected_seconds) : "离线" },
+          { key: "today", label: "今日流量", children: trafficTotal(detail.traffic.today) },
+          { key: "month", label: "本月流量", children: trafficTotal(detail.traffic.month) },
+          { key: "last", label: "最后在线", children: formatDate(detail.client.last_online) },
         ]} />
-        <Typography.Title level={5} style={{ marginTop: 20 }}>Tunnels</Typography.Title>
+        <Typography.Title level={5} style={{ marginTop: 20 }}>隧道</Typography.Title>
         <Table<Tunnel> size="small" rowKey="id" pagination={false} dataSource={detail.tunnels} columns={[
-          { title: "Name", dataIndex: "name" },
-          { title: "Protocol", dataIndex: "protocol" },
-          { title: "Local", render: (_, tunnel) => `${tunnel.local_host}:${tunnel.local_port}` },
-          { title: "Status", render: (_, tunnel) => <StatusTag value={tunnel.status} /> },
+          { title: "名称", dataIndex: "name" },
+          { title: "协议", dataIndex: "protocol" },
+          { title: "本地地址", render: (_, tunnel) => `${tunnel.local_host}:${tunnel.local_port}` },
+          { title: "状态", render: (_, tunnel) => <StatusTag value={tunnel.status} /> },
         ]} />
       </>}
     </Drawer>
@@ -112,7 +112,7 @@ function ClientDrawer({ detail, onClose }: { detail?: ClientDetail; onClose: () 
 
 function ClientEditor({ client, onCancel, onSave }: { client?: Client; onCancel: () => void; onSave: (v: { name: string; disabled: boolean }) => void }) {
   return (
-    <Modal title="编辑 Client" open={!!client} onCancel={onCancel} onOk={() => document.getElementById("client-save")?.click()} destroyOnClose>
+    <Modal title="编辑客户端" open={!!client} onCancel={onCancel} onOk={() => document.getElementById("client-save")?.click()} destroyOnClose>
       <Form layout="vertical" initialValues={client} onFinish={onSave}>
         <Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="disabled" label="禁用" valuePropName="checked"><Switch /></Form.Item>

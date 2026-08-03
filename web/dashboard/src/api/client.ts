@@ -10,20 +10,27 @@ export class ApiError extends Error {
 type JsonObject = Record<string, unknown>;
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers = new Headers(options.headers);
-  headers.set("Accept", "application/json");
-  if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  Object.entries(authHeader()).forEach(([key, value]) => headers.set(key, value));
-
-  const response = await fetch(path, { ...options, headers });
-  if (response.status === 401) {
-    clearSession();
-    window.dispatchEvent(new CustomEvent("nrynet:unauthorized"));
-  }
+  const response = await fetch(path, { ...options, headers: requestHeaders(options) });
+  handleUnauthorized(response);
   if (response.status === 204) return undefined as T;
   const payload = await readPayload(response);
   if (!response.ok) throw new ApiError(response.status, errorMessage(payload, response.statusText));
   return payload as T;
+}
+
+function requestHeaders(options: RequestInit = {}) {
+  const headers = new Headers(options.headers);
+  headers.set("Accept", "application/json");
+  if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  Object.entries(authHeader()).forEach(([key, value]) => headers.set(key, value));
+  return headers;
+}
+
+function handleUnauthorized(response: Response) {
+  if (response.status === 401) {
+    clearSession();
+    window.dispatchEvent(new CustomEvent("nrynet:unauthorized"));
+  }
 }
 
 async function readPayload(response: Response): Promise<unknown> {
@@ -38,9 +45,37 @@ async function readPayload(response: Response): Promise<unknown> {
 
 function errorMessage(payload: unknown, fallback: string) {
   if (payload && typeof payload === "object" && "error" in payload) {
-    return String((payload as JsonObject).error);
+    return localizedErrorMessage(String((payload as JsonObject).error), fallback);
   }
-  return fallback || "请求失败";
+  return fallbackErrorMessage(fallback);
+}
+
+function fallbackErrorMessage(fallback: string) {
+  return localizedErrorMessage(fallback, "");
+}
+
+function localizedErrorMessage(message: string, fallback: string) {
+  if (hasChinese(message)) return message;
+  const mapped = mappedErrorMessage(message) || mappedErrorMessage(fallback);
+  return mapped || "请求失败，请稍后重试";
+}
+
+function mappedErrorMessage(message: string) {
+  const normalized = message.toLowerCase();
+  if (!normalized) return "";
+  if (normalized.includes("unauthorized") || normalized.includes("unauthenticated")) return "未授权，请重新登录";
+  if (normalized.includes("forbidden") || normalized.includes("permission denied")) return "无权访问该资源";
+  if (normalized.includes("not found")) return "资源不存在";
+  if (normalized.includes("internal server error")) return "服务器内部错误";
+  if (normalized.includes("bad request") || normalized.includes("invalid request")) return "请求参数无效";
+  if (normalized.includes("invalid credentials") || normalized.includes("invalid username") || normalized.includes("invalid password")) return "用户名或密码错误";
+  if (normalized.includes("token expired") || normalized.includes("expired token")) return "登录已过期，请重新登录";
+  if (normalized.includes("network error") || normalized.includes("failed to fetch")) return "网络连接失败";
+  return "";
+}
+
+function hasChinese(value: string) {
+  return /[\u4e00-\u9fff]/.test(value);
 }
 
 const items = <T>(payload: { items: T[] }) => payload.items;
@@ -92,8 +127,12 @@ export const api = {
     const query = new URLSearchParams();
     if (filter.keyword) query.set("keyword", filter.keyword);
     if (filter.level) query.set("level", filter.level);
-    const response = await fetch(`/api/logs/download?${query}`, { headers: authHeader() });
-    if (!response.ok) throw new ApiError(response.status, response.statusText);
+    const response = await fetch(`/api/logs/download?${query}`, { headers: requestHeaders() });
+    handleUnauthorized(response);
+    if (!response.ok) {
+      const payload = await readPayload(response);
+      throw new ApiError(response.status, errorMessage(payload, response.statusText));
+    }
     const url = URL.createObjectURL(await response.blob());
     const anchor = document.createElement("a");
     anchor.href = url;

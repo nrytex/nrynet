@@ -1,6 +1,8 @@
-import { Col, Row, Statistic, Table, Tag } from "antd";
+import { Col, Row, Statistic, Table } from "antd";
 import { api } from "../api/client";
 import { Page } from "../components/Page";
+import { StatusTag } from "../components/StatusTag";
+import { statusText } from "../display/status";
 import { useAsync } from "../hooks/useAsync";
 import type { Client, Tunnel } from "../types";
 import { formatBytes, formatDate, formatRate } from "../utils/format";
@@ -17,11 +19,11 @@ export function OverviewPage() {
   return (
     <Page title="概览" loading={state.loading} error={state.error} onReload={state.reload}>
       <Row gutter={[16, 16]} className="metrics">
-        <Metric title="Server Status" value={overview?.status ?? "unknown"} />
-        <Metric title="在线 Clients" value={overview?.online_clients ?? 0} />
-        <Metric title="运行中 Tunnels" value={overview?.active_tunnels ?? 0} />
-        <Metric title="TCP Connections" value={overview?.connections ?? 0} />
-        <Metric title="Bandwidth" value={formatRate(overview?.bandwidth_bps ?? 0)} />
+        <Metric title="服务状态" value={statusText(overview?.status ?? "unknown")} />
+        <Metric title="在线客户端" value={overview?.online_clients ?? 0} />
+        <Metric title="运行中隧道" value={overview?.active_tunnels ?? 0} />
+        <Metric title="TCP 连接数" value={overview?.connections ?? 0} />
+        <Metric title="实时带宽" value={formatRate(overview?.bandwidth_bps ?? 0)} />
         <Metric title="今日流量" value={formatBytes((overview?.today_upload ?? 0) + (overview?.today_download ?? 0))} />
       </Row>
       <Row gutter={[16, 16]}>
@@ -29,14 +31,14 @@ export function OverviewPage() {
           <Table<Client>
             rowKey="id"
             size="middle"
-            title={() => "最近 Clients"}
+            title={() => "最近客户端"}
             dataSource={clients.slice(0, 6)}
             pagination={false}
             columns={[
-              { title: "Name", dataIndex: "name" },
+              { title: "名称", dataIndex: "name" },
               { title: "IP", dataIndex: "ip" },
-              { title: "Status", render: (_, item) => <StatusTag value={item.disabled ? "disabled" : item.status} /> },
-              { title: "Last Online", dataIndex: "last_online", render: formatDate },
+              { title: "状态", render: (_, item) => <StatusTag value={item.disabled ? "disabled" : item.status} /> },
+              { title: "最后在线", dataIndex: "last_online", render: formatDate },
             ]}
           />
         </Col>
@@ -44,14 +46,14 @@ export function OverviewPage() {
           <Table<Tunnel>
             rowKey="id"
             size="middle"
-            title={() => "最近 Tunnels"}
+            title={() => "最近隧道"}
             dataSource={tunnels.slice(0, 6)}
             pagination={false}
             columns={[
-              { title: "Name", dataIndex: "name" },
-              { title: "Protocol", dataIndex: "protocol" },
-              { title: "Remote", dataIndex: "remote_port" },
-              { title: "Status", dataIndex: "status", render: (value) => <StatusTag value={value} /> },
+              { title: "名称", dataIndex: "name" },
+              { title: "协议", dataIndex: "protocol" },
+              { title: "远端端口", dataIndex: "remote_port" },
+              { title: "状态", dataIndex: "status", render: (value) => <StatusTag value={value} /> },
             ]}
           />
         </Col>
@@ -66,10 +68,4 @@ function Metric({ title, value }: { title: string; value: number | string }) {
       <div className="metric"><Statistic title={title} value={value} /></div>
     </Col>
   );
-}
-
-export function StatusTag({ value }: { value: string }) {
-  const normalized = value.toLowerCase();
-  const color = normalized === "online" || normalized === "running" ? "green" : normalized === "disabled" ? "red" : "default";
-  return <Tag color={color}>{value}</Tag>;
 }

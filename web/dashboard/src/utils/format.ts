@@ -1,7 +1,7 @@
 export function formatDate(value?: string) {
   if (!value) return "-";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString("zh-CN");
 }
 
 export function formatBytes(bytes = 0) {
@@ -12,7 +12,7 @@ export function formatBytes(bytes = 0) {
 }
 
 export function formatRate(bytesPerSecond = 0) {
-  return `${formatBytes(bytesPerSecond)}/s`;
+  return `${formatBytes(bytesPerSecond)}/秒`;
 }
 
 export function formatDuration(seconds = 0) {
@@ -21,10 +21,10 @@ export function formatDuration(seconds = 0) {
   const days = Math.floor(whole / 86400);
   const hours = Math.floor((whole % 86400) / 3600);
   const minutes = Math.floor((whole % 3600) / 60);
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m`;
-  return `${whole}s`;
+  if (days > 0) return `${days}天 ${hours}小时`;
+  if (hours > 0) return `${hours}小时 ${minutes}分钟`;
+  if (minutes > 0) return `${minutes}分钟`;
+  return `${whole}秒`;
 }
 
 export function isOnline(status: string, disabled?: boolean) {
