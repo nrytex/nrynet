@@ -110,13 +110,12 @@ func (h *Hub) SetUDPPacketHandler(handler func(string, protocol.ControlMessage))
 }
 
 func (h *Hub) Disconnect(clientID string) {
-	h.mu.Lock()
+	h.mu.RLock()
 	conn := h.conns[clientID]
-	delete(h.conns, clientID)
-	delete(h.connected, clientID)
-	h.mu.Unlock()
+	h.mu.RUnlock()
 	if conn != nil {
 		_ = conn.Close()
+		h.unregister(clientID, conn)
 	}
 }
 
@@ -163,6 +162,7 @@ func (h *Hub) serveTransport(ctx context.Context, conn ControlTransport, tokenID
 		return
 	}
 	h.register(client.ID, conn)
+	_ = h.store.SetClientStatus(ctx, client.ID, "online")
 	_ = h.store.RecordEvent(ctx, "info", "client.connected", "Client connected", map[string]any{
 		"client_id": client.ID, "device_id": client.DeviceID, "ip": client.IP,
 	})
@@ -276,36 +276,4 @@ func (h *Hub) handleUDPPacket(clientID string, message protocol.ControlMessage) 
 func errorMessage(text string) protocol.ControlMessage {
 	payload, _ := json.Marshal(protocol.ErrorPayload{Message: text})
 	return protocol.ControlMessage{Type: protocol.TypeError, Payload: payload}
-}
-
-type ControlTransport interface {
-	ReadJSON(value any) error
-	WriteJSON(value any) error
-	Close() error
-	SetReadDeadline(time.Time) error
-}
-
-type websocketControl struct {
-	ws *websocket.Conn
-	mu sync.Mutex
-}
-
-func (c *websocketControl) ReadJSON(value any) error {
-	return c.ws.ReadJSON(value)
-}
-
-func (c *websocketControl) WriteJSON(value any) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.ws.WriteJSON(value)
-}
-
-func (c *websocketControl) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.ws.Close()
-}
-
-func (c *websocketControl) SetReadDeadline(deadline time.Time) error {
-	return c.ws.SetReadDeadline(deadline)
 }

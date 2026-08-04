@@ -4,20 +4,21 @@ import "github.com/nrytex/nrynet/internal/model"
 
 type desktopObserver struct {
 	service *DesktopService
+	runID   uint64
 }
 
 func (o desktopObserver) SessionStarted() {
-	o.service.onSessionStarted()
+	o.service.onSessionStarted(o.runID)
 }
 
 func (o desktopObserver) SessionEnded(err error) {
-	o.service.onSessionEnded(err)
+	o.service.onSessionEnded(o.runID, err)
 }
 
 func (o desktopObserver) TunnelSnapshot(tunnels []model.Tunnel) {
-	o.service.onTunnelSnapshot(tunnels)
+	o.service.onTunnelSnapshot(o.runID, tunnels)
 }
 
 func (o desktopObserver) Transfer(tunnelID, direction string, bytes int64) {
-	o.service.onTransfer(tunnelID, direction, bytes)
+	o.service.onTransfer(o.runID, direction, bytes)
 }

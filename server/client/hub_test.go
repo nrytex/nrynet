@@ -126,6 +126,82 @@ func TestHubRejectsDeviceTakeoverByDifferentToken(t *testing.T) {
 	}
 }
 
+func TestHubDisconnectMarksClientOffline(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store, authService := newHubStore(t)
+	_, cleartext, err := authService.CreateAgentToken(context.Background(), "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := NewHub(store, authService, time.Second)
+	server := httptest.NewServer(routerWithHub(hub))
+	defer server.Close()
+
+	ws := dialHub(t, server.URL, cleartext)
+	defer ws.Close()
+	writeHello(t, ws, "disconnect-device")
+	expectMessageType(t, ws, protocol.TypeTunnelSnapshot)
+	client, err := store.GetClientByDevice(context.Background(), "disconnect-device")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hub.Disconnect(client.ID)
+	disconnected, err := store.GetClient(context.Background(), client.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if disconnected.Status != "offline" || hub.OnlineCount() != 0 {
+		t.Fatalf("disconnect left stale state: client=%+v online=%d", disconnected, hub.OnlineCount())
+	}
+}
+
+func TestHubTokenRotationRejectsOldTokenAndAcceptsNewToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store, authService := newHubStore(t)
+	_, oldValue, err := authService.CreateAgentToken(context.Background(), "old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := NewHub(store, authService, time.Second)
+	server := httptest.NewServer(routerWithHub(hub))
+	defer server.Close()
+
+	original := dialHub(t, server.URL, oldValue)
+	writeHello(t, original, "rotated-device")
+	expectMessageType(t, original, protocol.TypeTunnelSnapshot)
+	client, err := store.GetClientByDevice(context.Background(), "rotated-device")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newToken, newValue, err := authService.CreateAgentToken(context.Background(), "new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateClientToken(context.Background(), client.ID, newToken.ID); err != nil {
+		t.Fatal(err)
+	}
+	hub.Disconnect(client.ID)
+	_ = original.Close()
+
+	stale := dialHub(t, server.URL, oldValue)
+	defer stale.Close()
+	writeHello(t, stale, "rotated-device")
+	expectMessageType(t, stale, protocol.TypeError)
+
+	replacement := dialHub(t, server.URL, newValue)
+	defer replacement.Close()
+	writeHello(t, replacement, "rotated-device")
+	expectMessageType(t, replacement, protocol.TypeTunnelSnapshot)
+	connected, err := store.GetClient(context.Background(), client.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if connected.Status != "online" || hub.OnlineCount() != 1 {
+		t.Fatalf("new token did not restore the client: client=%+v online=%d", connected, hub.OnlineCount())
+	}
+}
+
 func expectMessageType(t *testing.T, ws *websocket.Conn, want string) {
 	t.Helper()
 	var got protocol.ControlMessage
