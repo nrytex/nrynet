@@ -90,22 +90,22 @@ install_dependencies() {
   for command in curl openssl tar sha256sum; do
     command -v "$command" >/dev/null 2>&1 || missing="$missing $command"
   done
-  if [ -n "$CERTBOT_DOMAIN" ] && ! command -v certbot >/dev/null 2>&1; then
+  if ! command -v certbot >/dev/null 2>&1; then
     missing="$missing certbot"
   fi
   [ -z "$missing" ] && return 0
   echo "Installing required tools:$missing"
   if command -v apt-get >/dev/null 2>&1; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates openssl tar coreutils ${CERTBOT_DOMAIN:+certbot}
+    DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates openssl tar coreutils certbot
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y curl ca-certificates openssl tar coreutils ${CERTBOT_DOMAIN:+certbot}
+    dnf install -y curl ca-certificates openssl tar coreutils certbot
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y curl ca-certificates openssl tar coreutils ${CERTBOT_DOMAIN:+certbot}
+    yum install -y curl ca-certificates openssl tar coreutils certbot
   elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache curl ca-certificates openssl tar coreutils ${CERTBOT_DOMAIN:+certbot}
+    apk add --no-cache curl ca-certificates openssl tar coreutils certbot
   else
-    echo "Install curl, openssl, tar and sha256sum, then run this script again." >&2
+    echo "Install curl, openssl, certbot, tar and sha256sum, then run this script again." >&2
     exit 1
   fi
 }
@@ -147,6 +147,10 @@ validate_certbot_options() {
   fi
   if printf '%s' "$CERTBOT_DOMAIN" | grep -Eq '^[0-9.]+$'; then
     echo "--certbot-domain must be a DNS name; Let's Encrypt cannot issue for an IP address." >&2
+    exit 2
+  fi
+  if ! printf '%s' "$CERTBOT_EMAIL" | grep -Eq '^[A-Za-z0-9.!#$%&*+/=?^_{}|~-]+@[A-Za-z0-9.-]+$'; then
+    echo "--certbot-email must be a valid email address." >&2
     exit 2
   fi
 }
@@ -246,6 +250,41 @@ config_ws_enabled() {
     grep -Eq '^[[:space:]]+plain_data_listen:[[:space:]]+"[^"]+"[[:space:]]*$' "$CONFIG_FILE"
 }
 
+enable_tls_in_config() {
+  [ -f "$CONFIG_FILE" ] || return 0
+  tmp_config="$CONFIG_FILE.tls.$$"
+  awk -v cert="$CERT_FILE" -v key="$KEY_FILE" '
+    function emit_missing() {
+      if (in_tls) {
+        if (!seen_enabled) print "    enabled: true"
+        if (!seen_cert) print "    cert_file: \"" cert "\""
+        if (!seen_key) print "    key_file: \"" key "\""
+      }
+    }
+    /^  tls:[[:space:]]*$/ {
+      print; in_tls=1; seen_enabled=0; seen_cert=0; seen_key=0; next
+    }
+    in_tls && /^  [^[:space:]#][^:]*:/ { emit_missing(); in_tls=0 }
+    in_tls && /^[[:space:]]{4}enabled:/ { print "    enabled: true"; seen_enabled=1; next }
+    in_tls && /^[[:space:]]{4}cert_file:/ { print "    cert_file: \"" cert "\""; seen_cert=1; next }
+    in_tls && /^[[:space:]]{4}key_file:/ { print "    key_file: \"" key "\""; seen_key=1; next }
+    { print }
+    END { emit_missing() }
+  ' "$CONFIG_FILE" > "$tmp_config"
+  chown root:nrynet "$tmp_config"
+  chmod 0640 "$tmp_config"
+  mv -f "$tmp_config" "$CONFIG_FILE"
+}
+
+config_tls_enabled() {
+  awk '
+    /^  tls:[[:space:]]*$/ { in_tls=1; next }
+    in_tls && /^  [^[:space:]#][^:]*:/ { in_tls=0 }
+    in_tls && /^[[:space:]]{4}enabled:[[:space:]]*true[[:space:]]*$/ { found=1 }
+    END { exit(found ? 0 : 1) }
+  ' "$CONFIG_FILE"
+}
+
 install_certbot_certificate() {
   [ -n "$CERTBOT_DOMAIN" ] || return 1
   staging=""
@@ -264,11 +303,10 @@ lineage="\${RENEWED_LINEAGE:-\$target_lineage}"
 resolved_lineage="\$(readlink -f "\$lineage")"
 resolved_target="\$(readlink -f "\$target_lineage")"
 [ "\$resolved_lineage" = "\$resolved_target" ] || exit 0
-install -m 0644 -o root -g nrynet "\$resolved_lineage/fullchain.pem" "$CERT_FILE"
-install -m 0640 -o root -g nrynet "\$resolved_lineage/privkey.pem" "$KEY_FILE"
-if systemctl list-unit-files nrynet-server.service >/dev/null 2>&1; then
-  systemctl restart nrynet-server.service
-fi
+install -m 0644 -o root -g nrynet "\$resolved_lineage/fullchain.pem" "$CERT_FILE.new"
+install -m 0640 -o root -g nrynet "\$resolved_lineage/privkey.pem" "$KEY_FILE.new"
+mv -f "$CERT_FILE.new" "$CERT_FILE"
+mv -f "$KEY_FILE.new" "$KEY_FILE"
 EOF
   install -m 0755 "$TEMP_DIR/nrynet-certbot-deploy-hook.sh" "$hook"
   echo "Requesting a Let's Encrypt certificate for $CERTBOT_DOMAIN with certbot..."
@@ -284,6 +322,17 @@ EOF
     echo "WARNING: The TLS certificate public key changed while switching to certbot."
     echo "Existing pinned Agent Tokens will reject the new certificate; regenerate Agent Tokens in the Dashboard and update agents."
   fi
+}
+
+write_certbot_managed_state() {
+  [ -n "$CERTBOT_DOMAIN" ] || return 0
+  managed_tmp="/var/lib/nrynet/certbot/.managed.$$"
+  cat >"$managed_tmp" <<EOF
+{"domain":"$CERTBOT_DOMAIN","email":"$CERTBOT_EMAIL","updated":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+EOF
+  chown root:root "$managed_tmp"
+  chmod 0600 "$managed_tmp"
+  mv -f "$managed_tmp" /var/lib/nrynet/certbot/managed.json
 }
 
 migrate_legacy_install() {
@@ -430,9 +479,14 @@ fi
 if ! id -u nrynet >/dev/null 2>&1; then
   useradd --system --gid nrynet --home-dir "$INSTALL_DIR" --shell /usr/sbin/nologin nrynet
 fi
-install -d -m 0750 -o nrynet -g nrynet "$INSTALL_DIR" "$INSTALL_DIR/data" "$INSTALL_DIR/logs"
+install -d -m 0750 -o root -g nrynet "$INSTALL_DIR"
+install -d -m 0750 -o nrynet -g nrynet "$INSTALL_DIR/data" "$INSTALL_DIR/logs"
 install -d -m 0750 -o root -g nrynet "$INSTALL_DIR/tls"
 chown -R nrynet:nrynet "$INSTALL_DIR/data" "$INSTALL_DIR/logs"
+install -d -m 0750 -o nrynet -g nrynet "$INSTALL_DIR/data/certbot/inbox"
+install -d -m 0750 -o root -g nrynet /var/lib/nrynet/certbot
+install -d -m 0700 -o root -g root /var/lib/nrynet/certbot/work /var/log/nrynet/certbot
+install -d -m 0750 -o root -g root /etc/letsencrypt
 if [ "$REPLACE_BINARY" -eq 1 ]; then
   if systemctl is-active --quiet nrynet-server 2>/dev/null; then
     systemctl stop nrynet-server
@@ -442,9 +496,12 @@ fi
 
 CERT_FILE="$INSTALL_DIR/tls/fullchain.pem"
 KEY_FILE="$INSTALL_DIR/tls/privkey.pem"
+TLS_ENABLED=false
 if [ -n "$CERTBOT_DOMAIN" ]; then
   install_certbot_certificate
-elif [ ! -s "$CERT_FILE" ] || [ ! -s "$KEY_FILE" ] || [ "$RENEW_CERT" -eq 1 ]; then
+  write_certbot_managed_state
+  TLS_ENABLED=true
+elif [ "$RENEW_CERT" -eq 1 ]; then
     case "$PUBLIC_HOST" in
       *[!0-9.]*) PRIMARY_SAN="DNS:$PUBLIC_HOST" ;;
       *) PRIMARY_SAN="IP:$PUBLIC_HOST" ;;
@@ -456,10 +513,13 @@ elif [ ! -s "$CERT_FILE" ] || [ ! -s "$KEY_FILE" ] || [ "$RENEW_CERT" -eq 1 ]; t
     chown root:nrynet "$CERT_FILE" "$KEY_FILE"
     chmod 0644 "$CERT_FILE"
     chmod 0640 "$KEY_FILE"
+    TLS_ENABLED=true
 fi
-chown root:nrynet "$CERT_FILE" "$KEY_FILE"
-chmod 0644 "$CERT_FILE"
-chmod 0640 "$KEY_FILE"
+if [ -s "$CERT_FILE" ] && [ -s "$KEY_FILE" ]; then
+  chown root:nrynet "$CERT_FILE" "$KEY_FILE"
+  chmod 0644 "$CERT_FILE"
+  chmod 0640 "$KEY_FILE"
+fi
 
 CONFIG_FILE="$INSTALL_DIR/config.yaml"
 NEW_DATABASE=0
@@ -493,14 +553,14 @@ $PLAIN_CONFIG
   jwt_ttl: "12h"
   heartbeat_timeout: "45s"
   tls:
-    enabled: true
+    enabled: $TLS_ENABLED
     cert_file: "$CERT_FILE"
     key_file: "$KEY_FILE"
   bootstrap:
     admin_username: "$ADMIN_USER"
     admin_password: "$INITIAL_PASSWORD"
 client:
-  server_url: "wss://$PUBLIC_HOST:7000/agent/connect"
+  server_url: "ws://$PUBLIC_HOST:7000/agent/connect"
   data_address: "$PUBLIC_HOST:7001"
   transport: "websocket"
   quic_address: "$PUBLIC_HOST:7002"
@@ -513,12 +573,19 @@ client:
 EOF
   install -m 0640 -o root -g nrynet "$TEMP_DIR/config.yaml" "$CONFIG_FILE"
 fi
+if [ "$TLS_ENABLED" = true ]; then
+  enable_tls_in_config
+fi
 sync_plain_config
 chown root:nrynet "$CONFIG_FILE"
 chmod 0640 "$CONFIG_FILE"
 WS_CONFIG_ENABLED=0
 if config_ws_enabled; then
   WS_CONFIG_ENABLED=1
+fi
+TLS_CONFIG_ENABLED=0
+if config_tls_enabled; then
+  TLS_CONFIG_ENABLED=1
 fi
 
 cat >"$TEMP_DIR/nrynet-server.service" <<EOF
@@ -546,8 +613,75 @@ LimitNOFILE=1048576
 WantedBy=multi-user.target
 EOF
 install -m 0644 "$TEMP_DIR/nrynet-server.service" /etc/systemd/system/nrynet-server.service
+cat >"$TEMP_DIR/nrynet-certbot.path" <<EOF
+[Unit]
+Description=Watch for Nrynet certificate requests
+
+[Path]
+PathChanged=$INSTALL_DIR/data/certbot/inbox/request.json
+Unit=nrynet-certbot.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+cat >"$TEMP_DIR/nrynet-certbot.service" <<EOF
+[Unit]
+Description=Nrynet privileged Certbot helper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=$INSTALL_DIR/nrynet-server --certbot-helper --certbot-helper-install-dir $INSTALL_DIR
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/letsencrypt /var/lib/nrynet/certbot $INSTALL_DIR/tls /var/log/nrynet/certbot
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER
+EOF
+cat >"$TEMP_DIR/nrynet-certbot-renew.service" <<EOF
+[Unit]
+Description=Renew the Nrynet managed certificate
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=$INSTALL_DIR/nrynet-server --certbot-renew --certbot-helper-install-dir $INSTALL_DIR
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/letsencrypt /var/lib/nrynet/certbot $INSTALL_DIR/tls /var/log/nrynet/certbot
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER
+EOF
+cat >"$TEMP_DIR/nrynet-certbot-renew.timer" <<EOF
+[Unit]
+Description=Renew the Nrynet managed certificate daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+install -m 0644 "$TEMP_DIR/nrynet-certbot.path" /etc/systemd/system/nrynet-certbot.path
+install -m 0644 "$TEMP_DIR/nrynet-certbot.service" /etc/systemd/system/nrynet-certbot.service
+install -m 0644 "$TEMP_DIR/nrynet-certbot-renew.service" /etc/systemd/system/nrynet-certbot-renew.service
+install -m 0644 "$TEMP_DIR/nrynet-certbot-renew.timer" /etc/systemd/system/nrynet-certbot-renew.timer
+install -m 0640 -o root -g nrynet /dev/null /var/lib/nrynet/certbot/helper-ready
 systemctl daemon-reload
 systemctl enable nrynet-server
+systemctl enable --now nrynet-certbot.path nrynet-certbot-renew.timer
 if systemctl is-active --quiet nrynet-server 2>/dev/null; then
   systemctl restart nrynet-server
 else
@@ -564,21 +698,27 @@ if [ -n "$INITIAL_PASSWORD" ]; then
 fi
 
 echo
-echo "Nrynet Server is running: https://$PUBLIC_HOST:7000"
+echo "Nrynet Server HTTP console is running: http://$PUBLIC_HOST:7000"
+if [ "$TLS_CONFIG_ENABLED" -eq 1 ]; then
+  echo "Nrynet Server HTTPS console is running: https://$PUBLIC_HOST:7000"
+fi
 if [ "$WS_CONFIG_ENABLED" -eq 1 ]; then
   echo "Plaintext console/control is enabled: http://$PUBLIC_HOST:7004"
 fi
 echo "Installed version: $TARGET_VERSION"
 if [ -n "$CERTBOT_DOMAIN" ]; then
   echo "Let's Encrypt certificate: $CERT_FILE"
-  echo "Certbot renewals reuse the same private key and restart nrynet-server after copying renewed files."
+  echo "Certbot renewals reuse the same private key and are hot-loaded without restarting nrynet-server."
+elif [ -s "$CERT_FILE" ] && [ -s "$KEY_FILE" ]; then
+  echo "Available self-signed certificate: $CERT_FILE"
 else
-  echo "Self-signed CA certificate: $CERT_FILE"
+  echo "TLS is disabled by default. Bind a domain in the Dashboard to request a trusted certificate."
 fi
 if [ -n "$INITIAL_PASSWORD" ]; then
   echo "Administrator: $ADMIN_USER"
   echo "Initial password: $INITIAL_PASSWORD"
   echo "Record this password now; it has been removed from config.yaml."
 fi
-echo "New Agent Tokens automatically include this server certificate pin; clients do not need ca_file."
-echo "If the TLS private key changes, regenerate Agent Tokens in the Dashboard."
+if [ "$TLS_CONFIG_ENABLED" -eq 1 ]; then
+  echo "Self-signed TLS certificates are pinned into new Agent Tokens; trusted CA certificates need no ca_file."
+fi

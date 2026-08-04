@@ -19,14 +19,14 @@ Server 和 Agent 可以安装在同一台机器用于本地验证，但生产环
 - Node.js 和 npm，仅构建 Dashboard/桌面前端时需要
 - Wails v3，仅构建桌面客户端时需要
 - 公网 IP；生产环境推荐使用解析到 Server 的域名
-- 安装器可自动生成自签名 TLS 证书，也可使用受信任 CA 签发的证书
+- Linux 安装器会安装受限 Certbot helper，Dashboard 可申请 Let's Encrypt 证书
 - Linux 使用 systemd；Windows 使用系统服务保持后台运行
 
-生产环境默认只开启 HTTPS/WSS 与 TLS 数据通道。明文 `ws://` 和明文数据通道只应在明确需要 IP 直连、专线或受控网络时开启。安装器会写入 `7004/7005` 的默认监听地址，但 `server.plain_enabled` 默认为 `false`，不会实际监听；管理员也可以在 Dashboard 后台开启或关闭“明文 WS 访问”，保存后重启 Server 生效。`--enable-ws` 和 `-EnableWS` 只是首次安装或升级时的初始预设，不再是唯一入口。
+新安装默认提供 `7000` 上的 HTTP/WS 和 `7001` 上的明文数据通道，不默认启用 TLS。管理员在 Dashboard 的“访问与证书”中绑定域名并申请证书后，相同端口会热开启 HTTPS/WSS 和 TLS 数据；原 HTTP/WS 仍可同时使用。`7004/7005` 仅作为旧部署的额外兼容端口，默认关闭。
 
 ## 3. 一键安装 Server
 
-Release 提供 Linux 和 Windows 一键安装脚本。脚本会下载对应架构的软件包、校验 SHA-256、调用 OpenSSL 生成自签名 TLS 证书、写入 `0.0.0.0` 监听配置，并注册系统服务。整个流程不使用 Docker。
+Release 提供 Linux 和 Windows 一键安装脚本。脚本会下载对应架构的软件包、校验 SHA-256、写入 `0.0.0.0` 监听配置并注册系统服务。Linux 还会安装 Certbot 及受限的 root helper；Nrynet 主服务仍以非 root 用户运行。整个流程不使用 Docker。
 
 ### 3.1 Linux
 
@@ -38,23 +38,15 @@ chmod +x install-server.sh
 sudo ./install-server.sh --public-host nat.example.com
 ```
 
-使用 Let's Encrypt 域名证书：
+安装后打开 `http://<server-ip>:7000`，进入“设置 > 访问与证书”，填写域名和邮箱即可申请 Let's Encrypt。域名必须已解析到本机，公网 TCP `80` 必须可访问。也保留无人值守安装方式：
 
 ```bash
 sudo ./install-server.sh --certbot-domain nat.example.com --certbot-email admin@example.com
 ```
 
-同时提供域名 WSS 和 IP WS 访问时，可以在安装时预设开启明文端口：
+证书签发成功后，域名用户使用 `wss://nat.example.com:7000/agent/connect`，IP 用户仍可使用 `ws://<server-ip>:7000/agent/connect`；数据地址都使用 `7001`，服务会自动识别明文或 TLS。整个切换与续期均不需要重启 Nrynet。`--enable-ws` 只用于启用额外兼容端口 `7004/7005`，普通部署不需要。
 
-```bash
-sudo ./install-server.sh --certbot-domain nat.example.com --certbot-email admin@example.com --enable-ws
-```
-
-此时域名用户使用 `wss://nat.example.com:7000/agent/connect` 和数据地址 `nat.example.com:7001`；需要 IP 明文直连的 Agent 使用 `ws://<server-ip>:7004/agent/connect` 和数据地址 `<server-ip>:7005`。不要混用 WSS 控制端口和明文数据端口，也不要混用 WS 控制端口和 TLS 数据端口。
-
-如果安装时没有传 `--enable-ws`，也可以登录 Dashboard，在“设置”里开启“明文 WS 访问”，确认监听地址为 `0.0.0.0:7004` 和 `0.0.0.0:7005`，保存后执行 `sudo systemctl restart nrynet-server`，并确保主机及云防火墙已放行 TCP `7004/7005`。关闭同理，保存后重启即停止监听明文端口。
-
-脚本会自动安装缺少的 `curl`、`openssl`、`tar` 和校验工具，安装目录默认为 `/opt/nrynet`，服务名为 `nrynet-server`。指定版本或重新生成证书：
+脚本会自动安装缺少的 `curl`、`openssl`、`certbot`、`tar` 和校验工具，安装目录默认为 `/opt/nrynet`，服务名为 `nrynet-server`。指定版本或明确生成自签名证书：
 
 ```bash
 sudo ./install-server.sh --version 1.0.0 --public-host nat.example.com --renew-cert
@@ -82,6 +74,8 @@ sudo ./install-server.sh --public-host nat.example.com --proxy socks5h://127.0.0
 sudo systemctl status nrynet-server
 sudo systemctl restart nrynet-server
 sudo journalctl -u nrynet-server -f
+sudo systemctl status nrynet-certbot.path nrynet-certbot-renew.timer
+sudo journalctl -u nrynet-certbot.service -n 50 --no-pager
 ```
 
 ### 3.2 Windows
@@ -94,7 +88,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\install-server.ps1 -PublicHost nat.example.com
 ```
 
-Windows 默认不开放明文 WS。确实需要同时开放 `7004/7005` 时，可在安装时预设开启：
+Windows 默认通过主端口提供 HTTP/WS；确实需要额外的 `7004/7005` 兼容端口时，可在安装时预设开启：
 
 ```powershell
 .\install-server.ps1 -PublicHost nat.example.com -EnableWS
@@ -114,11 +108,11 @@ SOCKS5h 使用 Windows 自带的 `curl.exe` 下载 Release，并将同一代理�
 .\install-server.ps1 -PublicHost nat.example.com --proxy socks5h://127.0.0.1:1080
 ```
 
-脚本会在缺少 OpenSSL 时通过 `winget` 安装，注册 `NrynetServer` Windows 服务，并开放 TCP `7000/7001/7004/7005/8080` 和 UDP `7002/7003`。其中 `7004/7005` 会预先加入防火墙规则，确保之后在 Dashboard 开启明文 WS 并重启服务即可使用；`server.plain_enabled: false` 时服务不会监听这两个端口。使用 `-SkipFirewall` 可跳过防火墙规则。
+脚本会在缺少 OpenSSL 时通过 `winget` 安装，注册 `NrynetServer` Windows 服务，并开放 TCP `7000/7001/7004/7005/8080` 和 UDP `7002/7003`。`7004/7005` 会预先加入防火墙规则，但只有在兼容开关开启时才监听。Dashboard 中 TLS 与兼容端口开关均热生效。使用 `-SkipFirewall` 可跳过防火墙规则。
 
-不使用 `-EnableWS` 时，也可以之后在 Dashboard 后台开启“明文 WS 访问”，保存设置后重启 `NrynetServer` 服务。若安装时使用了 `-SkipFirewall`，需自行放行 TCP `7004/7005`。
+不使用 `-EnableWS` 时，也可以之后在 Dashboard 开启额外兼容访问，不需要重启服务。若安装时使用了 `-SkipFirewall`，需自行放行 TCP `7004/7005`。
 
-首次安装完成后，终端会显示一次性管理员密码。脚本随后会从配置文件中移除明文密码。安装器自动生成的证书是自签名证书；浏览器首次访问 Dashboard 时仍需确认该证书，正式公网服务也可替换为受信任 CA 签发的同名证书。使用安装器自签名证书时，新版 Dashboard 生成的 Agent Token 会携带服务器证书的公钥指纹，命令行 Agent 和桌面客户端会自动完成安全校验，不需要复制 `fullchain.pem`，也不需要填写 `ca_file`。
+首次安装完成后，终端会显示一次性管理员密码，随后从配置文件移除。Windows 会准备一份默认关闭的自签名证书；手动开启自签名 TLS 时浏览器仍会提示不受信任。Windows Server 当前不支持从 Dashboard 自动运行 Certbot，可使用已有证书或反向代理终止 TLS。
 
 Windows 服务同样会设置为自动启动并立即运行：
 
@@ -130,10 +124,10 @@ Get-WinEvent -LogName Application -MaxEvents 50
 
 ### 3.3 安装完成后开始使用
 
-1. 在浏览器打开 `https://<public-host>:7000`。使用自签名证书时，按浏览器提示确认该证书；使用受信任证书时会直接打开。
+1. 首次在浏览器打开 `http://<public-host>:7000`。
 2. 使用安装器终端输出的管理员用户名和一次性密码登录 Dashboard。
 3. 在“访问令牌”页面创建 Agent Token。不要把管理员密码当作 Agent Token 使用。
-4. 在需要暴露内网服务的设备上安装命令行 Agent 或桌面客户端，填写 `wss://<public-host>:7000/agent/connect`、数据地址 `<public-host>:7001` 和 Agent Token。证书指纹已经包含在 Token 中，无需下载证书文件。
+4. Agent 默认填写 `ws://<public-host>:7000/agent/connect` 和数据地址 `<public-host>:7001`。绑定域名后也可使用 `wss://<domain>:7000/agent/connect`，无需修改服务端端口。
 5. Agent 上线后，在 Dashboard 创建 TCP、UDP、HTTP 或 HTTPS 隧道，选择对应设备和本地服务地址，再启动隧道。
 
 Server 是后台常驻服务，不需要每次手动运行二进制。Linux 命令行 Agent 的完整配置见第 9 节，Windows/macOS 桌面客户端见第 11 节。
@@ -191,7 +185,7 @@ go run ./client -config config.yaml
 
 ## 6. 生产配置
 
-以下示例假设域名为 `nat.example.com`，证书存放在 `/opt/nrynet/tls/`：
+以下示例是新安装的默认 HTTP/WS 配置。域名证书签发后，Dashboard 会把 TLS 配置作为运行时覆盖保存并热加载：
 
 ```yaml
 server:
@@ -212,14 +206,14 @@ server:
   heartbeat_timeout: "45s"
   relay_api_token: ""
   tls:
-    enabled: true
+    enabled: false
     cert_file: "/opt/nrynet/tls/fullchain.pem"
     key_file: "/opt/nrynet/tls/privkey.pem"
   bootstrap:
     admin_username: "admin"
     admin_password: ""
 client:
-  server_url: "wss://nat.example.com:7000/agent/connect"
+  server_url: "ws://nat.example.com:7000/agent/connect"
   data_address: "nat.example.com:7001"
   transport: "websocket"
   quic_address: "nat.example.com:7002"
@@ -235,18 +229,18 @@ client:
 
 如果通过 `--renew-cert` 或 `-RenewCertificate` 更换了证书密钥，已有 Token 中的旧指纹会拒绝新证书，这是正常的防劫持保护。请在确认 Server 安全后，从 Dashboard 重新生成 Token 并更新各 Agent。使用受信任 CA 证书时，系统证书链仍会正常验证。
 
-Linux 安装器的 certbot 模式使用 standalone HTTP-01 挑战，运行前必须确保 `nat.example.com` 已解析到本机，且公网入站 TCP/80 能到达这台 Server。安装器会使用 `--reuse-key` 申请和续期证书，把 `fullchain.pem` 与 `privkey.pem` 复制到 `/opt/nrynet/tls`，并安装只处理目标证书 lineage 的自动续期 deploy hook，续期后自动重启 `nrynet-server`。从已有自签名证书首次切换到 certbot 时通常会更换 SPKI；安装器会备份旧证书并提示重新生成 Agent Token。正常续期复用同一私钥，不需要重发 Token。
+Linux Dashboard 的证书申请使用 standalone HTTP-01 挑战，运行前必须确保域名已解析到本机，且公网入站 TCP/80 能到达 Server。普通 `nrynet-server` 进程不会获得 root 权限；它只向 `/opt/nrynet/data/certbot/inbox` 写入经过校验的任务，由 root systemd helper 使用固定参数调用 Certbot。已批准的续期目标和工作状态保存在 root 管理的 `/var/lib/nrynet/certbot`，不会信任普通服务可写的状态。证书以原子替换方式安装到 `/opt/nrynet/tls`，服务每两秒检查任务和证书变化并热加载。`nrynet-certbot-renew.timer` 每日检查续期，不会重启主服务。
 
 ## 7. 端口与防火墙
 
 | 端口 | 协议 | 用途 |
 | --- | --- | --- |
-| 7000 | TCP/TLS | Dashboard、管理 API、Agent 控制通道 |
-| 7001 | TCP/TLS | TCP/HTTP 数据通道 |
+| 7000 | HTTP/HTTPS、WS/WSS | Dashboard、管理 API、Agent 控制通道；TLS 开启后同端口并存 |
+| 7001 | TCP/TLS | 明文与 TLS 数据通道；按握手自动识别 |
 | 7002 | UDP/QUIC | QUIC 控制和数据流 |
 | 7003 | UDP | P2P Rendezvous 和打洞 |
-| 7004 | TCP/WS | 可选明文 Dashboard、管理 API、Agent 控制通道，由 `server.plain_enabled` 控制，保存后重启生效 |
-| 7005 | TCP | 可选明文数据通道，由 `server.plain_enabled` 控制，保存后重启生效 |
+| 7004 | TCP/WS | 可选旧版兼容 Dashboard、管理 API、Agent 控制通道；后台热启停 |
+| 7005 | TCP | 可选旧版兼容明文数据通道；后台热启停 |
 | 8080 | TCP | HTTP Host 与 HTTPS SNI 网关 |
 | 隧道远程端口 | TCP 或 UDP | 访客访问端口 |
 
@@ -256,7 +250,9 @@ Linux 安装器的 certbot 模式使用 standalone HTTP-01 挑战，运行前必
 
 ```bash
 sudo useradd --system --home /opt/nrynet --shell /usr/sbin/nologin nrynet
-sudo install -d -o nrynet -g nrynet /opt/nrynet/data /opt/nrynet/logs /opt/nrynet/tls
+sudo install -d -o root -g nrynet -m 0750 /opt/nrynet
+sudo install -d -o nrynet -g nrynet -m 0750 /opt/nrynet/data /opt/nrynet/logs
+sudo install -d -o root -g nrynet -m 0750 /opt/nrynet/tls
 sudo install -o nrynet -g nrynet -m 0755 nrynet-server /opt/nrynet/
 sudo install -o nrynet -g nrynet -m 0600 config.yaml /opt/nrynet/
 sudo install -o nrynet -g nrynet -m 0644 fullchain.pem /opt/nrynet/tls/

@@ -12,6 +12,10 @@ function Assert-Contains([string]$Text, [string]$Needle, [string]$Message) {
 }
 
 Assert-Contains $linuxScript '--enable-ws)' "install-server.sh must accept --enable-ws as an initial plaintext WS preset."
+Assert-Contains $linuxScript 'TLS_ENABLED=false' "Linux installer must default new installations to HTTP/WS."
+Assert-Contains $linuxScript 'server_url: "ws://$PUBLIC_HOST:7000/agent/connect"' "Linux installer must default agents to WS."
+Assert-Contains $linuxScript 'coreutils certbot' "Linux installer must install Certbot for later Dashboard domain binding."
+Assert-Contains $linuxScript 'install -d -m 0750 -o root -g nrynet "$INSTALL_DIR"' "Install directory must not be writable by the unprivileged service that triggers the root helper."
 Assert-Contains $linuxScript 'plain_enabled: false' "Default generated config must keep plaintext WS disabled."
 Assert-Contains $linuxScript 'plain_listen: "0.0.0.0:7004"' "Default generated config must store the plaintext control address for dashboard toggles."
 Assert-Contains $linuxScript 'plain_enabled: true' "Generated config must enable plaintext WS only when requested."
@@ -29,6 +33,19 @@ Assert-Contains $powerShellScript 'if ($wsConfigEnabled) { Write-Host "Plaintext
 Assert-Contains $linuxScript 'target_lineage="/etc/letsencrypt/live/$CERTBOT_DOMAIN"' "Certbot hook must pin the expected lineage."
 Assert-Contains $linuxScript '[ "\$resolved_lineage" = "\$resolved_target" ] || exit 0' "Certbot hook must ignore other renewed lineages."
 Assert-Contains $linuxScript 'certbot certonly --standalone --non-interactive --agree-tos --reuse-key' "Certbot must use standalone mode with --reuse-key."
+Assert-Contains $linuxScript 'PathChanged=$INSTALL_DIR/data/certbot/inbox/request.json' "Linux installer must register the isolated Dashboard Certbot request inbox."
+Assert-Contains $linuxScript 'install -d -m 0750 -o root -g nrynet /var/lib/nrynet/certbot' "Linux installer must create the root-owned Certbot state directory."
+Assert-Contains $linuxScript 'install -d -m 0700 -o root -g root /var/lib/nrynet/certbot/work' "Linux installer must keep Certbot work state root-only."
+Assert-Contains $linuxScript '--certbot-helper --certbot-helper-install-dir $INSTALL_DIR' "Linux installer must register the privileged Certbot helper."
+Assert-Contains $linuxScript '--certbot-renew --certbot-helper-install-dir $INSTALL_DIR' "Linux installer must register automatic managed certificate renewal."
+Assert-Contains $linuxScript 'nrynet-certbot.path nrynet-certbot-renew.timer' "Linux installer must enable Certbot request and renewal units."
+Assert-Contains $linuxScript 'mv -f "$managed_tmp" /var/lib/nrynet/certbot/managed.json' "Direct Certbot installation must initialize the root-only renewal target."
+Assert-Contains $linuxScript 'mv -f "$CERT_FILE.new" "$CERT_FILE"' "Certbot renewal hook must atomically replace the certificate."
+if ($linuxScript.Contains('systemctl restart nrynet-server.service')) {
+    throw "Certbot renewal must hot-load certificates instead of restarting Nrynet."
+}
+Assert-Contains $powerShellScript 'enabled: false' "Windows installer must default new installations to HTTP/WS."
+Assert-Contains $powerShellScript 'server_url: "ws://${PublicHost}:7000/agent/connect"' "Windows installer must default agents to WS."
 Assert-Contains $linuxScript 'Existing pinned Agent Tokens will reject the new certificate' "Certbot SPKI change warning is required."
 
 "ok"

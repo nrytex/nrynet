@@ -217,6 +217,17 @@ function Test-WSConfigEnabled([string]$ConfigPath) {
     return (Test-PlainEnabledTrue $ConfigPath) -and (Test-PlainPairConfigured $ConfigPath)
 }
 
+function Test-TLSConfigEnabled([string]$ConfigPath) {
+    if (-not (Test-Path -LiteralPath $ConfigPath)) { return $false }
+    $inTLS = $false
+    foreach ($line in Get-Content -LiteralPath $ConfigPath) {
+        if ($line -match '^\s{2}tls:\s*$') { $inTLS = $true; continue }
+        if ($inTLS -and $line -match '^\s{2}\S') { $inTLS = $false }
+        if ($inTLS -and $line -match '^\s{4}enabled:\s*true\s*$') { return $true }
+    }
+    return $false
+}
+
 function Move-LegacyInstallation {
     if ($InstallDir -ne $DefaultInstallDir -or $DataDir -ne $DefaultDataDir) { return $false }
     $legacyService = Get-Service -Name $LegacyServiceName -ErrorAction SilentlyContinue
@@ -422,14 +433,14 @@ $plainConfig
   jwt_ttl: "12h"
   heartbeat_timeout: "45s"
   tls:
-    enabled: true
+    enabled: false
     cert_file: "$yamlCert"
     key_file: "$yamlKey"
   bootstrap:
     admin_username: "$AdminUser"
     admin_password: "$initialPassword"
 client:
-  server_url: "wss://${PublicHost}:7000/agent/connect"
+  server_url: "ws://${PublicHost}:7000/agent/connect"
   data_address: "${PublicHost}:7001"
   transport: "websocket"
   quic_address: "${PublicHost}:7002"
@@ -444,6 +455,7 @@ client:
     }
     Sync-PlainWSConfig $ConfigFile $EnableWS
     $wsConfigEnabled = Test-WSConfigEnabled $ConfigFile
+    $tlsConfigEnabled = Test-TLSConfigEnabled $ConfigFile
 
     $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     $binaryPath = "`"$ServerExe`" -config `"$ConfigFile`""
@@ -483,17 +495,21 @@ client:
     }
 
     Write-Host ""
-    Write-Host "Nrynet Server is running: https://${PublicHost}:7000"
+    Write-Host "Nrynet Server HTTP console is running: http://${PublicHost}:7000"
+    if ($tlsConfigEnabled) { Write-Host "Nrynet Server HTTPS console is running: https://${PublicHost}:7000" }
     if ($wsConfigEnabled) { Write-Host "Plaintext console/control is enabled: http://${PublicHost}:7004" }
     Write-Host "Installed version: $targetVersionText"
-    Write-Host "Self-signed CA certificate: $CertFile"
+    Write-Host "Available self-signed certificate: $CertFile"
     if ($initialPassword) {
         Write-Host "Administrator: $AdminUser"
         Write-Host "Initial password: $initialPassword"
         Write-Host "Record this password now; it has been removed from config.yaml."
     }
-    Write-Host "New Agent Tokens automatically include this server certificate pin; clients do not need ca_file."
-    Write-Host "If the TLS private key changes, regenerate Agent Tokens in the Dashboard."
+    if ($tlsConfigEnabled) {
+        Write-Host "Self-signed TLS certificates are pinned into new Agent Tokens; trusted CA certificates need no ca_file."
+    } else {
+        Write-Host "TLS is disabled by default. It can be enabled later with a configured certificate."
+    }
 } finally {
     if (Test-Path -LiteralPath $TempDir) { Remove-Item -LiteralPath $TempDir -Recurse -Force }
 }

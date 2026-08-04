@@ -14,8 +14,8 @@ and macOS.
 ## Quick start
 
 1. Copy `config.local.example.yaml` to `config.yaml` for a loopback-only
-   evaluation. `config.example.yaml` listens on `0.0.0.0` with WSS/TLS ports;
-   WS/plaintext ports stay disabled until explicitly configured.
+   evaluation. `config.example.yaml` listens on `0.0.0.0` with HTTP/WS and
+   plaintext data enabled on the primary ports; TLS starts disabled.
 2. Start the server with `go run ./server -config config.yaml`.
 3. Record the one-time administrator password printed on first start, then open
    `http://127.0.0.1:7000`.
@@ -24,19 +24,19 @@ and macOS.
    `go run ./client -config config.yaml`.
 6. Create and start a TCP, HTTP, HTTPS, or UDP tunnel in the dashboard.
 
-For WSS agents, use `wss://host:7000/agent/connect` with data port `7001`.
-For WS agents, use `ws://host:7004/agent/connect` with plaintext data port
-`7005` after `server.plain_enabled` is enabled. The dashboard can change this
-setting and it takes effect after restarting the server. See `docs/operations.md`
-for certificates, certbot, systemd, ports, and builds.
+WS agents use `ws://host:7000/agent/connect` with data port `7001`. After a
+domain certificate is enabled, the same ports also accept WSS and TLS data;
+HTTP/WS continues to work. The Dashboard can request Let's Encrypt certificates,
+toggle TLS, and hot-load renewed certificates without restarting Nrynet. See
+`docs/operations.md` for certificate, systemd, port, and build details.
 中文安装与生产部署步骤见 `docs/deployment.zh-CN.md`。
 See `docs/requirements.md` for the versioned acceptance matrix.
 
 ## One-command server install
 
-Linux systemd hosts can install the latest release and generate a self-signed
-TLS certificate with OpenSSL in one command. The installer registers,
-enables, and starts the `nrynet-server` systemd service:
+Linux systemd hosts can install the latest release in one command. New installs
+start with HTTP/WS, register the `nrynet-server` service, and install a restricted
+Certbot helper used by the Dashboard:
 
 ```sh
 curl -fLO https://github.com/nrytex/nrynet/releases/latest/download/install-server.sh
@@ -44,23 +44,20 @@ chmod +x install-server.sh
 sudo ./install-server.sh --public-host nat.example.com
 ```
 
-For a Let's Encrypt certificate, run:
+Open `http://host:7000`, then bind a domain from **Settings > Access and
+Certificates**. DNS must point to the server and inbound TCP/80 must be open.
+The older non-interactive installer flow remains available:
 
 ```sh
 sudo ./install-server.sh --certbot-domain nat.example.com --certbot-email admin@example.com
 ```
 
-To preset domain WSS and explicit IP WS at the same time, run:
-
-```sh
-sudo ./install-server.sh --certbot-domain nat.example.com --certbot-email admin@example.com --enable-ws
-```
-
 Add `--proxy http://127.0.0.1:7890` or `--proxy socks5h://127.0.0.1:1080`
 when dependencies and release downloads must use a proxy. The Windows installer
 accepts both `--proxy URL` and its native PowerShell spelling, `-Proxy URL`.
-`--enable-ws` and `-EnableWS` are only installation presets; administrators can
-also enable or disable plaintext WS in the dashboard and restart the service.
+`--enable-ws` and `-EnableWS` only enable the optional legacy `7004/7005`
+compatibility pair. The primary `7000/7001` pair already supports HTTP/WS, and
+all Dashboard TLS and compatibility switches hot-update without a restart.
 
 Windows Server users can download `install-server.ps1` from the same release
 and run it from an elevated PowerShell session. Full instructions, certificate

@@ -8,8 +8,8 @@ The example configuration exposes these server listeners:
 
 | Port | Transport | Purpose |
 | --- | --- | --- |
-| 7000 | HTTPS | Dashboard, administration API, and agent WebSocket control |
-| 7001 | TLS | Per-connection TCP relay data channel |
+| 7000 | HTTP/HTTPS, WS/WSS | Dashboard, administration API, and agent control |
+| 7001 | TCP/TLS | Per-connection relay data channel |
 | 7002 | UDP/QUIC | Authenticated QUIC control and data streams |
 | 7003 | UDP | P2P endpoint rendezvous and hole punching |
 | 7004 | HTTP/WS | Optional plaintext Dashboard, API, and agent control |
@@ -68,39 +68,34 @@ Tunnel IP allowlists are enforced independently for visitors.
 
 ## WS, WSS, And TLS
 
-`server.listen` and `server.data_listen` remain the primary pair. With
-`server.tls.enabled: true` they serve HTTPS/WSS control and TLS data. With TLS
-disabled they serve HTTP/WS control and plaintext data. To run both transports
-at the same time, keep TLS enabled on the primary pair, keep the plaintext
-addresses configured, and enable `server.plain_enabled`. The Dashboard settings
-page can turn plaintext WS access on or off; saved changes are persisted to
-the server database as configuration overrides and take effect after restarting
-the server service:
+`server.listen` and `server.data_listen` are the primary pair. New installations
+start with HTTP/WS control and plaintext data. Enabling TLS adds HTTPS/WSS and
+TLS data on the same ports by classifying TLS handshakes; it does not remove the
+existing HTTP/WS path. Certificate and TLS changes are hot-loaded. The optional
+`plain_*` pair is retained only for legacy clients that require separate ports:
 
 ```yaml
 server:
   listen: "0.0.0.0:7000"
   data_listen: "0.0.0.0:7001"
-  plain_enabled: true
+  plain_enabled: false
   plain_listen: "0.0.0.0:7004"
   plain_data_listen: "0.0.0.0:7005"
   tls:
-    enabled: true
+    enabled: false
     cert_file: "/opt/nrynet/tls/fullchain.pem"
     key_file: "/opt/nrynet/tls/privkey.pem"
 client:
-  server_url: "wss://relay.example.com:7000/agent/connect"
+  server_url: "ws://relay.example.com:7000/agent/connect"
   data_address: "relay.example.com:7001"
   ca_file: ""
   insecure_skip_verify: false
 ```
 
-WS agents must use `server_url: "ws://host:7004/agent/connect"` together with
-`data_address: "host:7005"`. WSS agents must use
-`server_url: "wss://host:7000/agent/connect"` together with
-`data_address: "host:7001"`. Mixing WS control with the TLS data port, or WSS
-control with the plaintext data port, will fail because the agent deliberately
-chooses data-channel TLS from the WebSocket scheme.
+WS agents use `ws://host:7000/agent/connect`; WSS agents use
+`wss://domain:7000/agent/connect`. Both use data port `7001`, which performs the
+same plaintext/TLS handshake classification. The optional `7004/7005` pair can
+still be hot-enabled from the Dashboard for older deployment layouts.
 
 Publicly trusted certificates must include the control and data hosts in their
 DNS or IP names. New Agent Tokens carry the installer-generated self-signed
@@ -111,31 +106,31 @@ the server certificate key changes. `insecure_skip_verify` is accepted only for
 loopback development; remote clients must validate the certificate or token pin.
 HTTPS tunnels are passed through without terminating visitor TLS.
 
-For a domain certificate on Linux, use certbot through the installer:
+On an installer-managed Linux server, open the Dashboard **Settings > Access
+and Certificates**, enter the domain and email address, and request a Let's
+Encrypt certificate. The request is handled by a restricted root systemd helper;
+the main Nrynet process remains the unprivileged `nrynet` user. The CLI flow is
+also available:
 
 ```sh
 sudo ./install-server.sh \
   --certbot-domain nat.example.com \
-  --certbot-email admin@example.com \
-  --enable-ws
+  --certbot-email admin@example.com
 ```
 
-This command presets `server.plain_enabled: true`, giving domain users
-`wss://nat.example.com:7000/agent/connect` and also enabling IP users to connect
-with `ws://<server-ip>:7004/agent/connect`. Omit `--enable-ws` when plaintext
-WS/API should stay disabled initially; administrators can later change the same
-setting from the Dashboard and restart `nrynet-server`.
+After issuance, `https://nat.example.com:7000` and
+`wss://nat.example.com:7000/agent/connect` become available immediately while
+the original HTTP/WS endpoints remain available.
 
 Certbot uses the standalone HTTP-01 challenge, so `nat.example.com` must resolve
 to this server and inbound TCP/80 must reach it while the installer runs. The
-installer runs certbot with `--reuse-key`, copies the renewed `fullchain.pem`
-and `privkey.pem` into `/opt/nrynet/tls`, and registers a deploy hook that
-restarts `nrynet-server` only for the target certificate lineage. Reusing the
-key preserves Agent Token SPKI pins across normal renewals. Switching from an
-existing self-signed certificate to certbot usually changes the SPKI; the
-installer backs up the old certificate and warns that Agent Tokens must be
-regenerated when it detects that change. If certbot fails, check DNS and TCP/80
-before retrying.
+helper runs certbot with `--reuse-key`, atomically installs `fullchain.pem` and
+`privkey.pem` into `/opt/nrynet/tls`, and renews daily. Nrynet detects the new
+files and swaps the certificate used by new handshakes without restarting the
+service. The unprivileged server can only write the request inbox; the approved
+renewal target, lock, and Certbot work state stay root-owned under
+`/var/lib/nrynet/certbot`. If issuance fails, check DNS, conflicting port-80
+services, and host or cloud firewall rules before retrying.
 
 ## QUIC and P2P
 
