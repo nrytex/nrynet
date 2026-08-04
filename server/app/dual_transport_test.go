@@ -82,23 +82,6 @@ func TestPlainControlBindFailureStopsStartup(t *testing.T) {
 	}
 }
 
-func TestPartialPlaintextPairIsDisabled(t *testing.T) {
-	certFile, keyFile, _ := writeTLSPair(t)
-	cfg := dualTransportConfig(t, certFile, keyFile)
-	cfg.Server.PlainDataListen = ""
-	application, _, err := New(context.Background(), cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer application.Shutdown(context.Background())
-	if application.plain != nil || application.plainData != nil {
-		t.Fatal("partial plaintext pair should be disabled")
-	}
-	if application.config.Server.PlainListen != "" || application.config.Server.PlainDataListen != "" {
-		t.Fatalf("partial plaintext pair was not normalized: %+v", application.config.Server)
-	}
-}
-
 func TestShutdownReleasesPlaintextPorts(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -120,7 +103,7 @@ func TestShutdownReleasesPlaintextPorts(t *testing.T) {
 func dualTransportConfig(t *testing.T, certFile, keyFile string) config.Config {
 	t.Helper()
 	return config.Config{Server: config.ServerConfig{
-		Listen: RendezvousFreeTCP(t), PlainListen: RendezvousFreeTCP(t),
+		Listen: RendezvousFreeTCP(t), PlainEnabled: true, PlainListen: RendezvousFreeTCP(t),
 		DataListen: RendezvousFreeTCP(t), PlainDataListen: RendezvousFreeTCP(t),
 		HTTPListen: RendezvousFreeTCP(t), QUICListen: RendezvousFreeUDP(t),
 		RendezvousListen: RendezvousFreeUDP(t), Database: filepath.Join(t.TempDir(), "app.db"),

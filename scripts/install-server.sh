@@ -33,7 +33,7 @@ Usage: sudo ./install-server.sh [options]
   --certbot-email EMAIL
                        Email address for Let's Encrypt registration
   --certbot-staging    Use the Let's Encrypt staging directory
-  --enable-ws          Also expose plaintext HTTP/WS on 7004 and data on 7005
+  --enable-ws          Preset plaintext HTTP/WS as enabled in config.yaml
   --allow-downgrade    Permit replacing a newer installed version
   --proxy URL          HTTP(S) or SOCKS5h proxy for dependencies and downloads
   -h, --help           Show this help
@@ -169,23 +169,67 @@ backup_existing_certificate() {
   echo "Backed up the previous TLS certificate to $backup_dir"
 }
 
-enable_ws_in_config() {
+config_plain_enabled_present() {
+  [ -f "$CONFIG_FILE" ] || return 1
+  grep -Eq '^[[:space:]]+plain_enabled:[[:space:]]*(true|false)[[:space:]]*$' "$CONFIG_FILE"
+}
+
+config_plain_enabled_true() {
+  [ -f "$CONFIG_FILE" ] || return 1
+  grep -Eq '^[[:space:]]+plain_enabled:[[:space:]]*true[[:space:]]*$' "$CONFIG_FILE"
+}
+
+config_plain_pair_enabled() {
+  [ -f "$CONFIG_FILE" ] || return 1
+  grep -Eq '^[[:space:]]+plain_listen:[[:space:]]+"[^"]+"[[:space:]]*$' "$CONFIG_FILE" &&
+    grep -Eq '^[[:space:]]+plain_data_listen:[[:space:]]+"[^"]+"[[:space:]]*$' "$CONFIG_FILE"
+}
+
+sync_plain_config() {
   [ -f "$CONFIG_FILE" ] || return 0
+  desired="false"
+  if [ "$ENABLE_WS" -eq 1 ]; then
+    desired="true"
+  elif config_plain_enabled_true; then
+    desired="true"
+  elif ! config_plain_enabled_present && config_plain_pair_enabled; then
+    desired="true"
+  fi
   tmp_config="$CONFIG_FILE.tmp.$$"
-  awk '
+  awk -v desired="$desired" '
     function emit_missing() {
       if (in_server) {
+        if (!seen_plain_enabled) print "  plain_enabled: " desired
         if (!seen_plain_listen) print "  plain_listen: \"0.0.0.0:7004\""
         if (!seen_plain_data) print "  plain_data_listen: \"0.0.0.0:7005\""
       }
     }
-    /^server:[[:space:]]*$/ { print; in_server=1; seen_plain_listen=0; seen_plain_data=0; next }
+    /^server:[[:space:]]*$/ {
+      print; in_server=1
+      seen_plain_enabled=0; seen_plain_listen=0; seen_plain_data=0
+      next
+    }
     in_server && /^[^[:space:]#][^:]*:/ { emit_missing(); in_server=0 }
+    in_server && /^[[:space:]]+plain_enabled:/ {
+      print "  plain_enabled: " desired; seen_plain_enabled=1; next
+    }
     in_server && /^[[:space:]]+plain_listen:/ {
-      print "  plain_listen: \"0.0.0.0:7004\""; seen_plain_listen=1; next
+      seen_plain_listen=1
+      if ($0 ~ /^[[:space:]]+plain_listen:[[:space:]]*""[[:space:]]*$/) {
+        print "  plain_listen: \"0.0.0.0:7004\""
+      } else {
+        print
+      }
+      next
     }
     in_server && /^[[:space:]]+plain_data_listen:/ {
-      print "  plain_data_listen: \"0.0.0.0:7005\""; seen_plain_data=1; next
+      seen_plain_data=1
+      if ($0 ~ /^[[:space:]]+plain_data_listen:[[:space:]]*""[[:space:]]*$/) {
+        print "  plain_data_listen: \"0.0.0.0:7005\""
+      } else {
+        print
+      }
+      next
     }
     { print }
     END { emit_missing() }
@@ -197,8 +241,9 @@ enable_ws_in_config() {
 
 config_ws_enabled() {
   [ -f "$CONFIG_FILE" ] || return 1
-  grep -Eq '^[[:space:]]+plain_listen:[[:space:]]+"0\.0\.0\.0:7004"[[:space:]]*$' "$CONFIG_FILE" &&
-    grep -Eq '^[[:space:]]+plain_data_listen:[[:space:]]+"0\.0\.0\.0:7005"[[:space:]]*$' "$CONFIG_FILE"
+  config_plain_enabled_true &&
+    grep -Eq '^[[:space:]]+plain_listen:[[:space:]]+"[^"]+"[[:space:]]*$' "$CONFIG_FILE" &&
+    grep -Eq '^[[:space:]]+plain_data_listen:[[:space:]]+"[^"]+"[[:space:]]*$' "$CONFIG_FILE"
 }
 
 install_certbot_certificate() {
@@ -423,10 +468,12 @@ INITIAL_PASSWORD=""
 if [ ! -f "$CONFIG_FILE" ] || [ "$FORCE_CONFIG" -eq 1 ]; then
   RELAY_TOKEN="$(openssl rand -hex 32)"
   [ "$NEW_DATABASE" -eq 0 ] || INITIAL_PASSWORD="$(openssl rand -hex 18)"
-  PLAIN_CONFIG='  plain_listen: ""
-  plain_data_listen: ""'
+  PLAIN_CONFIG='  plain_enabled: false
+  plain_listen: "0.0.0.0:7004"
+  plain_data_listen: "0.0.0.0:7005"'
   if [ "$ENABLE_WS" -eq 1 ]; then
-    PLAIN_CONFIG='  plain_listen: "0.0.0.0:7004"
+    PLAIN_CONFIG='  plain_enabled: true
+  plain_listen: "0.0.0.0:7004"
   plain_data_listen: "0.0.0.0:7005"'
   fi
   cat >"$TEMP_DIR/config.yaml" <<EOF
@@ -466,9 +513,7 @@ client:
 EOF
   install -m 0640 -o root -g nrynet "$TEMP_DIR/config.yaml" "$CONFIG_FILE"
 fi
-if [ "$ENABLE_WS" -eq 1 ]; then
-  enable_ws_in_config
-fi
+sync_plain_config
 chown root:nrynet "$CONFIG_FILE"
 chmod 0640 "$CONFIG_FILE"
 WS_CONFIG_ENABLED=0

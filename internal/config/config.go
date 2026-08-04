@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -25,6 +26,7 @@ type BootstrapConfig struct {
 
 type ServerConfig struct {
 	Listen            string          `yaml:"listen"`
+	PlainEnabled      bool            `yaml:"plain_enabled"`
 	PlainListen       string          `yaml:"plain_listen"`
 	DataListen        string          `yaml:"data_listen"`
 	PlainDataListen   string          `yaml:"plain_data_listen"`
@@ -73,6 +75,10 @@ func Load(path string) (Config, error) {
 		if err := yaml.Unmarshal(data, &cfg); err != nil {
 			return Config{}, fmt.Errorf("parse config: %w", err)
 		}
+		plainEnabledConfigured := yamlHasServerKey(data, "plain_enabled")
+		if !plainEnabledConfigured && hasPlaintextAddressPair(cfg.Server) {
+			cfg.Server.PlainEnabled = true
+		}
 	}
 	if err := cfg.parseDurations(); err != nil {
 		return Config{}, err
@@ -114,6 +120,37 @@ func ensureParent(path string) error {
 		return nil
 	}
 	return os.MkdirAll(dir, 0o750)
+}
+
+func yamlHasServerKey(data []byte, key string) bool {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil || len(root.Content) == 0 {
+		return false
+	}
+	document := root.Content[0]
+	for i := 0; i+1 < len(document.Content); i += 2 {
+		if document.Content[i].Value != "server" {
+			continue
+		}
+		return mappingHasKey(document.Content[i+1], key)
+	}
+	return false
+}
+
+func mappingHasKey(node *yaml.Node, key string) bool {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPlaintextAddressPair(cfg ServerConfig) bool {
+	return strings.TrimSpace(cfg.PlainListen) != "" && strings.TrimSpace(cfg.PlainDataListen) != ""
 }
 
 func RandomSecret(bytes int) (string, error) {

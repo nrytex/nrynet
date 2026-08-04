@@ -59,6 +59,10 @@ func (h *settingsHandler) update(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := h.validatePlaintextState(item.Key, text); err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err := h.store.SetSetting(c.Request.Context(), "config."+item.Key, text); err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
@@ -77,6 +81,10 @@ func validateSetting(key string, value any) (string, error) {
 		return "", errors.New("setting value cannot be empty")
 	}
 	switch key {
+	case "server.plain_enabled", "server.tls.enabled":
+		if _, ok := value.(bool); !ok {
+			return "", errors.New("setting value must be a boolean")
+		}
 	case "server.listen", "server.plain_listen", "server.data_listen", "server.plain_data_listen", "server.quic_listen",
 		"server.rendezvous_listen", "server.http_listen", "server.public_data_address",
 		"server.public_quic_address", "server.public_rendezvous_address":
@@ -94,6 +102,44 @@ func validateSetting(key string, value any) (string, error) {
 
 func isOptionalAddressSetting(key string) bool {
 	return key == "server.plain_listen" || key == "server.plain_data_listen"
+}
+
+func (h *settingsHandler) validatePlaintextState(key, text string) error {
+	plainEnabled := currentBoolSetting(h.items["server.plain_enabled"])
+	plainListen := currentTextSetting(h.items["server.plain_listen"])
+	plainDataListen := currentTextSetting(h.items["server.plain_data_listen"])
+	switch key {
+	case "server.plain_enabled":
+		plainEnabled = text == "true"
+	case "server.plain_listen":
+		plainListen = text
+	case "server.plain_data_listen":
+		plainDataListen = text
+	default:
+		return nil
+	}
+	if !plainEnabled {
+		return nil
+	}
+	if plainListen == "" || plainDataListen == "" {
+		return errors.New("server.plain_listen and server.plain_data_listen are required when server.plain_enabled is true")
+	}
+	if _, err := validateSetting("server.plain_listen", plainListen); err != nil {
+		return err
+	}
+	if _, err := validateSetting("server.plain_data_listen", plainDataListen); err != nil {
+		return err
+	}
+	return nil
+}
+
+func currentTextSetting(item SettingItem) string {
+	return settingText(item.Value)
+}
+
+func currentBoolSetting(item SettingItem) bool {
+	value, ok := item.Value.(bool)
+	return ok && value
 }
 
 func settingText(value any) string {

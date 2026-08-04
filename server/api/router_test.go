@@ -126,6 +126,73 @@ func TestSettingsUpdatePersistsRestartOverride(t *testing.T) {
 	}
 }
 
+func TestSettingsPlainEnabledRequiresBooleanAndAddressPair(t *testing.T) {
+	ctx := context.Background()
+	store, err := storage.Open(filepath.Join(t.TempDir(), "settings.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	service, err := auth.New(ctx, store, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Bootstrap(ctx, "admin", "test-password"); err != nil {
+		t.Fatal(err)
+	}
+	router := NewRouterWithOptions(store, service, time.Now(), RouterOptions{Settings: []SettingItem{
+		{Key: "server.plain_enabled", Value: false, Mutable: true},
+		{Key: "server.plain_listen", Value: "", Mutable: true},
+		{Key: "server.plain_data_listen", Value: "127.0.0.1:7005", Mutable: true},
+	}})
+	session := loginForSettings(t, router)
+	stringBool := requestJSON(t, router, http.MethodPatch, "/api/settings/server.plain_enabled", session,
+		map[string]any{"value": "false"})
+	if stringBool.Code != http.StatusBadRequest {
+		t.Fatalf("string boolean status=%d", stringBool.Code)
+	}
+	missingPair := requestJSON(t, router, http.MethodPatch, "/api/settings/server.plain_enabled", session,
+		map[string]any{"value": true})
+	if missingPair.Code != http.StatusBadRequest {
+		t.Fatalf("missing plaintext pair status=%d", missingPair.Code)
+	}
+	plainListen := requestJSON(t, router, http.MethodPatch, "/api/settings/server.plain_listen", session,
+		map[string]any{"value": "127.0.0.1:7004"})
+	if plainListen.Code != http.StatusOK {
+		t.Fatalf("plain listen status=%d body=%s", plainListen.Code, plainListen.Body.String())
+	}
+	enabled := requestJSON(t, router, http.MethodPatch, "/api/settings/server.plain_enabled", session,
+		map[string]any{"value": true})
+	if enabled.Code != http.StatusOK {
+		t.Fatalf("enable status=%d body=%s", enabled.Code, enabled.Body.String())
+	}
+	value, err := store.GetSetting(ctx, "config.server.plain_enabled")
+	if err != nil || value != "true" {
+		t.Fatalf("persisted plain_enabled=%q err=%v", value, err)
+	}
+	disabled := requestJSON(t, router, http.MethodPatch, "/api/settings/server.plain_enabled", session,
+		map[string]any{"value": false})
+	if disabled.Code != http.StatusOK {
+		t.Fatalf("disable status=%d body=%s", disabled.Code, disabled.Body.String())
+	}
+	value, err = store.GetSetting(ctx, "config.server.plain_enabled")
+	if err != nil || value != "false" {
+		t.Fatalf("persisted disabled plain_enabled=%q err=%v", value, err)
+	}
+}
+
+func loginForSettings(t *testing.T, router http.Handler) string {
+	t.Helper()
+	login := requestJSON(t, router, http.MethodPost, "/api/auth/login", "", map[string]any{
+		"username": "admin", "password": "test-password",
+	})
+	var session struct {
+		Token string `json:"token"`
+	}
+	decodeJSON(t, login, &session)
+	return session.Token
+}
+
 func testRouter(t *testing.T) (http.Handler, func()) {
 	t.Helper()
 	store, err := storage.Open(filepath.Join(t.TempDir(), "api.db"))

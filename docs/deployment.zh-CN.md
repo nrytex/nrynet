@@ -22,7 +22,7 @@ Server 和 Agent 可以安装在同一台机器用于本地验证，但生产环
 - 安装器可自动生成自签名 TLS 证书，也可使用受信任 CA 签发的证书
 - Linux 使用 systemd；Windows 使用系统服务保持后台运行
 
-生产环境默认只开启 HTTPS/WSS 与 TLS 数据通道。明文 `ws://` 和明文数据通道只应在明确需要 IP 直连、专线或受控网络时开启；一键安装必须显式传入 `--enable-ws` 或 `-EnableWS` 才会监听 `7004/7005`。
+生产环境默认只开启 HTTPS/WSS 与 TLS 数据通道。明文 `ws://` 和明文数据通道只应在明确需要 IP 直连、专线或受控网络时开启。安装器会写入 `7004/7005` 的默认监听地址，但 `server.plain_enabled` 默认为 `false`，不会实际监听；管理员也可以在 Dashboard 后台开启或关闭“明文 WS 访问”，保存后重启 Server 生效。`--enable-ws` 和 `-EnableWS` 只是首次安装或升级时的初始预设，不再是唯一入口。
 
 ## 3. 一键安装 Server
 
@@ -44,13 +44,15 @@ sudo ./install-server.sh --public-host nat.example.com
 sudo ./install-server.sh --certbot-domain nat.example.com --certbot-email admin@example.com
 ```
 
-同时提供域名 WSS 和 IP WS 访问时，显式开启明文端口：
+同时提供域名 WSS 和 IP WS 访问时，可以在安装时预设开启明文端口：
 
 ```bash
 sudo ./install-server.sh --certbot-domain nat.example.com --certbot-email admin@example.com --enable-ws
 ```
 
 此时域名用户使用 `wss://nat.example.com:7000/agent/connect` 和数据地址 `nat.example.com:7001`；需要 IP 明文直连的 Agent 使用 `ws://<server-ip>:7004/agent/connect` 和数据地址 `<server-ip>:7005`。不要混用 WSS 控制端口和明文数据端口，也不要混用 WS 控制端口和 TLS 数据端口。
+
+如果安装时没有传 `--enable-ws`，也可以登录 Dashboard，在“设置”里开启“明文 WS 访问”，确认监听地址为 `0.0.0.0:7004` 和 `0.0.0.0:7005`，保存后执行 `sudo systemctl restart nrynet-server`，并确保主机及云防火墙已放行 TCP `7004/7005`。关闭同理，保存后重启即停止监听明文端口。
 
 脚本会自动安装缺少的 `curl`、`openssl`、`tar` 和校验工具，安装目录默认为 `/opt/nrynet`，服务名为 `nrynet-server`。指定版本或重新生成证书：
 
@@ -92,7 +94,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\install-server.ps1 -PublicHost nat.example.com
 ```
 
-Windows 默认不开放明文 WS。确实需要同时开放 `7004/7005` 时使用：
+Windows 默认不开放明文 WS。确实需要同时开放 `7004/7005` 时，可在安装时预设开启：
 
 ```powershell
 .\install-server.ps1 -PublicHost nat.example.com -EnableWS
@@ -112,7 +114,9 @@ SOCKS5h 使用 Windows 自带的 `curl.exe` 下载 Release，并将同一代理�
 .\install-server.ps1 -PublicHost nat.example.com --proxy socks5h://127.0.0.1:1080
 ```
 
-脚本会在缺少 OpenSSL 时通过 `winget` 安装，注册 `NrynetServer` Windows 服务，并开放 TCP `7000/7001/8080` 和 UDP `7002/7003`。只有使用 `-EnableWS` 时才额外开放 TCP `7004/7005`。使用 `-SkipFirewall` 可跳过防火墙规则。
+脚本会在缺少 OpenSSL 时通过 `winget` 安装，注册 `NrynetServer` Windows 服务，并开放 TCP `7000/7001/7004/7005/8080` 和 UDP `7002/7003`。其中 `7004/7005` 会预先加入防火墙规则，确保之后在 Dashboard 开启明文 WS 并重启服务即可使用；`server.plain_enabled: false` 时服务不会监听这两个端口。使用 `-SkipFirewall` 可跳过防火墙规则。
+
+不使用 `-EnableWS` 时，也可以之后在 Dashboard 后台开启“明文 WS 访问”，保存设置后重启 `NrynetServer` 服务。若安装时使用了 `-SkipFirewall`，需自行放行 TCP `7004/7005`。
 
 首次安装完成后，终端会显示一次性管理员密码。脚本随后会从配置文件中移除明文密码。安装器自动生成的证书是自签名证书；浏览器首次访问 Dashboard 时仍需确认该证书，正式公网服务也可替换为受信任 CA 签发的同名证书。使用安装器自签名证书时，新版 Dashboard 生成的 Agent Token 会携带服务器证书的公钥指纹，命令行 Agent 和桌面客户端会自动完成安全校验，不需要复制 `fullchain.pem`，也不需要填写 `ca_file`。
 
@@ -193,8 +197,9 @@ go run ./client -config config.yaml
 server:
   listen: "0.0.0.0:7000"
   data_listen: "0.0.0.0:7001"
-  plain_listen: ""
-  plain_data_listen: ""
+  plain_enabled: false
+  plain_listen: "0.0.0.0:7004"
+  plain_data_listen: "0.0.0.0:7005"
   public_data_address: "nat.example.com:7001"
   quic_listen: "0.0.0.0:7002"
   public_quic_address: "nat.example.com:7002"
@@ -240,8 +245,8 @@ Linux 安装器的 certbot 模式使用 standalone HTTP-01 挑战，运行前必
 | 7001 | TCP/TLS | TCP/HTTP 数据通道 |
 | 7002 | UDP/QUIC | QUIC 控制和数据流 |
 | 7003 | UDP | P2P Rendezvous 和打洞 |
-| 7004 | TCP/WS | 可选明文 Dashboard、管理 API、Agent 控制通道，仅 `--enable-ws` / `-EnableWS` 开启 |
-| 7005 | TCP | 可选明文数据通道，仅 `--enable-ws` / `-EnableWS` 开启 |
+| 7004 | TCP/WS | 可选明文 Dashboard、管理 API、Agent 控制通道，由 `server.plain_enabled` 控制，保存后重启生效 |
+| 7005 | TCP | 可选明文数据通道，由 `server.plain_enabled` 控制，保存后重启生效 |
 | 8080 | TCP | HTTP Host 与 HTTPS SNI 网关 |
 | 隧道远程端口 | TCP 或 UDP | 访客访问端口 |
 
@@ -328,7 +333,7 @@ Register-ScheduledTask -TaskName "Nrynet Server" -Action $action -Trigger $trigg
 Start-ScheduledTask -TaskName "Nrynet Server"
 ```
 
-防火墙只开放实际使用的端口。首次初始化建议先在前台运行一次，以便安全记录管理员密码和 Server Secret。
+手动部署时防火墙应按需开放端口；一键安装器会额外预留可选的 `7004/7005`，但明文开关关闭时服务不会监听。首次初始化建议先在前台运行一次，以便安全记录管理员密码和 Server Secret。
 
 ## 11. Windows/macOS 桌面客户端
 

@@ -71,15 +71,17 @@ Tunnel IP allowlists are enforced independently for visitors.
 `server.listen` and `server.data_listen` remain the primary pair. With
 `server.tls.enabled: true` they serve HTTPS/WSS control and TLS data. With TLS
 disabled they serve HTTP/WS control and plaintext data. To run both transports
-at the same time, keep TLS enabled on the primary pair and configure the
-plaintext pair too. A single empty plaintext setting disables the plaintext
-pair, which lets Dashboard settings be saved one field at a time without
-creating an unstartable server:
+at the same time, keep TLS enabled on the primary pair, keep the plaintext
+addresses configured, and enable `server.plain_enabled`. The Dashboard settings
+page can turn plaintext WS access on or off; saved changes are persisted to
+the server database as configuration overrides and take effect after restarting
+the server service:
 
 ```yaml
 server:
   listen: "0.0.0.0:7000"
   data_listen: "0.0.0.0:7001"
+  plain_enabled: true
   plain_listen: "0.0.0.0:7004"
   plain_data_listen: "0.0.0.0:7005"
   tls:
@@ -118,9 +120,11 @@ sudo ./install-server.sh \
   --enable-ws
 ```
 
-This command gives domain users `wss://nat.example.com:7000/agent/connect` and
-also enables IP users to connect with `ws://<server-ip>:7004/agent/connect`.
-Omit `--enable-ws` when plaintext WS/API should stay disabled.
+This command presets `server.plain_enabled: true`, giving domain users
+`wss://nat.example.com:7000/agent/connect` and also enabling IP users to connect
+with `ws://<server-ip>:7004/agent/connect`. Omit `--enable-ws` when plaintext
+WS/API should stay disabled initially; administrators can later change the same
+setting from the Dashboard and restart `nrynet-server`.
 
 Certbot uses the standalone HTTP-01 challenge, so `nat.example.com` must resolve
 to this server and inbound TCP/80 must reach it while the installer runs. The

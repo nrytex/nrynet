@@ -13,8 +13,8 @@ func TestExampleConfigurationsUseSafeListenerDefaults(t *testing.T) {
 	if public.Server.Listen != "0.0.0.0:7000" || public.Server.DataListen != "0.0.0.0:7001" {
 		t.Fatalf("public example does not listen on all interfaces: %+v", public.Server)
 	}
-	if public.Server.PlainListen != "" || public.Server.PlainDataListen != "" {
-		t.Fatalf("public example exposes plaintext by default: %+v", public.Server)
+	if public.Server.PlainEnabled {
+		t.Fatalf("public example enables plaintext by default: %+v", public.Server)
 	}
 	if !public.Server.TLS.Enabled {
 		t.Fatal("public example must enable TLS for all-interface listeners")

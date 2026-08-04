@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"strings"
@@ -16,10 +17,29 @@ func ValidateServerTransport(cfg ServerConfig) error {
 			return errors.New("server TLS certificate and key are required")
 		}
 	}
+	if err := validatePlaintextListeners(cfg); err != nil {
+		return err
+	}
 	if cfg.TLS.Enabled || hasPlaintextListeners(cfg) {
 		return nil
 	}
 	return errors.New("server must expose TLS listeners or plaintext listeners")
+}
+
+func validatePlaintextListeners(cfg ServerConfig) error {
+	if !cfg.PlainEnabled {
+		return nil
+	}
+	if strings.TrimSpace(cfg.PlainListen) == "" || strings.TrimSpace(cfg.PlainDataListen) == "" {
+		return errors.New("server.plain_listen and server.plain_data_listen are required when server.plain_enabled is true")
+	}
+	if _, _, err := net.SplitHostPort(cfg.PlainListen); err != nil {
+		return fmt.Errorf("server.plain_listen must be a host:port address: %w", err)
+	}
+	if _, _, err := net.SplitHostPort(cfg.PlainDataListen); err != nil {
+		return fmt.Errorf("server.plain_data_listen must be a host:port address: %w", err)
+	}
+	return nil
 }
 
 func ValidateSecureWebSocketURL(rawURL, dataAddress string) error {

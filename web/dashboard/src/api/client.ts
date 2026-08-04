@@ -69,6 +69,8 @@ function mappedErrorMessage(message: string) {
   if (normalized.includes("internal server error")) return "服务器内部错误";
   if (normalized.includes("bad request") || normalized.includes("invalid request")) return "请求参数无效";
   if (normalized.includes("invalid credentials") || normalized.includes("invalid username") || normalized.includes("invalid password")) return "用户名或密码错误";
+  if (normalized.includes("plain_listen") && normalized.includes("plain_data_listen") && normalized.includes("required")) return "请先配置明文 WS 控制端口和数据端口";
+  if (normalized.includes("setting value must be a boolean")) return "设置值必须为开启或关闭";
   if (normalized.includes("token expired") || normalized.includes("expired token")) return "登录已过期，请重新登录";
   if (normalized.includes("network error") || normalized.includes("failed to fetch")) return "网络连接失败";
   return "";

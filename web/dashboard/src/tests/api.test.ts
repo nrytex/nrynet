@@ -40,6 +40,11 @@ describe("api client", () => {
     await expect(api.listClients()).rejects.toThrow("请求失败，请稍后重试");
   });
 
+  it("explains missing plaintext listener addresses", async () => {
+    mockFetch({ error: "server.plain_listen and server.plain_data_listen are required when server.plain_enabled is true" }, 400);
+    await expect(api.updateSetting("server.plain_enabled", true)).rejects.toThrow("请先配置明文 WS 控制端口和数据端口");
+  });
+
   it("preserves Chinese error bodies from the server", async () => {
     mockFetch({ error: "隧道端口已被占用" }, 409);
     await expect(api.listTunnels()).rejects.toThrow("隧道端口已被占用");

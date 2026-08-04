@@ -109,8 +109,13 @@ body {
   gap: 0 16px;
 }
 
-.password-settings .ant-form {
+.password-settings .ant-form,
+.plain-ws-settings .ant-form {
   gap: 8px;
+}
+
+.plain-ws-settings .ant-alert {
+  margin-bottom: 12px;
 }
 
 .full-width {

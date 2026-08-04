@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestServerTransportAllowsPlaintextOrTLS(t *testing.T) {
 	local := ServerConfig{Listen: "127.0.0.1:7000", DataListen: "[::1]:7001"}
@@ -26,6 +30,53 @@ func TestServerTransportAllowsPlaintextOrTLS(t *testing.T) {
 	}
 	remote.PlainDataListen = "0.0.0.0:7005"
 	if err := ValidateServerTransport(remote); err != nil {
+		t.Fatal(err)
+	}
+	remote.PlainEnabled = true
+	remote.PlainDataListen = ""
+	if err := ValidateServerTransport(remote); err == nil {
+		t.Fatal("enabled plaintext server without both plaintext listeners was accepted")
+	}
+	remote.PlainDataListen = "not-an-address"
+	if err := ValidateServerTransport(remote); err == nil {
+		t.Fatal("enabled plaintext server with an invalid data listener was accepted")
+	}
+}
+
+func TestLoadBackfillsPlainEnabledForLegacyPlaintextPair(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfig(t, path, []byte(`server:
+  plain_listen: "127.0.0.1:7004"
+  plain_data_listen: "127.0.0.1:7005"
+`))
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Server.PlainEnabled {
+		t.Fatal("legacy config with a plaintext listener pair should keep plaintext enabled")
+	}
+}
+
+func TestLoadKeepsExplicitPlainEnabledFalse(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	writeConfig(t, path, []byte(`server:
+  plain_enabled: false
+  plain_listen: "127.0.0.1:7004"
+  plain_data_listen: "127.0.0.1:7005"
+`))
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.PlainEnabled {
+		t.Fatal("explicit server.plain_enabled=false should disable plaintext listeners")
+	}
+}
+
+func writeConfig(t *testing.T, path string, data []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

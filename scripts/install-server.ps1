@@ -129,16 +129,40 @@ function New-RandomHex([string]$OpenSSL, [int]$Bytes) {
     return $value
 }
 
-function Enable-WSConfigPair([string]$ConfigPath) {
+function Test-PlainEnabledPresent([string]$ConfigPath) {
+    if (-not (Test-Path -LiteralPath $ConfigPath)) { return $false }
+    $raw = Get-Content -Raw -LiteralPath $ConfigPath
+    return $raw -match '(?m)^\s+plain_enabled:\s*(true|false)\s*$'
+}
+
+function Test-PlainEnabledTrue([string]$ConfigPath) {
+    if (-not (Test-Path -LiteralPath $ConfigPath)) { return $false }
+    $raw = Get-Content -Raw -LiteralPath $ConfigPath
+    return $raw -match '(?m)^\s+plain_enabled:\s*true\s*$'
+}
+
+function Test-PlainPairConfigured([string]$ConfigPath) {
+    if (-not (Test-Path -LiteralPath $ConfigPath)) { return $false }
+    $raw = Get-Content -Raw -LiteralPath $ConfigPath
+    return $raw -match '(?m)^\s+plain_listen:\s*"[^"]+"\s*$' -and
+        $raw -match '(?m)^\s+plain_data_listen:\s*"[^"]+"\s*$'
+}
+
+function Sync-PlainWSConfig([string]$ConfigPath, [bool]$EnablePreset) {
     if (-not (Test-Path -LiteralPath $ConfigPath)) { return }
+    $desired = $EnablePreset -or (Test-PlainEnabledTrue $ConfigPath) -or
+        ((-not (Test-PlainEnabledPresent $ConfigPath)) -and (Test-PlainPairConfigured $ConfigPath))
     $lines = @(Get-Content -LiteralPath $ConfigPath)
     $output = [System.Collections.Generic.List[string]]::new()
     $inServer = $false
+    $seenPlainEnabled = $false
     $seenPlainListen = $false
     $seenPlainData = $false
+    $enabledText = if ($desired) { "true" } else { "false" }
 
     function Add-MissingPlainFields {
         if ($inServer) {
+            if (-not $seenPlainEnabled) { $output.Add("  plain_enabled: $enabledText") }
             if (-not $seenPlainListen) { $output.Add('  plain_listen: "0.0.0.0:7004"') }
             if (-not $seenPlainData) { $output.Add('  plain_data_listen: "0.0.0.0:7005"') }
         }
@@ -148,6 +172,7 @@ function Enable-WSConfigPair([string]$ConfigPath) {
         if ($line -match '^server:\s*$') {
             $output.Add($line)
             $inServer = $true
+            $seenPlainEnabled = $false
             $seenPlainListen = $false
             $seenPlainData = $false
             continue
@@ -156,13 +181,26 @@ function Enable-WSConfigPair([string]$ConfigPath) {
             Add-MissingPlainFields
             $inServer = $false
         }
+        if ($inServer -and $line -match '^\s+plain_enabled:') {
+            $output.Add("  plain_enabled: $enabledText")
+            $seenPlainEnabled = $true
+            continue
+        }
         if ($inServer -and $line -match '^\s+plain_listen:') {
-            $output.Add('  plain_listen: "0.0.0.0:7004"')
+            if ($line -match '^\s+plain_listen:\s*""\s*$') {
+                $output.Add('  plain_listen: "0.0.0.0:7004"')
+            } else {
+                $output.Add($line)
+            }
             $seenPlainListen = $true
             continue
         }
         if ($inServer -and $line -match '^\s+plain_data_listen:') {
-            $output.Add('  plain_data_listen: "0.0.0.0:7005"')
+            if ($line -match '^\s+plain_data_listen:\s*""\s*$') {
+                $output.Add('  plain_data_listen: "0.0.0.0:7005"')
+            } else {
+                $output.Add($line)
+            }
             $seenPlainData = $true
             continue
         }
@@ -176,10 +214,7 @@ function Enable-WSConfigPair([string]$ConfigPath) {
 }
 
 function Test-WSConfigEnabled([string]$ConfigPath) {
-    if (-not (Test-Path -LiteralPath $ConfigPath)) { return $false }
-    $raw = Get-Content -Raw -LiteralPath $ConfigPath
-    return $raw -match '(?m)^\s+plain_listen:\s*"0\.0\.0\.0:7004"\s*$' -and
-        $raw -match '(?m)^\s+plain_data_listen:\s*"0\.0\.0\.0:7005"\s*$'
+    return (Test-PlainEnabledTrue $ConfigPath) -and (Test-PlainPairConfigured $ConfigPath)
 }
 
 function Move-LegacyInstallation {
@@ -362,10 +397,12 @@ try {
         $yamlLogs = ConvertTo-YamlPath $LogDir
         $yamlCert = ConvertTo-YamlPath $CertFile
         $yamlKey = ConvertTo-YamlPath $KeyFile
-        $plainConfig = '  plain_listen: ""
-  plain_data_listen: ""'
+        $plainConfig = '  plain_enabled: false
+  plain_listen: "0.0.0.0:7004"
+  plain_data_listen: "0.0.0.0:7005"'
         if ($EnableWS) {
-            $plainConfig = '  plain_listen: "0.0.0.0:7004"
+            $plainConfig = '  plain_enabled: true
+  plain_listen: "0.0.0.0:7004"
   plain_data_listen: "0.0.0.0:7005"'
         }
         $config = @"
@@ -405,9 +442,7 @@ client:
 "@
         Set-Content -LiteralPath $ConfigFile -Value $config -Encoding UTF8
     }
-    if ($EnableWS) {
-        Enable-WSConfigPair $ConfigFile
-    }
+    Sync-PlainWSConfig $ConfigFile $EnableWS
     $wsConfigEnabled = Test-WSConfigEnabled $ConfigFile
 
     $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
@@ -422,7 +457,9 @@ client:
     }
 
     if (-not $SkipFirewall) {
-        $tcpPorts = if ($wsConfigEnabled) { "7000,7001,7004,7005,8080" } else { "7000,7001,8080" }
+        # Reserve the optional WS ports so a later Dashboard toggle works after
+        # restarting the service; plain_enabled still controls whether anything listens.
+        $tcpPorts = "7000,7001,7004,7005,8080"
         $rules = @(
             @{ Name = "Nrynet TCP"; Protocol = "TCP"; Ports = $tcpPorts },
             @{ Name = "Nrynet UDP"; Protocol = "UDP"; Ports = "7002,7003" }

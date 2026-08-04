@@ -26,8 +26,9 @@ and macOS.
 
 For WSS agents, use `wss://host:7000/agent/connect` with data port `7001`.
 For WS agents, use `ws://host:7004/agent/connect` with plaintext data port
-`7005`. See `docs/operations.md` for certificates, certbot, systemd, ports,
-and builds.
+`7005` after `server.plain_enabled` is enabled. The dashboard can change this
+setting and it takes effect after restarting the server. See `docs/operations.md`
+for certificates, certbot, systemd, ports, and builds.
 中文安装与生产部署步骤见 `docs/deployment.zh-CN.md`。
 See `docs/requirements.md` for the versioned acceptance matrix.
 
@@ -49,7 +50,7 @@ For a Let's Encrypt certificate, run:
 sudo ./install-server.sh --certbot-domain nat.example.com --certbot-email admin@example.com
 ```
 
-To support domain WSS and explicit IP WS at the same time, run:
+To preset domain WSS and explicit IP WS at the same time, run:
 
 ```sh
 sudo ./install-server.sh --certbot-domain nat.example.com --certbot-email admin@example.com --enable-ws
@@ -58,6 +59,8 @@ sudo ./install-server.sh --certbot-domain nat.example.com --certbot-email admin@
 Add `--proxy http://127.0.0.1:7890` or `--proxy socks5h://127.0.0.1:1080`
 when dependencies and release downloads must use a proxy. The Windows installer
 accepts both `--proxy URL` and its native PowerShell spelling, `-Proxy URL`.
+`--enable-ws` and `-EnableWS` are only installation presets; administrators can
+also enable or disable plaintext WS in the dashboard and restart the service.
 
 Windows Server users can download `install-server.ps1` from the same release
 and run it from an elevated PowerShell session. Full instructions, certificate

@@ -42,15 +42,15 @@ func listenPlainData(cfg config.ServerConfig) (net.Listener, error) {
 	return listener, nil
 }
 
-func listenPlainControl(address string, handler http.Handler) (*http.Server, net.Listener, error) {
-	if strings.TrimSpace(address) == "" {
+func listenPlainControl(cfg config.ServerConfig, handler http.Handler) (*http.Server, net.Listener, error) {
+	if !plaintextPairEnabled(cfg) {
 		return nil, nil, nil
 	}
-	listener, err := net.Listen("tcp", address)
+	listener, err := net.Listen("tcp", cfg.PlainListen)
 	if err != nil {
 		return nil, nil, fmt.Errorf("listen for plaintext control connections: %w", err)
 	}
-	server := &http.Server{Addr: address, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	server := &http.Server{Addr: cfg.PlainListen, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	return server, listener, nil
 }
 
@@ -79,14 +79,6 @@ func publicDataHostname(address string) string {
 	return address
 }
 
-func normalizePlaintextPair(cfg *config.ServerConfig) {
-	if plaintextPairEnabled(*cfg) {
-		return
-	}
-	cfg.PlainListen = ""
-	cfg.PlainDataListen = ""
-}
-
 func plaintextPairEnabled(cfg config.ServerConfig) bool {
-	return strings.TrimSpace(cfg.PlainListen) != "" && strings.TrimSpace(cfg.PlainDataListen) != ""
+	return cfg.PlainEnabled && strings.TrimSpace(cfg.PlainListen) != "" && strings.TrimSpace(cfg.PlainDataListen) != ""
 }

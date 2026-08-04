@@ -51,7 +51,6 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		store.Close()
 		return nil, auth.BootstrapResult{}, err
 	}
-	normalizePlaintextPair(&cfg.Server)
 	if err := config.ValidateServerTransport(cfg.Server); err != nil {
 		store.Close()
 		return nil, auth.BootstrapResult{}, err
@@ -119,7 +118,7 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		Addr: cfg.Server.Listen, Handler: router, ReadHeaderTimeout: 10 * time.Second,
 		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13},
 	}
-	plainServer, plainControlListener, err := listenPlainControl(cfg.Server.PlainListen, router)
+	plainServer, plainControlListener, err := listenPlainControl(cfg.Server, router)
 	if err != nil {
 		_ = dataListener.Close()
 		_ = closeOptionalListener(plainDataListener)

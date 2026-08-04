@@ -15,10 +15,11 @@ import (
 
 func safeSettings(cfg config.Config) []api.SettingItem {
 	return []api.SettingItem{
+		{Key: "server.plain_enabled", Value: cfg.Server.PlainEnabled, Description: "是否启用明文 HTTP、WS 和 TCP 监听；重启后生效", Mutable: true},
 		{Key: "server.listen", Value: cfg.Server.Listen, Description: "HTTPS 控制台与 WSS 控制通道地址；重启后生效", Mutable: true},
-		{Key: "server.plain_listen", Value: cfg.Server.PlainListen, Description: "可选 HTTP 控制台与 WS 控制通道地址；需与明文数据通道同时填写，单项留空会禁用明文通道；重启后生效", Mutable: true},
+		{Key: "server.plain_listen", Value: cfg.Server.PlainListen, Description: "可选 HTTP 控制台与 WS 控制通道地址；开启明文访问时需与明文数据通道同时填写；重启后生效", Mutable: true},
 		{Key: "server.data_listen", Value: cfg.Server.DataListen, Description: "TLS TCP 数据通道地址；重启后生效", Mutable: true},
-		{Key: "server.plain_data_listen", Value: cfg.Server.PlainDataListen, Description: "可选明文 TCP 数据通道地址；需与明文控制通道同时填写，单项留空会禁用明文通道；重启后生效", Mutable: true},
+		{Key: "server.plain_data_listen", Value: cfg.Server.PlainDataListen, Description: "可选明文 TCP 数据通道地址；开启明文访问时需与明文控制通道同时填写；重启后生效", Mutable: true},
 		{Key: "server.public_data_address", Value: cfg.Server.PublicDataAddress, Description: "提供给 Agent 和 Relay 的数据通道地址；重启后生效", Mutable: true},
 		{Key: "server.quic_listen", Value: cfg.Server.QUICListen, Description: "QUIC 控制与数据流监听地址；重启后生效", Mutable: true},
 		{Key: "server.public_quic_address", Value: cfg.Server.PublicQUICAddress, Description: "提供给 Agent 的 QUIC 地址；重启后生效", Mutable: true},
@@ -66,6 +67,14 @@ func applyStoredSettings(ctx context.Context, store *storage.Store, cfg *config.
 		return fmt.Errorf("stored heartbeat timeout: %w", err)
 	}
 	cfg.Server.HeartbeatTimeout = duration
+	if value, err := store.GetSetting(ctx, "config.server.plain_enabled"); err == nil {
+		cfg.Server.PlainEnabled, err = strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	if value, err := store.GetSetting(ctx, "config.server.tls.enabled"); err == nil {
 		cfg.Server.TLS.Enabled, err = strconv.ParseBool(value)
 		return err
