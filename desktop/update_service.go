@@ -3,18 +3,15 @@ package main
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/updater"
-	githubprovider "github.com/wailsapp/wails/v3/pkg/updater/providers/github"
 )
 
 const (
 	automaticUpdateInterval = 6 * time.Hour
 	githubRepository        = "nrytex/nrynet"
-	githubChecksumAsset     = "SHA256SUMS"
 )
 
 type UpdateService struct {
@@ -65,11 +62,7 @@ func (s *UpdateService) ensureConfigured() error {
 	if s.ready {
 		return nil
 	}
-	provider, err := githubprovider.New(githubprovider.Config{
-		Repository:    githubRepository,
-		ChecksumAsset: githubChecksumAsset,
-		AssetMatcher:  desktopAssetMatcher,
-	})
+	provider, err := newGitHubReleaseProvider(githubRepository, nil)
 	if err != nil {
 		return err
 	}
@@ -83,17 +76,4 @@ func (s *UpdateService) ensureConfigured() error {
 	}
 	s.ready = true
 	return nil
-}
-
-func desktopAssetMatcher(req updater.CheckRequest, assets []githubprovider.ReleaseAsset) int {
-	for index, asset := range assets {
-		name := strings.ToLower(asset.Name)
-		if !strings.HasPrefix(name, "nrynet-desktop-") || !strings.Contains(name, req.Platform) {
-			continue
-		}
-		if strings.Contains(name, req.Arch) || (req.Platform == "darwin" && strings.Contains(name, "universal")) {
-			return index
-		}
-	}
-	return -1
 }

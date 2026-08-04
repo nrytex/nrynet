@@ -2,14 +2,16 @@ module github.com/nrytex/nrynet/desktop
 
 go 1.25.0
 
-require github.com/wailsapp/wails/v3 v3.0.0-alpha2.120
+require (
+	github.com/wailsapp/wails/v3 v3.0.0-alpha2.120
+	golang.org/x/mod v0.35.0
+)
 
 require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/quic-go/quic-go v0.59.0 // indirect
 	golang.org/x/crypto v0.50.0 // indirect
-	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
 )
 
