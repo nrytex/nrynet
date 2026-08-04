@@ -48,6 +48,7 @@ type CertificateStatus struct {
 	NotAfter string `json:"not_after,omitempty"`
 	Status   string `json:"status,omitempty"`
 	Error    string `json:"error,omitempty"`
+	Details  string `json:"details,omitempty"`
 }
 
 type TransportCapabilities struct {

@@ -243,6 +243,14 @@ client:
 
 Linux Dashboard 的证书申请使用 standalone HTTP-01 挑战，运行前必须确保域名已解析到本机，且公网入站 TCP/80 能到达 Server。普通 `nrynet-server` 进程不会获得 root 权限；它只向 `/opt/nrynet/data/certbot/inbox` 写入经过校验的任务，由 root systemd helper 使用固定参数调用 Certbot。已批准的续期目标和工作状态保存在 root 管理的 `/var/lib/nrynet/certbot`，不会信任普通服务可写的状态。证书以原子替换方式安装到 `/opt/nrynet/tls`，服务每两秒检查任务和证书变化并热加载。`nrynet-certbot-renew.timer` 每日检查续期，不会重启主服务。
 
+如果手动执行 Certbot 成功、控制台申请却失败，请先重新运行最新版安装脚本以刷新 helper 和 systemd 单元。helper 需要 `/usr/bin/certbot` 或 `/usr/local/bin/certbot` 中的原生 Certbot；仅安装在 `/snap/bin` 的版本无法在受限 helper 中可靠运行。控制台会显示 Certbot 返回的具体诊断，也可以直接查看：
+
+```bash
+sudo cat /var/lib/nrynet/certbot/status.json
+sudo journalctl -u nrynet-certbot.service -n 100 --no-pager
+sudo systemctl status nrynet-certbot.path nrynet-certbot.service --no-pager
+```
+
 ## 7. 端口与防火墙
 
 | 端口 | 协议 | 用途 |

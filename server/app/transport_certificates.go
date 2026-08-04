@@ -155,7 +155,7 @@ func (c *TransportController) certificateStatusLocked() *api.CertificateStatus {
 			return status
 		}
 		if job.State == "failed" {
-			status.Error = "证书申请失败，请确认域名已解析到本机且公网 TCP 80 可访问"
+			status.Error, status.Details = certificateFailure(job)
 		}
 		return status
 	}

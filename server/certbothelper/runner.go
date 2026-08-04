@@ -134,7 +134,7 @@ func runCertbot(ctx context.Context, runner CommandRunner, request Request, opti
 		}
 		return runner.Run(ctx, "certbot", args...)
 	}
-	args = append(args, "-d", request.Domain, "-m", request.Email)
+	args = append(args, "--cert-name", request.Domain, "-d", request.Domain, "-m", request.Email)
 	return runner.Run(ctx, "certbot", args...)
 }
 

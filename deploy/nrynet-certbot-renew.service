@@ -8,6 +8,7 @@ Type=oneshot
 User=root
 Group=root
 ExecStart=/opt/nrynet/nrynet-server --certbot-renew --certbot-helper-install-dir /opt/nrynet
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

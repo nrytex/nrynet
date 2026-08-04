@@ -139,6 +139,12 @@ body {
   margin-top: 12px;
 }
 
+.certificate-error-details {
+  margin: 8px 0 0 !important;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .full-width {
   width: 100%;
 }

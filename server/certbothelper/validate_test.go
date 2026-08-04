@@ -41,7 +41,7 @@ func TestCertbotIssueCommandUsesFixedDirectoriesAndNoShell(t *testing.T) {
 	}
 	required := []string{"certonly", "--standalone", "--non-interactive", "--agree-tos", "--reuse-key",
 		"--config-dir", LetsEncryptDir, "--work-dir", CertbotWorkDir, "--logs-dir", CertbotLogsDir,
-		"-d", "nrynet.example.com", "-m", "admin@example.com"}
+		"--cert-name", "-d", "nrynet.example.com", "-m", "admin@example.com"}
 	for _, value := range required {
 		if !hasArg(runner.args, value) {
 			t.Fatalf("missing arg %q in %#v", value, runner.args)

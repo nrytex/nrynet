@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { toMessage } from "../hooks/useAsync";
 import type { TransportStatus } from "../types";
 import { autoSubdomainStatusText } from "./autoSubdomain";
+import { CertificateError } from "./CertificateError";
 import { certificatePending, certificateStateLabel, endpointRows, nextPlainState, nextTLSState } from "./transportDisplay";
 
 const POLL_MS = 2000;
@@ -135,7 +136,7 @@ function CertificateForm({ status, busy, onSaved }: { status?: TransportStatus; 
         <Tag color={status?.certbot?.available ? "green" : "orange"}>{status?.certbot?.available ? "Certbot 可用" : "Certbot 不可用"}</Tag>
       </Space>
       {unavailable && <Alert showIcon type="warning" message={status?.certbot?.message || "服务器未检测到 Certbot，无法自动申请 Let's Encrypt 证书。"} />}
-      {cert?.error && <Alert showIcon type="error" message={cert.error} />}
+      <CertificateError message={cert?.error} details={cert?.details} />
       <Descriptions
         size="small"
         column={1}

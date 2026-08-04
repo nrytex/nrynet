@@ -127,6 +127,7 @@ export interface TransportCertificate {
   not_after?: string;
   status?: string;
   error?: string;
+  details?: string;
 }
 
 export interface TransportCertbot {

@@ -132,6 +132,14 @@ renewal target, lock, and Certbot work state stay root-owned under
 `/var/lib/nrynet/certbot`. If issuance fails, check DNS, conflicting port-80
 services, and host or cloud firewall rules before retrying.
 
+When manual Certbot succeeds but the Dashboard helper fails, rerun the latest
+installer to refresh the helper units and ensure a native Certbot exists at
+`/usr/bin/certbot` or `/usr/local/bin/certbot`. Snap-only Certbot executables are
+not used by the restricted helper. The Dashboard includes the bounded Certbot
+diagnostic returned by the helper. Full diagnostics remain available with
+`sudo cat /var/lib/nrynet/certbot/status.json` and
+`sudo journalctl -u nrynet-certbot.service -n 100 --no-pager`.
+
 ## Automatic tunnel subdomains
 
 In **Settings > Access and Certificates**, set a tunnel root such as

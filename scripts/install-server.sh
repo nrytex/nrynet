@@ -85,12 +85,16 @@ case "$INSTALL_DIR" in
   *" "*|*"'"*|*'"'*) echo "--install-dir cannot contain spaces or quotes." >&2; exit 2 ;;
 esac
 
+systemd_certbot_available() {
+  [ -x /usr/local/bin/certbot ] || [ -x /usr/bin/certbot ]
+}
+
 install_dependencies() {
   missing=""
   for command in curl openssl tar sha256sum; do
     command -v "$command" >/dev/null 2>&1 || missing="$missing $command"
   done
-  if ! command -v certbot >/dev/null 2>&1; then
+  if ! systemd_certbot_available; then
     missing="$missing certbot"
   fi
   [ -z "$missing" ] && return 0
@@ -106,6 +110,11 @@ install_dependencies() {
     apk add --no-cache curl ca-certificates openssl tar coreutils certbot
   else
     echo "Install curl, openssl, certbot, tar and sha256sum, then run this script again." >&2
+    exit 1
+  fi
+  if ! systemd_certbot_available; then
+    echo "A native certbot executable is required at /usr/bin/certbot or /usr/local/bin/certbot." >&2
+    echo "Snap-only Certbot installations cannot run inside the restricted Nrynet helper." >&2
     exit 1
   fi
 }
@@ -311,7 +320,7 @@ EOF
   install -m 0755 "$TEMP_DIR/nrynet-certbot-deploy-hook.sh" "$hook"
   echo "Requesting a Let's Encrypt certificate for $CERTBOT_DOMAIN with certbot..."
   certbot certonly --standalone --non-interactive --agree-tos --reuse-key \
-    -m "$CERTBOT_EMAIL" -d "$CERTBOT_DOMAIN" $staging || {
+    --cert-name "$CERTBOT_DOMAIN" -m "$CERTBOT_EMAIL" -d "$CERTBOT_DOMAIN" $staging || {
       echo "Certbot failed. Verify $CERTBOT_DOMAIN resolves to this server and inbound TCP/80 reaches this host for the standalone HTTP-01 challenge." >&2
       exit 1
     }
@@ -635,6 +644,7 @@ Type=oneshot
 User=root
 Group=root
 ExecStart=$INSTALL_DIR/nrynet-server --certbot-helper --certbot-helper-install-dir $INSTALL_DIR
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -654,6 +664,7 @@ Type=oneshot
 User=root
 Group=root
 ExecStart=$INSTALL_DIR/nrynet-server --certbot-renew --certbot-helper-install-dir $INSTALL_DIR
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
