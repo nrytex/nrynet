@@ -46,6 +46,10 @@ sudo ./install-server.sh --public-host nat.example.com
 
 Open `http://host:7000`, then bind a domain from **Settings > Access and
 Certificates**. DNS must point to the server and inbound TCP/80 must be open.
+The same panel can enable automatic tunnel subdomains. Configure one wildcard
+DNS record such as `*.tunnels.example.com`, then new HTTP/HTTPS tunnels with an
+empty domain receive a unique name below that root automatically; explicit
+domains always take priority.
 The older non-interactive installer flow remains available:
 
 ```sh

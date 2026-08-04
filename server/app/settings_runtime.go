@@ -52,6 +52,7 @@ func applyStoredSettings(ctx context.Context, store *storage.Store, cfg *config.
 		{"server.tls.key_file", &cfg.Server.TLS.KeyFile},
 		{"server.tls.domain", &cfg.Server.TLS.Domain},
 		{"server.tls.email", &cfg.Server.TLS.Email},
+		{"server.auto_subdomain.base_domain", &cfg.Server.AutoSubdomain.BaseDomain},
 		{"server.heartbeat_timeout", &cfg.Server.HeartbeatText},
 	}
 	for _, setting := range stringSettings {
@@ -63,6 +64,13 @@ func applyStoredSettings(ctx context.Context, store *storage.Store, cfg *config.
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
+	}
+	if cfg.Server.AutoSubdomain.BaseDomain != "" {
+		normalized, err := storage.NormalizeDomain(cfg.Server.AutoSubdomain.BaseDomain)
+		if err != nil {
+			return err
+		}
+		cfg.Server.AutoSubdomain.BaseDomain = normalized
 	}
 	duration, err := time.ParseDuration(cfg.Server.HeartbeatText)
 	if err != nil {
@@ -79,9 +87,28 @@ func applyStoredSettings(ctx context.Context, store *storage.Store, cfg *config.
 	}
 	if value, err := store.GetSetting(ctx, "config.server.tls.enabled"); err == nil {
 		cfg.Server.TLS.Enabled, err = strconv.ParseBool(value)
-		return err
+		if err != nil {
+			return err
+		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	return nil
+	if value, err := store.GetSetting(ctx, "config.server.auto_subdomain.enabled"); err == nil {
+		cfg.Server.AutoSubdomain.Enabled, err = strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if cfg.Server.AutoSubdomain.Enabled && cfg.Server.AutoSubdomain.BaseDomain == "" {
+		return errors.New("server.auto_subdomain.base_domain is required")
+	}
+	return seedAutoSubdomainSettings(ctx, store, cfg.Server.AutoSubdomain)
+}
+
+func seedAutoSubdomainSettings(ctx context.Context, store *storage.Store, cfg config.AutoSubdomainConfig) error {
+	return store.SetAutoSubdomainConfig(ctx, storage.AutoSubdomainConfig{
+		Enabled: cfg.Enabled, BaseDomain: cfg.BaseDomain,
+	})
 }

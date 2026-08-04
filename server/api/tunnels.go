@@ -30,7 +30,7 @@ func (h tunnelHandler) create(c *gin.Context) {
 		return
 	}
 	requestedStatus := tunnel.Status
-	created, err := h.store.CreateTunnel(c.Request.Context(), tunnel)
+	created, err := h.createTunnel(c.Request.Context(), tunnel)
 	if err != nil {
 		respondError(c, http.StatusBadRequest, err.Error())
 		return

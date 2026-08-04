@@ -118,7 +118,8 @@ body {
 .plain-ws-settings .ant-alert,
 .transport-settings .ant-alert,
 .transport-endpoints,
-.transport-certificate {
+.transport-certificate,
+.transport-auto-subdomain {
   margin-bottom: 12px;
 }
 

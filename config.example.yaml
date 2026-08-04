@@ -24,6 +24,9 @@ server:
     enabled: false
     cert_file: "/opt/nrynet/tls/fullchain.pem"
     key_file: "/opt/nrynet/tls/privkey.pem"
+  auto_subdomain:
+    enabled: false
+    base_domain: ""
   bootstrap:
     admin_username: "admin"
     admin_password: ""

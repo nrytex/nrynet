@@ -20,6 +20,9 @@ server:
     enabled: false
     cert_file: ""
     key_file: ""
+  auto_subdomain:
+    enabled: false
+    base_domain: ""
   bootstrap:
     admin_username: "admin"
     admin_password: ""

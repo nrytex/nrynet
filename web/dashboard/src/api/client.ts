@@ -84,7 +84,11 @@ function mappedErrorMessage(message: string) {
   if (normalized.includes("invalid credentials") || normalized.includes("invalid username") || normalized.includes("invalid password")) return "用户名或密码错误";
   if (normalized.includes("plain_listen") && normalized.includes("plain_data_listen") && normalized.includes("required")) return "请先配置明文 WS 控制端口和数据端口";
   if (normalized.includes("certbot") && normalized.includes("not found")) return "服务器未安装 Certbot，请先安装后再申请证书";
+  if (normalized.includes("base_domain") && normalized.includes("required")) return "请输入隧道根域名";
+  if (normalized.includes("could not allocate") && normalized.includes("subdomain")) return "自动子域名已被占用，请更换隧道名称或手动填写域名";
+  if (normalized.includes("fully qualified") || normalized.includes("invalid label")) return "域名格式不正确，请填写完整公网域名";
   if (normalized.includes("domain") && normalized.includes("required")) return "请输入要绑定的域名";
+  if (normalized.includes("wildcard")) return "请确认通配符 DNS 已配置为指向服务器";
   if (normalized.includes("email") && normalized.includes("required")) return "请输入用于证书通知的邮箱";
   if (normalized.includes("dns")) return "域名解析未生效，请确认 DNS 已指向当前服务器";
   if (normalized.includes("port 80") || normalized.includes("tcp/80")) return "证书申请需要公网 TCP 80 端口可访问";
@@ -171,6 +175,11 @@ export const api = {
     request<TransportStatus>("/api/transport/tls", { method: "PATCH", body: JSON.stringify({ enabled }) }),
   setTransportPlain: (enabled: boolean) =>
     request<TransportStatus>("/api/transport/plain", { method: "PATCH", body: JSON.stringify({ enabled }) }),
+  setAutoSubdomain: (enabled: boolean, baseDomain: string) =>
+    request<TransportStatus>("/api/transport/auto-subdomain", {
+      method: "PATCH",
+      body: JSON.stringify({ enabled, base_domain: baseDomain }),
+    }),
   relays: () => request<{ nodes: RelayNode[] }>("/api/v2/relays").then((payload) => payload.nodes),
   relayAssignments: () => request<{ assignments: RelayAssignment[] }>("/api/v2/relays/assignments").then((payload) => payload.assignments),
 };

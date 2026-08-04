@@ -13,15 +13,17 @@ type TransportManager interface {
 	RequestCertificate(context.Context, CertificateRequest) (TransportStatus, error)
 	SetTLSEnabled(context.Context, bool) (TransportStatus, error)
 	SetPlainEnabled(context.Context, bool) (TransportStatus, error)
+	SetAutoSubdomain(context.Context, AutoSubdomainRequest) (TransportStatus, error)
 }
 
 type TransportStatus struct {
-	Plain              TransportEndpoint     `json:"plain"`
-	CompatibilityPlain TransportEndpoint     `json:"compatibility_plain"`
-	TLS                TransportEndpoint     `json:"tls"`
-	Certbot            CertbotStatus         `json:"certbot"`
-	Certificate        *CertificateStatus    `json:"certificate,omitempty"`
-	Capabilities       TransportCapabilities `json:"capabilities,omitempty"`
+	Plain              TransportEndpoint      `json:"plain"`
+	CompatibilityPlain TransportEndpoint      `json:"compatibility_plain"`
+	TLS                TransportEndpoint      `json:"tls"`
+	Certbot            CertbotStatus          `json:"certbot"`
+	Certificate        *CertificateStatus     `json:"certificate,omitempty"`
+	AutoSubdomain      TransportAutoSubdomain `json:"auto_subdomain"`
+	Capabilities       TransportCapabilities  `json:"capabilities,omitempty"`
 }
 
 type TransportEndpoint struct {
@@ -54,9 +56,20 @@ type TransportCapabilities struct {
 	HotReload        bool   `json:"hot_reload"`
 }
 
+type TransportAutoSubdomain struct {
+	Enabled       bool   `json:"enabled"`
+	BaseDomain    string `json:"base_domain,omitempty"`
+	SuffixExample string `json:"suffix_example,omitempty"`
+}
+
 type CertificateRequest struct {
 	Domain string `json:"domain"`
 	Email  string `json:"email"`
+}
+
+type AutoSubdomainRequest struct {
+	Enabled    *bool  `json:"enabled"`
+	BaseDomain string `json:"base_domain"`
 }
 
 type enabledRequest struct {
@@ -95,6 +108,16 @@ func (h transportHandler) setTLS(c *gin.Context) {
 
 func (h transportHandler) setPlain(c *gin.Context) {
 	h.setEnabled(c, h.manager.SetPlainEnabled)
+}
+
+func (h transportHandler) setAutoSubdomain(c *gin.Context) {
+	var request AutoSubdomainRequest
+	if err := c.ShouldBindJSON(&request); err != nil || request.Enabled == nil {
+		respondError(c, http.StatusBadRequest, "请选择开启或关闭")
+		return
+	}
+	status, err := h.manager.SetAutoSubdomain(c.Request.Context(), request)
+	respondTransport(c, http.StatusOK, status, err)
 }
 
 func (h transportHandler) setEnabled(c *gin.Context, update func(context.Context, bool) (TransportStatus, error)) {
@@ -170,6 +193,10 @@ func (unavailableTransport) SetTLSEnabled(context.Context, bool) (TransportStatu
 }
 
 func (unavailableTransport) SetPlainEnabled(context.Context, bool) (TransportStatus, error) {
+	return TransportStatus{}, errTransportUnavailable()
+}
+
+func (unavailableTransport) SetAutoSubdomain(context.Context, AutoSubdomainRequest) (TransportStatus, error) {
 	return TransportStatus{}, errTransportUnavailable()
 }
 

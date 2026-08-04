@@ -130,6 +130,18 @@ Get-WinEvent -LogName Application -MaxEvents 50
 4. Agent 默认填写 `ws://<public-host>:7000/agent/connect` 和数据地址 `<public-host>:7001`。绑定域名后也可使用 `wss://<domain>:7000/agent/connect`，无需修改服务端端口。
 5. Agent 上线后，在 Dashboard 创建 TCP、UDP、HTTP 或 HTTPS 隧道，选择对应设备和本地服务地址，再启动隧道。
 
+### 自动分配隧道子域名
+
+进入“设置 > 访问与证书”，填写隧道根域名（例如 `tunnels.example.com`）并开启“自动子域名分配”。然后在 DNS 服务商处只需配置一次：
+
+```text
+*.tunnels.example.com  A/AAAA  <Nrynet Server 公网地址>
+```
+
+此后新建 HTTP/HTTPS 隧道时可以把“域名”留空。Server 会根据隧道名称生成唯一地址，例如 `dashboard.tunnels.example.com`；重名时自动追加数字后缀。手动填写完整域名时始终优先使用手动值。关闭功能只会停止后续自动分配，不会删除或改变已有隧道的域名，配置保存后立即生效，无需重启。
+
+HTTP 网关根据 `Host` 分流，HTTPS 网关根据 SNI 分流，默认监听 TCP `8080`。公网应直接开放该端口，或把公网 `80/443` 转发到 `8080`。HTTPS 隧道目前是 SNI 透传，因此客户端侧的目标 HTTPS 服务仍需提供与自动分配域名匹配的证书；控制台通过 HTTP-01 申请的单域名证书不会自动成为通配符隧道证书。
+
 Server 是后台常驻服务，不需要每次手动运行二进制。Linux 命令行 Agent 的完整配置见第 9 节，Windows/macOS 桌面客户端见第 11 节。
 
 ## 4. 从源码构建

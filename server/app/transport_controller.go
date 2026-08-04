@@ -223,9 +223,10 @@ func (c *TransportController) statusLocked() api.TransportStatus {
 			ControlURL: "https://" + tlsControl, WebSocketURL: "wss://" + tlsControl + "/agent/connect",
 			DataAddress: tlsData,
 		},
-		Certbot:      certbot,
-		Certificate:  c.certificateStatusLocked(),
-		Capabilities: transportCapabilities(certbot),
+		Certbot:       certbot,
+		Certificate:   c.certificateStatusLocked(),
+		AutoSubdomain: autoSubdomainStatus(c.app.config.Server.AutoSubdomain),
+		Capabilities:  transportCapabilities(certbot),
 	}
 }
 

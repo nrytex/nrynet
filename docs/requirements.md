@@ -53,6 +53,7 @@ end-to-end verification.
 - [x] A systemd unit and documented directory layout support `/opt/nrynet`.
 - [x] SQLite persists configuration and metrics across server restarts.
 - [x] Linux Dashboard can request Certbot certificates through a restricted helper, reuse keys, renew automatically, and hot-load certificates.
+- [x] Dashboard can hot-enable automatic wildcard-root subdomain assignment for new HTTP/HTTPS tunnels while preserving explicit and existing domains.
 - [x] Automated tests cover authentication, storage, protocol framing, and TCP/HTTP/UDP end-to-end paths.
 
 Platform-specific runtime rows remain open until the binaries and GUI are exercised on every named operating system; cross-build and CI configuration alone are not recorded as runtime proof.

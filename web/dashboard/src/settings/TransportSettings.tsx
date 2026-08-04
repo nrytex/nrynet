@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { toMessage } from "../hooks/useAsync";
 import type { TransportStatus } from "../types";
+import { autoSubdomainStatusText } from "./autoSubdomain";
 import { certificatePending, certificateStateLabel, endpointRows, nextPlainState, nextTLSState } from "./transportDisplay";
 
 const POLL_MS = 2000;
@@ -67,6 +68,7 @@ export function TransportSettings() {
       <EndpointSummary status={status} loading={loading} />
       <TLSControls status={status} busy={busy} onToggleTLS={toggleTLS} />
       <CertificateForm status={status} busy={busy} onSaved={(next) => setStatus(next)} />
+      <AutoSubdomainControl status={status} busy={busy} onSaved={(next) => setStatus(next)} />
       <PlainCompatControl status={status} busy={busy} onTogglePlain={togglePlain} />
     </section>
   );
@@ -154,6 +156,59 @@ function CertificateForm({ status, busy, onSaved }: { status?: TransportStatus; 
           申请 Let's Encrypt
         </Button>
       </Form>
+    </div>
+  );
+}
+
+function AutoSubdomainControl({ status, busy, onSaved }: { status?: TransportStatus; busy?: string; onSaved: (status: TransportStatus) => void }) {
+  const [form] = Form.useForm<{ enabled: boolean; base_domain: string }>();
+  const [submitting, setSubmitting] = useState(false);
+  const config = status?.auto_subdomain;
+
+  useEffect(() => {
+    form.setFieldsValue({ enabled: Boolean(config?.enabled), base_domain: config?.base_domain || "" });
+  }, [config?.base_domain, config?.enabled, form]);
+
+  async function submit(values: { enabled: boolean; base_domain: string }) {
+    const baseDomain = values.base_domain.trim();
+    if (values.enabled && !baseDomain) {
+      message.error("请输入隧道根域名");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      onSaved(await api.setAutoSubdomain(Boolean(values.enabled), baseDomain));
+      message.success(`自动子域名已${values.enabled ? "开启" : "关闭"}，配置已热更新`);
+    } catch (error) {
+      message.error(toMessage(error));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="transport-auto-subdomain">
+      <Space className="transport-status-line" wrap>
+        <Typography.Text strong>自动子域名分配</Typography.Text>
+        <Tag color={config?.enabled ? "green" : "default"}>{autoSubdomainStatusText(config)}</Tag>
+      </Space>
+      <Alert
+        showIcon
+        type="info"
+        message="只需一次配置通配符 DNS：*.根域名 指向这台服务器。开启后，新建 HTTP/HTTPS 隧道且域名留空时会自动分配；已有域名不会被修改，手动填写的显式域名优先生效。"
+      />
+      <Form form={form} layout="inline" onFinish={submit} className="transport-cert-form">
+        <Form.Item name="enabled" valuePropName="checked">
+          <Switch checkedChildren="开启" unCheckedChildren="关闭" loading={busy === "auto-subdomain" || submitting} />
+        </Form.Item>
+        <Form.Item name="base_domain">
+          <Input placeholder="tunnels.example.com" />
+        </Form.Item>
+        <Button htmlType="submit" type="primary" loading={submitting}>
+          保存
+        </Button>
+      </Form>
+      {config?.suffix_example && <Typography.Text type="secondary">示例：{config.suffix_example}</Typography.Text>}
     </div>
   );
 }

@@ -83,6 +83,7 @@ describe("api client", () => {
     await api.requestCertificate("nrynet.example.com", "admin@example.com");
     await api.setTransportTLS(true);
     await api.setTransportPlain(false);
+    await api.setAutoSubdomain(true, "tunnels.example.com");
 
     const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
     expect(calls[0][0]).toBe("/api/transport");
@@ -95,6 +96,8 @@ describe("api client", () => {
     expect(JSON.parse(String(calls[2][1].body))).toEqual({ enabled: true });
     expect(calls[3][0]).toBe("/api/transport/plain");
     expect(JSON.parse(String(calls[3][1].body))).toEqual({ enabled: false });
+    expect(calls[4][0]).toBe("/api/transport/auto-subdomain");
+    expect(JSON.parse(String(calls[4][1].body))).toEqual({ enabled: true, base_domain: "tunnels.example.com" });
   });
 });
 

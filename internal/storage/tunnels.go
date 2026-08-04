@@ -19,6 +19,7 @@ func (s *Store) CreateTunnel(ctx context.Context, tunnel model.Tunnel) (model.Tu
 	}
 	tunnel.ID = uuid.NewString()
 	tunnel.Protocol = strings.ToLower(tunnel.Protocol)
+	tunnel.Domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(tunnel.Domain), "."))
 	tunnel.Status = "stopped"
 	tunnel.CreatedAt = time.Now().UTC()
 	tunnel.UpdatedAt = tunnel.CreatedAt
@@ -27,7 +28,7 @@ func (s *Store) CreateTunnel(ctx context.Context, tunnel model.Tunnel) (model.Tu
         (id, client_id, name, protocol, local_host, local_port, remote_port, domain,
         status, ip_allowlist, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tunnel.ID, tunnel.ClientID, tunnel.Name, tunnel.Protocol, tunnel.LocalHost,
-		tunnel.LocalPort, tunnel.RemotePort, strings.ToLower(tunnel.Domain), tunnel.Status,
+		tunnel.LocalPort, tunnel.RemotePort, tunnel.Domain, tunnel.Status,
 		string(allowlist), tunnel.CreatedAt, tunnel.UpdatedAt)
 	return tunnel, err
 }
@@ -48,6 +49,11 @@ func validateTunnel(tunnel model.Tunnel) error {
 	}
 	if (protocol == "http" || protocol == "https") && tunnel.Domain == "" {
 		return errors.New("domain is required for HTTP and HTTPS tunnels")
+	}
+	if (protocol == "http" || protocol == "https") && tunnel.Domain != "" {
+		if _, err := NormalizeDomain(tunnel.Domain); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -122,7 +128,7 @@ func (s *Store) UpdateTunnel(ctx context.Context, tunnel model.Tunnel) (model.Tu
 		return model.Tunnel{}, err
 	}
 	tunnel.Protocol = strings.ToLower(tunnel.Protocol)
-	tunnel.Domain = strings.ToLower(tunnel.Domain)
+	tunnel.Domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(tunnel.Domain), "."))
 	tunnel.UpdatedAt = time.Now().UTC()
 	allowlist, _ := json.Marshal(tunnel.IPAllowlist)
 	result, err := s.db.ExecContext(ctx, `UPDATE tunnels SET client_id=?, name=?, protocol=?,

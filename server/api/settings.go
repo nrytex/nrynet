@@ -63,11 +63,18 @@ func (h *settingsHandler) update(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := h.validateAutoSubdomainState(item.Key, text); err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err := h.store.SetSetting(c.Request.Context(), "config."+item.Key, text); err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 	item.Value = request.Value
+	if _, ok := request.Value.(string); ok {
+		item.Value = text
+	}
 	h.items[item.Key] = item
 	c.JSON(http.StatusOK, item)
 }
@@ -77,14 +84,23 @@ func validateSetting(key string, value any) (string, error) {
 	if text == "" && isOptionalAddressSetting(key) {
 		return "", nil
 	}
+	if text == "" && key == "server.auto_subdomain.base_domain" {
+		return "", nil
+	}
 	if text == "" {
 		return "", errors.New("setting value cannot be empty")
 	}
 	switch key {
-	case "server.plain_enabled", "server.tls.enabled":
+	case "server.plain_enabled", "server.tls.enabled", "server.auto_subdomain.enabled":
 		if _, ok := value.(bool); !ok {
 			return "", errors.New("setting value must be a boolean")
 		}
+	case "server.auto_subdomain.base_domain":
+		normalized, err := storage.NormalizeDomain(text)
+		if err != nil {
+			return "", err
+		}
+		return normalized, nil
 	case "server.listen", "server.plain_listen", "server.data_listen", "server.plain_data_listen", "server.quic_listen",
 		"server.rendezvous_listen", "server.http_listen", "server.public_data_address",
 		"server.public_quic_address", "server.public_rendezvous_address":
@@ -128,6 +144,29 @@ func (h *settingsHandler) validatePlaintextState(key, text string) error {
 		return err
 	}
 	if _, err := validateSetting("server.plain_data_listen", plainDataListen); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *settingsHandler) validateAutoSubdomainState(key, text string) error {
+	enabled := currentBoolSetting(h.items["server.auto_subdomain.enabled"])
+	baseDomain := currentTextSetting(h.items["server.auto_subdomain.base_domain"])
+	switch key {
+	case "server.auto_subdomain.enabled":
+		enabled = text == "true"
+	case "server.auto_subdomain.base_domain":
+		baseDomain = text
+	default:
+		return nil
+	}
+	if !enabled {
+		return nil
+	}
+	if baseDomain == "" {
+		return errors.New("server.auto_subdomain.base_domain is required when auto subdomain is enabled")
+	}
+	if _, err := storage.NormalizeDomain(baseDomain); err != nil {
 		return err
 	}
 	return nil

@@ -132,6 +132,28 @@ renewal target, lock, and Certbot work state stay root-owned under
 `/var/lib/nrynet/certbot`. If issuance fails, check DNS, conflicting port-80
 services, and host or cloud firewall rules before retrying.
 
+## Automatic tunnel subdomains
+
+In **Settings > Access and Certificates**, set a tunnel root such as
+`tunnels.example.com` and enable automatic subdomain assignment. Configure this
+wildcard DNS record once:
+
+```text
+*.tunnels.example.com  A/AAAA  <Nrynet server address>
+```
+
+New HTTP/HTTPS tunnels whose domain field is empty receive a unique hostname
+derived from the tunnel name, for example `dashboard.tunnels.example.com`.
+Duplicate names receive a numeric suffix. A domain entered explicitly always
+wins. Disabling the feature only stops new allocations; existing tunnel domains
+continue to route normally.
+
+The shared gateway listens on TCP `8080` and routes HTTP by `Host` and HTTPS by
+SNI. Expose or forward the required public port to `8080`. HTTPS remains SNI
+pass-through, so the destination service must present a certificate valid for
+the assigned hostname. The Dashboard's single-host HTTP-01 certificate is not a
+wildcard tunnel certificate.
+
 ## QUIC and P2P
 
 QUIC always uses TLS 1.3. For production, enable server TLS with a publicly

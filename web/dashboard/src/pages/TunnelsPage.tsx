@@ -6,16 +6,18 @@ import { Page } from "../components/Page";
 import { StatusTag } from "../components/StatusTag";
 import { statusText } from "../display/status";
 import { useAsync } from "../hooks/useAsync";
-import type { Client, Tunnel } from "../types";
+import { autoSubdomainHint, shouldSuggestAutoDomain } from "../settings/autoSubdomain";
+import type { Client, TransportAutoSubdomain, Tunnel } from "../types";
 
 type TunnelForm = Omit<Tunnel, "id" | "created_at" | "updated_at"> & { ip_allowlist_text?: string };
 
 export function TunnelsPage() {
   const { message, modal } = App.useApp();
-  const state = useAsync(async () => ({ tunnels: await api.listTunnels(), clients: await api.listClients() }), []);
+  const state = useAsync(async () => ({ tunnels: await api.listTunnels(), clients: await api.listClients(), transport: await api.transport() }), []);
   const [editing, setEditing] = useState<Tunnel | null>(null);
   const tunnels = state.data?.tunnels ?? [];
   const clients = state.data?.clients ?? [];
+  const autoSubdomain = state.data?.transport.auto_subdomain;
 
   async function submit(values: TunnelForm) {
     const payload = normalize(values);
@@ -59,7 +61,7 @@ export function TunnelsPage() {
           { title: "操作", render: (_, t) => <Actions tunnel={t} onToggle={toggle} onEdit={setEditing} onRemove={remove} /> },
         ]}
       />
-      <TunnelEditor tunnel={editing} clients={clients} onCancel={() => setEditing(null)} onSave={submit} />
+      <TunnelEditor tunnel={editing} clients={clients} autoSubdomain={autoSubdomain} onCancel={() => setEditing(null)} onSave={submit} />
     </Page>
   );
 }
@@ -74,11 +76,14 @@ function Actions({ tunnel, onToggle, onEdit, onRemove }: { tunnel: Tunnel; onTog
   );
 }
 
-function TunnelEditor(props: { tunnel: Tunnel | null; clients: Client[]; onCancel: () => void; onSave: (v: TunnelForm) => void }) {
+function TunnelEditor(props: { tunnel: Tunnel | null; clients: Client[]; autoSubdomain?: TransportAutoSubdomain; onCancel: () => void; onSave: (v: TunnelForm) => void }) {
+  const [form] = Form.useForm<TunnelForm>();
+  const protocol = Form.useWatch("protocol", form) || props.tunnel?.protocol;
   const initial = props.tunnel ? { ...props.tunnel, ip_allowlist_text: props.tunnel.ip_allowlist?.join(",") } : undefined;
+  const suggestAutoDomain = !props.tunnel?.id && shouldSuggestAutoDomain(protocol, props.autoSubdomain);
   return (
     <Modal title={props.tunnel?.id ? "编辑隧道" : "创建隧道"} open={!!props.tunnel} onCancel={props.onCancel} onOk={() => document.getElementById("tunnel-save")?.click()} destroyOnClose width={720}>
-      <Form layout="vertical" initialValues={initial} onFinish={props.onSave}>
+      <Form form={form} layout="vertical" initialValues={initial} onFinish={props.onSave}>
         <div className="form-grid">
           <Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="client_id" label="客户端" rules={[{ required: true }]}><Select options={props.clients.map((c) => ({ value: c.id, label: c.name }))} /></Form.Item>
@@ -87,7 +92,9 @@ function TunnelEditor(props: { tunnel: Tunnel | null; clients: Client[]; onCance
           <Form.Item name="local_host" label="本地地址" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="local_port" label="本地端口" rules={[{ required: true }]}><InputNumber min={1} max={65535} className="full-width" /></Form.Item>
           <Form.Item name="remote_port" label="远端端口"><InputNumber min={0} max={65535} className="full-width" /></Form.Item>
-          <Form.Item name="domain" label="域名"><Input /></Form.Item>
+          <Form.Item name="domain" label="域名" help={suggestAutoDomain ? autoSubdomainHint(props.autoSubdomain) : undefined}>
+            <Input placeholder={suggestAutoDomain ? "留空自动生成，填写则优先生效" : undefined} />
+          </Form.Item>
         </div>
         <Form.Item name="ip_allowlist_text" label="IP 白名单"><Input placeholder="逗号分隔，留空为不限" /></Form.Item>
         <button id="tunnel-save" hidden type="submit" />

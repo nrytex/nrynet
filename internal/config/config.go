@@ -26,27 +26,33 @@ type BootstrapConfig struct {
 	AdminPassword string `yaml:"admin_password"`
 }
 
+type AutoSubdomainConfig struct {
+	Enabled    bool   `yaml:"enabled"`
+	BaseDomain string `yaml:"base_domain"`
+}
+
 type ServerConfig struct {
-	Listen            string          `yaml:"listen"`
-	PlainEnabled      bool            `yaml:"plain_enabled"`
-	PlainListen       string          `yaml:"plain_listen"`
-	DataListen        string          `yaml:"data_listen"`
-	PlainDataListen   string          `yaml:"plain_data_listen"`
-	PublicDataAddress string          `yaml:"public_data_address"`
-	QUICListen        string          `yaml:"quic_listen"`
-	PublicQUICAddress string          `yaml:"public_quic_address"`
-	RendezvousListen  string          `yaml:"rendezvous_listen"`
-	PublicRendezvous  string          `yaml:"public_rendezvous_address"`
-	RelayAPIToken     string          `yaml:"relay_api_token"`
-	HTTPListen        string          `yaml:"http_listen"`
-	Database          string          `yaml:"database"`
-	LogDirectory      string          `yaml:"log_directory"`
-	JWTTTL            time.Duration   `yaml:"-"`
-	JWTTTLText        string          `yaml:"jwt_ttl"`
-	HeartbeatTimeout  time.Duration   `yaml:"-"`
-	HeartbeatText     string          `yaml:"heartbeat_timeout"`
-	TLS               TLSConfig       `yaml:"tls"`
-	Bootstrap         BootstrapConfig `yaml:"bootstrap"`
+	Listen            string              `yaml:"listen"`
+	PlainEnabled      bool                `yaml:"plain_enabled"`
+	PlainListen       string              `yaml:"plain_listen"`
+	DataListen        string              `yaml:"data_listen"`
+	PlainDataListen   string              `yaml:"plain_data_listen"`
+	PublicDataAddress string              `yaml:"public_data_address"`
+	QUICListen        string              `yaml:"quic_listen"`
+	PublicQUICAddress string              `yaml:"public_quic_address"`
+	RendezvousListen  string              `yaml:"rendezvous_listen"`
+	PublicRendezvous  string              `yaml:"public_rendezvous_address"`
+	RelayAPIToken     string              `yaml:"relay_api_token"`
+	HTTPListen        string              `yaml:"http_listen"`
+	Database          string              `yaml:"database"`
+	LogDirectory      string              `yaml:"log_directory"`
+	JWTTTL            time.Duration       `yaml:"-"`
+	JWTTTLText        string              `yaml:"jwt_ttl"`
+	HeartbeatTimeout  time.Duration       `yaml:"-"`
+	HeartbeatText     string              `yaml:"heartbeat_timeout"`
+	TLS               TLSConfig           `yaml:"tls"`
+	AutoSubdomain     AutoSubdomainConfig `yaml:"auto_subdomain"`
+	Bootstrap         BootstrapConfig     `yaml:"bootstrap"`
 }
 
 type ClientConfig struct {

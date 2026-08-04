@@ -135,12 +135,19 @@ export interface TransportCertbot {
   version?: string;
 }
 
+export interface TransportAutoSubdomain {
+  enabled: boolean;
+  base_domain?: string;
+  suffix_example?: string;
+}
+
 export interface TransportStatus {
   plain: TransportEndpoint;
   compatibility_plain: TransportEndpoint;
   tls: TransportEndpoint;
   certbot: TransportCertbot;
   certificate?: TransportCertificate;
+  auto_subdomain?: TransportAutoSubdomain;
 }
 
 export interface RelayNode {

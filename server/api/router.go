@@ -90,6 +90,7 @@ func NewRouterWithOptions(store *storage.Store, authService *auth.Service, start
 	secured.POST("/transport/certificates", transportAPI.requestCertificate)
 	secured.PATCH("/transport/tls", transportAPI.setTLS)
 	secured.PATCH("/transport/plain", transportAPI.setPlain)
+	secured.PATCH("/transport/auto-subdomain", transportAPI.setAutoSubdomain)
 	secured.GET("/v2/relays", relayAPI.list)
 	secured.GET("/v2/relays/assignments", relayAPI.assignments)
 	secured.POST("/v2/relays/assignments/:tunnel_id", relayAPI.assign)

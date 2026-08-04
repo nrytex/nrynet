@@ -35,6 +35,14 @@ func TestTransportEndpointsRequireSessionAndCallManager(t *testing.T) {
 	if plain.Code != http.StatusOK || manager.plainEnabled {
 		t.Fatalf("plain update status=%d enabled=%v", plain.Code, manager.plainEnabled)
 	}
+	autoSubdomain := requestJSON(t, router, http.MethodPatch, "/api/transport/auto-subdomain", session,
+		map[string]any{"enabled": true, "base_domain": "Tunnels.Example.COM."})
+	if autoSubdomain.Code != http.StatusOK || manager.autoSubdomain.Enabled == nil || !*manager.autoSubdomain.Enabled {
+		t.Fatalf("auto-subdomain update status=%d config=%+v", autoSubdomain.Code, manager.autoSubdomain)
+	}
+	if manager.autoSubdomain.BaseDomain != "Tunnels.Example.COM." {
+		t.Fatalf("manager auto-subdomain request not called: %+v", manager.autoSubdomain)
+	}
 }
 
 func TestTransportErrorsAreFriendlyChinese(t *testing.T) {
@@ -75,11 +83,12 @@ func transportRouter(t *testing.T) (http.Handler, *fakeTransportManager, string)
 }
 
 type fakeTransportManager struct {
-	status       TransportStatus
-	lastRequest  CertificateRequest
-	tlsEnabled   bool
-	plainEnabled bool
-	err          error
+	status        TransportStatus
+	lastRequest   CertificateRequest
+	autoSubdomain AutoSubdomainRequest
+	tlsEnabled    bool
+	plainEnabled  bool
+	err           error
 }
 
 func (f *fakeTransportManager) Status(context.Context) (TransportStatus, error) {
@@ -100,5 +109,14 @@ func (f *fakeTransportManager) SetTLSEnabled(_ context.Context, enabled bool) (T
 func (f *fakeTransportManager) SetPlainEnabled(_ context.Context, enabled bool) (TransportStatus, error) {
 	f.plainEnabled = enabled
 	f.status.Plain.Enabled = enabled
+	return f.status, f.err
+}
+
+func (f *fakeTransportManager) SetAutoSubdomain(_ context.Context, request AutoSubdomainRequest) (TransportStatus, error) {
+	f.autoSubdomain = request
+	if request.Enabled != nil {
+		f.status.AutoSubdomain.Enabled = *request.Enabled
+	}
+	f.status.AutoSubdomain.BaseDomain = request.BaseDomain
 	return f.status, f.err
 }
