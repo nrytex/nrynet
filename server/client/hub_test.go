@@ -218,7 +218,7 @@ func expectMessageType(t *testing.T, ws *websocket.Conn, want string) {
 
 func newHubStore(t *testing.T) (*storage.Store, *auth.Service) {
 	t.Helper()
-	store, err := storage.Open(t.TempDir() + "/test.db")
+	store, err := storage.Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

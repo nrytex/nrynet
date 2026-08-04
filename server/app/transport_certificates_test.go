@@ -26,6 +26,7 @@ func TestCertificateQueueAndSuccessHotEnableTLS(t *testing.T) {
 	defer application.Shutdown(ctx)
 
 	controller := application.TransportController()
+	useTempCertbotPaths(t, controller)
 	if err := os.MkdirAll(filepath.Dir(controller.certbot.ReadyPath), 0o750); err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +68,7 @@ func TestDisabledTLSStaysDisabledAcrossOldCertbotStatus(t *testing.T) {
 	}
 	defer application.Shutdown(ctx)
 	controller := application.TransportController()
+	useTempCertbotPaths(t, controller)
 	writeCertbotSuccess(t, controller.certbot, certFile, keyFile)
 	controller.applyCertificateUpdates()
 	if _, err := controller.SetTLSEnabled(ctx, false); err != nil {
@@ -77,6 +79,20 @@ func TestDisabledTLSStaysDisabledAcrossOldCertbotStatus(t *testing.T) {
 	if status.TLS.Enabled {
 		t.Fatal("an already-applied certificate job re-enabled TLS")
 	}
+}
+
+func useTempCertbotPaths(t *testing.T, controller *TransportController) {
+	t.Helper()
+	root := t.TempDir()
+	options := certbothelper.OptionsForInstallDir(root)
+	options.StatusPath = filepath.Join(root, "state", "status.json")
+	options.ManagedPath = filepath.Join(root, "state", "managed.json")
+	options.LockPath = filepath.Join(root, "state", "request.lock")
+	options.ReadyPath = filepath.Join(root, "state", "helper-ready")
+	options.LetsEncryptDir = filepath.Join(root, "letsencrypt")
+	options.WorkDir = filepath.Join(root, "work")
+	options.LogsDir = filepath.Join(root, "logs")
+	controller.certbot = options
 }
 
 func writeCertbotSuccess(t *testing.T, options certbothelper.Options, certFile, keyFile string) {
