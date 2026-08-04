@@ -17,6 +17,8 @@ type TLSConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	CertFile string `yaml:"cert_file"`
 	KeyFile  string `yaml:"key_file"`
+	Domain   string `yaml:"domain,omitempty"`
+	Email    string `yaml:"email,omitempty"`
 }
 
 type BootstrapConfig struct {

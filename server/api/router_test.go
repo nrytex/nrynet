@@ -86,6 +86,27 @@ func TestCreatedTokenIncludesServerCertificatePin(t *testing.T) {
 	}
 }
 
+func TestCreatedTokenUsesCurrentCertificatePin(t *testing.T) {
+	store, service, session := tokenRouterDependencies(t)
+	pin := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	router := NewRouterWithOptions(store, service, time.Now(), RouterOptions{
+		CertificatePinProvider: func() string { return pin },
+	})
+	pin = base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32))
+	created := requestJSON(t, router, http.MethodPost, "/api/tokens", session,
+		map[string]any{"name": "dynamic-pin"})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
+	}
+	var response struct {
+		Value string `json:"value"`
+	}
+	decodeJSON(t, created, &response)
+	if !bytes.Contains([]byte(response.Value), []byte(".spki-sha256-"+pin)) {
+		t.Fatalf("created token does not include current certificate pin: %q", response.Value)
+	}
+}
+
 func TestSettingsUpdatePersistsRestartOverride(t *testing.T) {
 	ctx := context.Background()
 	store, err := storage.Open(filepath.Join(t.TempDir(), "settings.db"))

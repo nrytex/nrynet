@@ -12,11 +12,13 @@ import (
 )
 
 type RouterOptions struct {
-	Runtime        Runtime
-	Settings       []SettingItem
-	RelayRegistry  *netx.RelayRegistry
-	RelayToken     string
-	CertificatePin string
+	Runtime                Runtime
+	Settings               []SettingItem
+	RelayRegistry          *netx.RelayRegistry
+	RelayToken             string
+	CertificatePin         string
+	CertificatePinProvider func() string
+	Transport              TransportManager
 }
 
 func NewRouter(store *storage.Store, authService *auth.Service, startedAt time.Time, runtimes ...Runtime) *gin.Engine {
@@ -35,14 +37,19 @@ func NewRouterWithOptions(store *storage.Store, authService *auth.Service, start
 	router := gin.New()
 	router.Use(gin.Logger(), gin.Recovery())
 	authAPI := authHandler{service: authService}
-	tokenAPI := tokenHandler{store: store, auth: authService, runtime: runtime, certificatePin: options.CertificatePin}
-	clientAPI := clientHandler{store: store, auth: authService, runtime: runtime, certificatePin: options.CertificatePin}
+	certificatePin := options.CertificatePinProvider
+	if certificatePin == nil {
+		certificatePin = func() string { return options.CertificatePin }
+	}
+	tokenAPI := tokenHandler{store: store, auth: authService, runtime: runtime, certificatePin: certificatePin}
+	clientAPI := clientHandler{store: store, auth: authService, runtime: runtime, certificatePin: certificatePin}
 	tunnelAPI := tunnelHandler{store: store, runtime: runtime}
 	overviewAPI := overviewHandler{store: store, runtime: runtime, startedAt: startedAt}
 	trafficAPI := trafficHandler{store: store}
 	logAPI := logHandler{store: store}
 	settingsAPI := newSettingsHandler(store, options.Settings)
 	relayAPI := relayHandler{registry: options.RelayRegistry, token: options.RelayToken}
+	transportAPI := newTransportHandler(options.Transport)
 	router.GET("/health", func(c *gin.Context) {
 		if err := store.Ping(c.Request.Context()); err != nil {
 			respondError(c, http.StatusServiceUnavailable, "database unavailable")
@@ -79,6 +86,10 @@ func NewRouterWithOptions(store *storage.Store, authService *auth.Service, start
 	secured.DELETE("/logs", logAPI.clear)
 	secured.GET("/settings", settingsAPI.list)
 	secured.PATCH("/settings/:key", settingsAPI.update)
+	secured.GET("/transport", transportAPI.get)
+	secured.POST("/transport/certificates", transportAPI.requestCertificate)
+	secured.PATCH("/transport/tls", transportAPI.setTLS)
+	secured.PATCH("/transport/plain", transportAPI.setPlain)
 	secured.GET("/v2/relays", relayAPI.list)
 	secured.GET("/v2/relays/assignments", relayAPI.assignments)
 	secured.POST("/v2/relays/assignments/:tunnel_id", relayAPI.assign)

@@ -1,0 +1,17 @@
+[Unit]
+Description=Nrynet privileged Certbot helper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/opt/nrynet/nrynet-server --certbot-helper --certbot-helper-install-dir /opt/nrynet
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/letsencrypt /var/lib/nrynet/certbot /opt/nrynet/tls /var/log/nrynet/certbot
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER

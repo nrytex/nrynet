@@ -30,13 +30,14 @@ func TestAppServesWSPlainDataAndWSSTLSDataTogether(t *testing.T) {
 	defer cancel()
 	certFile, keyFile, pin := writeTLSPair(t)
 	cfg := dualTransportConfig(t, certFile, keyFile)
+	cfg.Server.PlainEnabled = false
 	application, _, err := New(ctx, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	go func() { _ = application.Run() }()
 	t.Cleanup(func() { _ = application.Shutdown(context.Background()) })
-	waitPlainHealth(t, "http://"+cfg.Server.PlainListen)
+	waitPlainHealth(t, "http://"+cfg.Server.Listen)
 	waitTLSHealth(t, "https://"+cfg.Server.Listen)
 
 	authService, err := auth.New(ctx, application.store, cfg.Server.JWTTTL)
@@ -51,8 +52,8 @@ func TestAppServesWSPlainDataAndWSSTLSDataTogether(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plainAgent := newAppAgent(t, "ws://"+cfg.Server.PlainListen+"/agent/connect",
-		cfg.Server.PlainDataListen, clearToken, "plain-device")
+	plainAgent := newAppAgent(t, "ws://"+cfg.Server.Listen+"/agent/connect",
+		cfg.Server.DataListen, clearToken, "plain-device")
 	tlsAgent := newAppAgent(t, "wss://"+cfg.Server.Listen+"/agent/connect",
 		cfg.Server.DataListen, pinnedToken, "tls-device")
 	runTestAgent(t, ctx, plainAgent)

@@ -1,10 +1,10 @@
 server:
-  # TLS control/API/dashboard and TLS data listeners. Use these for WSS agents.
+  # The primary pair serves HTTP/WS and plaintext data by default. After TLS is
+  # enabled it also accepts HTTPS/WSS and TLS data on the same ports.
   listen: "0.0.0.0:7000"
   data_listen: "0.0.0.0:7001"
-  # Optional plaintext HTTP/WS control and plaintext data listeners.
-  # Keep disabled unless you intentionally want ws:// access. Dashboard changes
-  # are stored as server overrides and take effect after restarting the service.
+  # Optional legacy plaintext listeners on separate ports. The primary pair
+  # already provides HTTP/WS, so most deployments should keep these disabled.
   plain_enabled: false
   plain_listen: "0.0.0.0:7004"
   plain_data_listen: "0.0.0.0:7005"
@@ -21,19 +21,19 @@ server:
   jwt_ttl: "12h"
   heartbeat_timeout: "45s"
   tls:
-    enabled: true
+    enabled: false
     cert_file: "/opt/nrynet/tls/fullchain.pem"
     key_file: "/opt/nrynet/tls/privkey.pem"
   bootstrap:
     admin_username: "admin"
     admin_password: ""
 client:
-  server_url: "wss://127.0.0.1:7000/agent/connect"
+  server_url: "ws://127.0.0.1:7000/agent/connect"
   data_address: "127.0.0.1:7001"
   transport: "websocket"
   quic_address: "127.0.0.1:7002"
   rendezvous_address: "127.0.0.1:7003"
-  ca_file: "/opt/nrynet/tls/fullchain.pem"
+  ca_file: ""
   token: ""
   name: ""
   device_id: ""

@@ -14,10 +14,13 @@ func TestExampleConfigurationsUseSafeListenerDefaults(t *testing.T) {
 		t.Fatalf("public example does not listen on all interfaces: %+v", public.Server)
 	}
 	if public.Server.PlainEnabled {
-		t.Fatalf("public example enables plaintext by default: %+v", public.Server)
+		t.Fatalf("public example enables the legacy plaintext pair by default: %+v", public.Server)
 	}
-	if !public.Server.TLS.Enabled {
-		t.Fatal("public example must enable TLS for all-interface listeners")
+	if public.Server.TLS.Enabled {
+		t.Fatal("public example must start with HTTP/WS until TLS is explicitly enabled")
+	}
+	if public.Client.ServerURL != "ws://127.0.0.1:7000/agent/connect" {
+		t.Fatalf("public example must use WS by default: %s", public.Client.ServerURL)
 	}
 	if err := ValidateServerTransport(public.Server); err != nil {
 		t.Fatalf("public example violates transport policy: %v", err)

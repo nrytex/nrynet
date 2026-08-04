@@ -14,7 +14,7 @@ type tokenHandler struct {
 	store          *storage.Store
 	auth           *auth.Service
 	runtime        Runtime
-	certificatePin string
+	certificatePin func() string
 }
 
 type createTokenRequest struct {
@@ -41,8 +41,12 @@ func (h tokenHandler) create(c *gin.Context) {
 		return
 	}
 	token, cleartext, err := h.auth.CreateAgentToken(c.Request.Context(), request.Name)
-	if err == nil && h.certificatePin != "" {
-		cleartext, err = agenttoken.WithCertificatePin(cleartext, h.certificatePin)
+	pin := ""
+	if h.certificatePin != nil {
+		pin = h.certificatePin()
+	}
+	if err == nil && pin != "" {
+		cleartext, err = agenttoken.WithCertificatePin(cleartext, pin)
 	}
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())

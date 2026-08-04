@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -29,6 +28,7 @@ type App struct {
 	config    config.Config
 	store     *storage.Store
 	server    *http.Server
+	control   net.Listener
 	plain     *http.Server
 	plainCtrl net.Listener
 	data      net.Listener
@@ -40,6 +40,7 @@ type App struct {
 	quic      *serveradvanced.QUICControlServer
 	rdv       *serveradvanced.RendezvousService
 	relayDone chan struct{}
+	transport *TransportController
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, error) {
@@ -74,7 +75,12 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 	binder := &serveradvanced.RemoteRelayNode{Token: relayToken, BrokerAddress: cfg.Server.PublicDataAddress, BrokerTLS: cfg.Server.TLS.Enabled, BrokerServerName: publicDataHostname(cfg.Server.PublicDataAddress), Registry: registry}
 	tunnelManager.SetRelayRegistry(registry, binder)
 	broker.SetRelayVisitorHandler(relayToken, tunnelManager.RouteRelayVisitor)
-	dataListener, err := listenData(cfg.Server.DataListen, cfg.Server.TLS)
+	tlsStore, err := newTLSStore(cfg.Server.TLS)
+	if err != nil {
+		store.Close()
+		return nil, auth.BootstrapResult{}, err
+	}
+	dataListener, err := listenData(cfg.Server.DataListen, tlsStore)
 	if err != nil {
 		store.Close()
 		return nil, auth.BootstrapResult{}, fmt.Errorf("listen for data connections: %w", err)
@@ -93,17 +99,11 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		return nil, auth.BootstrapResult{}, fmt.Errorf("listen for HTTP tunnels: %w", err)
 	}
 	webGateway := gateway.New(store, tunnelManager)
-	certificatePin, err := serverCertificatePin(cfg.Server)
-	if err != nil {
-		_ = dataListener.Close()
-		_ = closeOptionalListener(plainDataListener)
-		_ = webListener.Close()
-		store.Close()
-		return nil, auth.BootstrapResult{}, err
-	}
+	transport := newTransportController(nil, tlsStore, nil)
 	router := api.NewRouterWithOptions(store, authService, time.Now(), api.RouterOptions{
 		Runtime: tunnelManager, Settings: safeSettings(cfg),
-		RelayRegistry: registry, RelayToken: relayToken, CertificatePin: certificatePin,
+		RelayRegistry: registry, RelayToken: relayToken, CertificatePinProvider: transport.CurrentCertificatePin,
+		Transport: transport,
 	})
 	router.GET("/agent/connect", hub.Handle)
 	dashboardHandler := dashboard.Handler()
@@ -116,9 +116,8 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 	})
 	server := &http.Server{
 		Addr: cfg.Server.Listen, Handler: router, ReadHeaderTimeout: 10 * time.Second,
-		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13},
 	}
-	plainServer, plainControlListener, err := listenPlainControl(cfg.Server, router)
+	controlListener, err := listenControl(cfg.Server.Listen, tlsStore)
 	if err != nil {
 		_ = dataListener.Close()
 		_ = closeOptionalListener(plainDataListener)
@@ -126,8 +125,18 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		store.Close()
 		return nil, auth.BootstrapResult{}, err
 	}
-	quicServer, err := listenQUIC(cfg.Server, authService, hub, broker)
+	plainServer, plainControlListener, err := listenPlainControl(cfg.Server, router)
 	if err != nil {
+		_ = controlListener.Close()
+		_ = dataListener.Close()
+		_ = closeOptionalListener(plainDataListener)
+		_ = webListener.Close()
+		store.Close()
+		return nil, auth.BootstrapResult{}, err
+	}
+	quicServer, err := listenQUIC(cfg.Server, tlsStore, authService, hub, broker)
+	if err != nil {
+		_ = controlListener.Close()
 		_ = dataListener.Close()
 		_ = closeOptionalListener(plainDataListener)
 		_ = closeOptionalListener(plainControlListener)
@@ -137,6 +146,7 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 	}
 	rdv, err := serveradvanced.ListenRendezvous(cfg.Server.RendezvousListen)
 	if err != nil {
+		_ = controlListener.Close()
 		_ = dataListener.Close()
 		_ = closeOptionalListener(plainDataListener)
 		_ = closeOptionalListener(plainControlListener)
@@ -145,33 +155,22 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		store.Close()
 		return nil, auth.BootstrapResult{}, err
 	}
-	return &App{config: cfg, store: store, server: server, plain: plainServer, plainCtrl: plainControlListener,
+	app := &App{config: cfg, store: store, server: server, control: controlListener, plain: plainServer, plainCtrl: plainControlListener,
 		data: dataListener, plainData: plainDataListener, web: webListener,
-		broker: broker, gateway: webGateway, tunnels: tunnelManager, quic: quicServer, rdv: rdv, relayDone: make(chan struct{})}, bootstrap, nil
+		broker: broker, gateway: webGateway, tunnels: tunnelManager, quic: quicServer, rdv: rdv, relayDone: make(chan struct{})}
+	transport.bind(app, router)
+	app.transport = transport
+	return app, bootstrap, nil
 }
 
 func listenQUIC(
 	cfg config.ServerConfig,
+	tlsStore *netx.DynamicTLSStore,
 	authService *auth.Service,
 	hub *clienthub.Hub,
 	broker *relay.Broker,
 ) (*serveradvanced.QUICControlServer, error) {
-	certificate, err := quicCertificate(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return serveradvanced.ListenQUIC(cfg.QUICListen, netx.ServerTLSConfig(certificate), authService, hub, broker)
-}
-
-func quicCertificate(cfg config.ServerConfig) (tls.Certificate, error) {
-	if !cfg.TLS.Enabled {
-		return netx.SelfSignedCertificate()
-	}
-	cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
-	if err != nil {
-		return tls.Certificate{}, fmt.Errorf("load QUIC TLS certificate: %w", err)
-	}
-	return cert, nil
+	return serveradvanced.ListenQUIC(cfg.QUICListen, netx.QUICServerDynamicTLSConfig(tlsStore), authService, hub, broker)
 }
 
 func (a *App) Run() error {
@@ -190,14 +189,14 @@ func (a *App) Run() error {
 		go reportServeError(errCh, "plaintext control server", func() error { return a.plain.Serve(a.plainCtrl) })
 	}
 	go a.monitorRelays()
-	if a.config.Server.TLS.Enabled {
-		go reportServeError(errCh, "control server", func() error {
-			return a.server.ListenAndServeTLS(a.config.Server.TLS.CertFile, a.config.Server.TLS.KeyFile)
-		})
-	} else {
-		go reportServeError(errCh, "control server", a.server.ListenAndServe)
+	go a.transport.monitorCertificates(a.relayDone)
+	go reportServeError(errCh, "control server", func() error { return a.server.Serve(a.control) })
+	select {
+	case err := <-errCh:
+		return err
+	case <-a.relayDone:
+		return nil
 	}
-	return <-errCh
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
@@ -207,6 +206,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 		close(a.relayDone)
 	}
 	serverErr := a.server.Shutdown(ctx)
+	controlErr := closeOptionalListener(a.control)
 	plainErr := shutdownOptionalServer(ctx, a.plain)
 	plainCtrlErr := closeOptionalListener(a.plainCtrl)
 	dataErr := a.data.Close()
@@ -216,15 +216,13 @@ func (a *App) Shutdown(ctx context.Context) error {
 	rdvErr := a.rdv.Close()
 	tunnelErr := a.tunnels.Close()
 	storeErr := a.store.Close()
-	return errors.Join(serverErr, plainErr, plainCtrlErr, dataErr, plainDataErr, webErr, quicErr, rdvErr, tunnelErr, storeErr)
+	return errors.Join(serverErr, controlErr, plainErr, plainCtrlErr, dataErr, plainDataErr, webErr, quicErr, rdvErr, tunnelErr, storeErr)
 }
 
 func reportServeError(errCh chan<- error, name string, serve func() error) {
 	if err := serve(); err != nil && !isNormalServeClose(err) {
 		errCh <- fmt.Errorf("%s: %w", name, err)
-		return
 	}
-	errCh <- nil
 }
 
 func isNormalServeClose(err error) bool {
@@ -251,4 +249,8 @@ func (a *App) Address() string {
 		scheme = "https"
 	}
 	return fmt.Sprintf("%s://%s", scheme, a.config.Server.Listen)
+}
+
+func (a *App) TransportController() *TransportController {
+	return a.transport
 }

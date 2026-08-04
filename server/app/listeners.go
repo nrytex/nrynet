@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -10,25 +9,24 @@ import (
 	"strings"
 	"time"
 
+	netx "github.com/nrytex/nrynet/internal/advanced"
 	"github.com/nrytex/nrynet/internal/config"
 )
 
-func listenData(address string, tlsConfig config.TLSConfig) (net.Listener, error) {
+func listenControl(address string, tlsStore *netx.DynamicTLSStore) (net.Listener, error) {
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		return nil, fmt.Errorf("listen for control connections: %w", err)
+	}
+	return newDynamicTLSListener(listener, tlsStore), nil
+}
+
+func listenData(address string, tlsStore *netx.DynamicTLSStore) (net.Listener, error) {
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, fmt.Errorf("listen for data connections: %w", err)
 	}
-	if !tlsConfig.Enabled {
-		return listener, nil
-	}
-	certificate, err := tls.LoadX509KeyPair(tlsConfig.CertFile, tlsConfig.KeyFile)
-	if err != nil {
-		_ = listener.Close()
-		return nil, fmt.Errorf("load data TLS certificate: %w", err)
-	}
-	return tls.NewListener(listener, &tls.Config{
-		Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS13,
-	}), nil
+	return newDynamicTLSListener(listener, tlsStore), nil
 }
 
 func listenPlainData(cfg config.ServerConfig) (net.Listener, error) {

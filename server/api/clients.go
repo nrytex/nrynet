@@ -16,7 +16,7 @@ type clientHandler struct {
 	store          *storage.Store
 	auth           *auth.Service
 	runtime        Runtime
-	certificatePin string
+	certificatePin func() string
 }
 
 type updateClientRequest struct {
@@ -132,8 +132,12 @@ func (h clientHandler) resetToken(c *gin.Context) {
 		return
 	}
 	token, cleartext, err := h.auth.CreateAgentToken(c.Request.Context(), client.Name+" reset")
-	if err == nil && h.certificatePin != "" {
-		cleartext, err = agenttoken.WithCertificatePin(cleartext, h.certificatePin)
+	pin := ""
+	if h.certificatePin != nil {
+		pin = h.certificatePin()
+	}
+	if err == nil && pin != "" {
+		cleartext, err = agenttoken.WithCertificatePin(cleartext, pin)
 	}
 	if err == nil {
 		err = h.store.UpdateClientToken(c.Request.Context(), client.ID, token.ID)
