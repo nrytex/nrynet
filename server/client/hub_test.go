@@ -36,6 +36,7 @@ func TestHubAcceptsAgentAndSendsCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { hub.Disconnect(client.ID) })
 	if client.TokenID != token.ID || hub.OnlineCount() != 1 {
 		t.Fatalf("agent not registered: %#v online=%d", client, hub.OnlineCount())
 	}
@@ -121,6 +122,7 @@ func TestHubRejectsDeviceTakeoverByDifferentToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { hub.Disconnect(client.ID) })
 	if client.TokenID != first.ID || hub.OnlineCount() != 1 {
 		t.Fatalf("device ownership changed: client=%+v online=%d", client, hub.OnlineCount())
 	}
@@ -174,6 +176,7 @@ func TestHubTokenRotationRejectsOldTokenAndAcceptsNewToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { hub.Disconnect(client.ID) })
 	newToken, newValue, err := authService.CreateAgentToken(context.Background(), "new")
 	if err != nil {
 		t.Fatal(err)
