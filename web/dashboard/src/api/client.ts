@@ -1,5 +1,18 @@
 import { authHeader, clearSession, saveSession } from "./session";
-import type { Client, ClientDetail, LogEntry, Overview, RelayAssignment, RelayNode, SessionUser, SettingItem, Token, TrafficResponse, Tunnel } from "../types";
+import type {
+  Client,
+  ClientDetail,
+  LogEntry,
+  Overview,
+  RelayAssignment,
+  RelayNode,
+  SessionUser,
+  SettingItem,
+  Token,
+  TrafficResponse,
+  TransportStatus,
+  Tunnel,
+} from "../types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -70,6 +83,12 @@ function mappedErrorMessage(message: string) {
   if (normalized.includes("bad request") || normalized.includes("invalid request")) return "请求参数无效";
   if (normalized.includes("invalid credentials") || normalized.includes("invalid username") || normalized.includes("invalid password")) return "用户名或密码错误";
   if (normalized.includes("plain_listen") && normalized.includes("plain_data_listen") && normalized.includes("required")) return "请先配置明文 WS 控制端口和数据端口";
+  if (normalized.includes("certbot") && normalized.includes("not found")) return "服务器未安装 Certbot，请先安装后再申请证书";
+  if (normalized.includes("domain") && normalized.includes("required")) return "请输入要绑定的域名";
+  if (normalized.includes("email") && normalized.includes("required")) return "请输入用于证书通知的邮箱";
+  if (normalized.includes("dns")) return "域名解析未生效，请确认 DNS 已指向当前服务器";
+  if (normalized.includes("port 80") || normalized.includes("tcp/80")) return "证书申请需要公网 TCP 80 端口可访问";
+  if (normalized.includes("certificate") || normalized.includes("letsencrypt")) return "证书申请失败，请检查域名解析、80 端口和 Certbot 配置";
   if (normalized.includes("setting value must be a boolean")) return "设置值必须为开启或关闭";
   if (normalized.includes("token expired") || normalized.includes("expired token")) return "登录已过期，请重新登录";
   if (normalized.includes("network error") || normalized.includes("failed to fetch")) return "网络连接失败";
@@ -145,6 +164,13 @@ export const api = {
   settings: () => request<{ items: SettingItem[] }>("/api/settings").then(items),
   updateSetting: (key: string, value: SettingItem["value"]) =>
     request<SettingItem>(`/api/settings/${encodeURIComponent(key)}`, { method: "PATCH", body: JSON.stringify({ value }) }),
+  transport: () => request<TransportStatus>("/api/transport"),
+  requestCertificate: (domain: string, email: string) =>
+    request<TransportStatus>("/api/transport/certificates", { method: "POST", body: JSON.stringify({ domain, email }) }),
+  setTransportTLS: (enabled: boolean) =>
+    request<TransportStatus>("/api/transport/tls", { method: "PATCH", body: JSON.stringify({ enabled }) }),
+  setTransportPlain: (enabled: boolean) =>
+    request<TransportStatus>("/api/transport/plain", { method: "PATCH", body: JSON.stringify({ enabled }) }),
   relays: () => request<{ nodes: RelayNode[] }>("/api/v2/relays").then((payload) => payload.nodes),
   relayAssignments: () => request<{ assignments: RelayAssignment[] }>("/api/v2/relays/assignments").then((payload) => payload.assignments),
 };

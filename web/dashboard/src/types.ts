@@ -112,6 +112,37 @@ export interface SettingItem {
   mutable?: boolean;
 }
 
+export interface TransportEndpoint {
+  enabled: boolean;
+  listen?: string;
+  data_listen?: string;
+  control_url?: string;
+  websocket_url?: string;
+  data_address?: string;
+}
+
+export interface TransportCertificate {
+  domain?: string;
+  issuer?: string;
+  not_after?: string;
+  status?: string;
+  error?: string;
+}
+
+export interface TransportCertbot {
+  available: boolean;
+  message?: string;
+  version?: string;
+}
+
+export interface TransportStatus {
+  plain: TransportEndpoint;
+  compatibility_plain: TransportEndpoint;
+  tls: TransportEndpoint;
+  certbot: TransportCertbot;
+  certificate?: TransportCertificate;
+}
+
 export interface RelayNode {
 	id: string;
 	address: string;

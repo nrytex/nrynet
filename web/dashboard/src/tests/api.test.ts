@@ -71,6 +71,31 @@ describe("api client", () => {
     await expect(api.downloadLogs()).rejects.toThrow("未授权，请重新登录");
     expect(getSession()).toBeNull();
   });
+
+  it("calls transport settings endpoints with expected payloads", async () => {
+    const fetchMock = mockFetch({
+      plain: { enabled: true },
+      tls: { enabled: false },
+      certbot: { available: true },
+    });
+
+    await api.transport();
+    await api.requestCertificate("nrynet.example.com", "admin@example.com");
+    await api.setTransportTLS(true);
+    await api.setTransportPlain(false);
+
+    const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0][0]).toBe("/api/transport");
+    expect(calls[1][0]).toBe("/api/transport/certificates");
+    expect(JSON.parse(String(calls[1][1].body))).toEqual({
+      domain: "nrynet.example.com",
+      email: "admin@example.com",
+    });
+    expect(calls[2][0]).toBe("/api/transport/tls");
+    expect(JSON.parse(String(calls[2][1].body))).toEqual({ enabled: true });
+    expect(calls[3][0]).toBe("/api/transport/plain");
+    expect(JSON.parse(String(calls[3][1].body))).toEqual({ enabled: false });
+  });
 });
 
 function mockFetch(body: unknown, status = 200, statusText = "") {

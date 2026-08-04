@@ -110,12 +110,32 @@ body {
 }
 
 .password-settings .ant-form,
-.plain-ws-settings .ant-form {
+.plain-ws-settings .ant-form,
+.transport-cert-form {
   gap: 8px;
 }
 
-.plain-ws-settings .ant-alert {
+.plain-ws-settings .ant-alert,
+.transport-settings .ant-alert,
+.transport-endpoints,
+.transport-certificate {
   margin-bottom: 12px;
+}
+
+.transport-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+}
+
+.transport-status-line {
+  margin-bottom: 8px;
+}
+
+.transport-cert-form {
+  margin-top: 12px;
 }
 
 .full-width {
