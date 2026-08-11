@@ -77,7 +77,7 @@ func (a *Agent) runP2PStream(ctx context.Context, payload protocol.P2PConnectPay
 		return err
 	}
 	defer local.Close()
-	return a.relay(payload.TunnelID, dataStream, local)
+	return a.relay(ctx, payload.TunnelID, dataStream, local)
 }
 
 func punchP2PStreamPeer(

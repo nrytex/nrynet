@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -78,7 +80,12 @@ func (s *UpdateService) CheckForUpdate() (UpdateResult, error) {
 	return s.checkOnce()
 }
 
-func (s *UpdateService) checkOnce() (UpdateResult, error) {
+func (s *UpdateService) checkOnce() (result UpdateResult, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("update check panicked: %v\n%s", recovered, debug.Stack())
+		}
+	}()
 	s.mu.Lock()
 	if s.checking {
 		s.mu.Unlock()
@@ -95,7 +102,7 @@ func (s *UpdateService) checkOnce() (UpdateResult, error) {
 	if err != nil {
 		return UpdateResult{}, err
 	}
-	result := updateResultFromRelease(release)
+	result = updateResultFromRelease(release)
 	s.mu.Lock()
 	s.last = result
 	s.mu.Unlock()

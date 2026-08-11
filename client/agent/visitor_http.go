@@ -14,8 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pion/webrtc/v4"
-
 	"github.com/nrytex/nrynet/internal/protocol"
 )
 
@@ -25,32 +23,35 @@ const (
 	visitorHTTPTimeout     = 15 * time.Second
 )
 
-func (a *Agent) handleVisitorDataMessage(
+func (a *Agent) handleVisitorDataMessageWithSender(
 	ctx context.Context,
-	channel *webrtc.DataChannel,
 	localHost string,
 	localPort int,
 	data []byte,
+	send visitorDataMessageSender,
 ) {
 	if len(data) > visitorMaxMessageBytes {
-		_ = sendVisitorError(channel, "request is too large")
+		_ = send(protocol.VisitorWebRTCDataMessage{Kind: "response", Error: "request is too large"})
 		return
 	}
 	var request protocol.VisitorWebRTCDataMessage
 	if err := json.Unmarshal(data, &request); err != nil {
-		_ = sendVisitorError(channel, "invalid request message")
+		_ = send(protocol.VisitorWebRTCDataMessage{Kind: "response", Error: "invalid request message"})
 		return
 	}
 	if request.Kind != "request" || request.ID == "" {
-		_ = sendVisitorResponse(channel, request.ID, 0, nil, "request kind and id are required", "")
+		_ = send(protocol.VisitorWebRTCDataMessage{Kind: "response", ID: request.ID, Error: "request kind and id are required"})
 		return
 	}
 	response, err := executeVisitorRequest(ctx, localHost, localPort, request)
 	if err != nil {
-		_ = sendVisitorResponse(channel, request.ID, 0, nil, err.Error(), "")
+		_ = send(protocol.VisitorWebRTCDataMessage{Kind: "response", ID: request.ID, Error: err.Error()})
 		return
 	}
-	_ = sendVisitorResponse(channel, request.ID, response.StatusCode, response.Headers, "", response.Body)
+	_ = send(protocol.VisitorWebRTCDataMessage{
+		Kind: "response", ID: request.ID, Status: response.StatusCode,
+		Headers: response.Headers, Body: response.Body,
+	})
 }
 
 type visitorHTTPResponse struct {
@@ -58,6 +59,8 @@ type visitorHTTPResponse struct {
 	Headers    map[string][]string
 	Body       string
 }
+
+type visitorDataMessageSender func(protocol.VisitorWebRTCDataMessage) error
 
 func executeVisitorRequest(
 	ctx context.Context,
@@ -135,13 +138,23 @@ func copyVisitorHeaders(destination http.Header, source map[string][]string) {
 }
 
 func visitorHTTPClient() *http.Client {
-	return &http.Client{
-		Timeout:   visitorHTTPTimeout,
-		Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true},
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
+	return visitorHTTPClientInstance
+}
+
+var visitorHTTPClientInstance = &http.Client{
+	Timeout: visitorHTTPTimeout,
+	Transport: &http.Transport{
+		Proxy:                 nil,
+		MaxIdleConns:          64,
+		MaxIdleConnsPerHost:   32,
+		MaxConnsPerHost:       visitorMaxTotalStreams,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+	CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
 }
 
 func readVisitorBody(reader io.Reader) ([]byte, error) {
@@ -153,34 +166,4 @@ func readVisitorBody(reader io.Reader) ([]byte, error) {
 		return nil, fmt.Errorf("response body exceeds %d bytes", visitorMaxBodyBytes)
 	}
 	return body, nil
-}
-
-func sendVisitorResponse(
-	channel *webrtc.DataChannel,
-	id string,
-	status int,
-	headers map[string][]string,
-	errText string,
-	body string,
-) error {
-	message := protocol.VisitorWebRTCDataMessage{
-		Kind: "response", ID: id, Status: status, Headers: headers, Error: errText, Body: body,
-	}
-	data, err := json.Marshal(message)
-	if err != nil {
-		return err
-	}
-	if len(data) > visitorMaxMessageBytes {
-		data, err = json.Marshal(protocol.VisitorWebRTCDataMessage{
-			Kind: "response", ID: id, Error: "response is too large for the WebRTC data channel",
-		})
-		if err != nil {
-			return err
-		}
-	}
-	return channel.SendText(string(data))
-}
-
-func sendVisitorError(channel *webrtc.DataChannel, message string) error {
-	return sendVisitorResponse(channel, "", 0, nil, message, "")
 }

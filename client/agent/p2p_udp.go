@@ -78,6 +78,16 @@ func (a *Agent) proxyP2PDatagrams(
 		return err
 	}
 	defer local.Close()
+	stop := make(chan struct{})
+	a.goWorker("p2p udp cleanup", func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+			_ = local.Close()
+		case <-stop:
+		}
+	})
+	defer close(stop)
 	peerAddr, err := peer.UDPAddr()
 	if err != nil {
 		return err

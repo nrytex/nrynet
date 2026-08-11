@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"time"
 
 	"github.com/nrytex/nrynet/client/agent"
@@ -81,7 +83,7 @@ func (s *DesktopService) newAgent(cfg AppConfig, runID uint64) (*agent.Agent, er
 }
 
 func (s *DesktopService) runAgent(ctx context.Context, client *agent.Agent, runID uint64) {
-	err := client.Run(ctx)
+	err := s.runAgentSafely(ctx, client)
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return
 	}
@@ -90,6 +92,19 @@ func (s *DesktopService) runAgent(ctx context.Context, client *agent.Agent, runI
 		message = err.Error()
 	}
 	s.setStopped(runID, message)
+}
+
+func (s *DesktopService) runAgentSafely(ctx context.Context, client *agent.Agent) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			s.logs.append(LogEntry{
+				Time: time.Now(), Level: "ERROR", Message: "agent panic recovered",
+				Fields: map[string]any{"panic": recovered, "stack": string(debug.Stack())},
+			})
+			err = fmt.Errorf("agent panic: %v", recovered)
+		}
+	}()
+	return client.Run(ctx)
 }
 
 func (s *DesktopService) setStopped(runID uint64, message string) {

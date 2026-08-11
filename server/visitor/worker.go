@@ -3,7 +3,7 @@ package visitor
 const visitorServiceWorker = `
 const scopePath=new URL(self.registration.scope).pathname;
 const shellPath=scopePath.slice(0,-1);
-const maxProxyResponseBytes=64*1024*1024;
+const maxProxyResponseBytes=16*1024*1024;
 self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
 self.addEventListener('activate',event=>event.waitUntil(self.clients.claim()));
 self.addEventListener('fetch',event=>{
@@ -15,7 +15,10 @@ async function proxy(request){
  const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
  const broker=windows.find(client=>new URL(client.url).pathname===shellPath)||windows.find(client=>new URL(client.url).pathname.startsWith(shellPath));
  if(!broker)return new Response('visitor broker is unavailable',{status:502});
+ const length=Number(request.headers.get('content-length')||0);
+ if(length>16*1024*1024)return new Response('visitor request is too large',{status:413});
  const body=await request.arrayBuffer(),headers={};
+ if(body.byteLength>16*1024*1024)return new Response('visitor request is too large',{status:413});
  request.headers.forEach((value,name)=>{if(name!=='host'&&name!=='content-length')(headers[name]||(headers[name]=[])).push(value)});
  const url=new URL(request.url),path='/'+url.pathname.slice(scopePath.length)+url.search;
  const port=new MessageChannel(),result=await responseStream(broker,port,{

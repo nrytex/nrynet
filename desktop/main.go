@@ -49,6 +49,7 @@ func mainWindowOptions() application.WebviewWindowOptions {
 }
 
 func main() {
+	configureCrashOutput()
 	logs := newMemoryLogHandler()
 	store, err := newFileStore()
 	if err != nil {

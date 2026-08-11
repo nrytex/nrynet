@@ -11,6 +11,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nrytex/nrynet/internal/protocol"
 )
@@ -29,21 +30,21 @@ func (a *Agent) openAndRelay(ctx context.Context, conn controlConn, message prot
 	localAddress := net.JoinHostPort(payload.LocalHost, strconv.Itoa(payload.LocalPort))
 	localConn, err := dialTCP(ctx, localAddress)
 	if err != nil {
-		return fmt.Errorf("dial local service: %w", err)
+		return normalizeSetupError("dial local service", err)
 	}
 	defer localConn.Close()
 	dataConn, err := conn.openData(ctx, message.RequestID)
 	if err != nil {
-		return fmt.Errorf("dial data channel: %w", err)
+		return normalizeSetupError("dial data channel", err)
 	}
 	defer dataConn.Close()
 	if a.options.Config.Transport != "quic" {
 		err = writeHandshake(dataConn, a.options.Config.Token, a.options.Config.DeviceID, message.RequestID)
 	}
 	if err != nil {
-		return err
+		return normalizeSetupError("write data handshake", err)
 	}
-	return a.relay(message.TunnelID, dataConn, localConn)
+	return a.relay(ctx, message.TunnelID, dataConn, localConn)
 }
 
 func (a *Agent) dialLegacyData(ctx context.Context) (dataConn, error) {
@@ -76,14 +77,36 @@ func writeHandshake(writer io.Writer, token, deviceID, requestID string) error {
 	return buffered.Flush()
 }
 
-func (a *Agent) relay(tunnelID string, left dataConn, right net.Conn) error {
+func (a *Agent) relay(ctx context.Context, tunnelID string, left dataConn, right net.Conn) error {
+	if !a.acquireRelaySlot(ctx) {
+		return ctx.Err()
+	}
+	defer a.releaseRelaySlot()
+	stop := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = left.Close()
+			_ = right.Close()
+		case <-stop:
+		}
+	}()
+	defer close(stop)
 	errCh := make(chan error, 2)
-	go copyBytes(errCh, left, right, func(n int64) {
-		a.notifyTransfer(tunnelID, DirectionUpload, n)
-	})
-	go copyBytes(errCh, right, left, func(n int64) {
-		a.notifyTransfer(tunnelID, DirectionDownload, n)
-	})
+	go func() {
+		errCh <- a.runWorker("relay upload", func() error {
+			return copyBytes(left, right, func(n int64) {
+				a.notifyTransfer(tunnelID, DirectionUpload, n)
+			})
+		})
+	}()
+	go func() {
+		errCh <- a.runWorker("relay download", func() error {
+			return copyBytes(right, left, func(n int64) {
+				a.notifyTransfer(tunnelID, DirectionDownload, n)
+			})
+		})
+	}()
 	firstErr := normalizeCopyError(<-errCh)
 	_ = left.Close()
 	_ = right.Close()
@@ -97,10 +120,36 @@ func (a *Agent) relay(tunnelID string, left dataConn, right net.Conn) error {
 	return nil
 }
 
-func copyBytes(errCh chan<- error, dst io.Writer, src io.Reader, observe func(int64)) {
-	written, err := io.Copy(dst, src)
-	observe(written)
-	errCh <- err
+func copyBytes(dst io.Writer, src io.Reader, observe func(int64)) error {
+	writer := &transferWriter{writer: dst, observe: observe, lastReport: time.Now()}
+	_, err := io.Copy(writer, src)
+	writer.flush()
+	return err
+}
+
+type transferWriter struct {
+	writer     io.Writer
+	observe    func(int64)
+	pending    int64
+	lastReport time.Time
+}
+
+func (w *transferWriter) Write(data []byte) (int, error) {
+	written, err := w.writer.Write(data)
+	w.pending += int64(written)
+	if time.Since(w.lastReport) >= 100*time.Millisecond {
+		w.flush()
+	}
+	return written, err
+}
+
+func (w *transferWriter) flush() {
+	if w.pending == 0 {
+		return
+	}
+	w.observe(w.pending)
+	w.pending = 0
+	w.lastReport = time.Now()
 }
 
 func normalizeCopyError(err error) error {
@@ -110,5 +159,15 @@ func normalizeCopyError(err error) error {
 	if errors.Is(err, net.ErrClosed) {
 		return nil
 	}
+	if isExpectedSocketClose(err) {
+		return nil
+	}
 	return err
+}
+
+func normalizeSetupError(operation string, err error) error {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, net.ErrClosed) || isExpectedSocketClose(err) {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }

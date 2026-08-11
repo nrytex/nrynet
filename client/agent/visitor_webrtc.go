@@ -29,16 +29,25 @@ func (a *Agent) handleVisitorWebRTC(ctx context.Context, conn controlConn, messa
 	}
 	defer peer.Close()
 
+	visitorCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	closed := make(chan struct{})
 	var closeOnce sync.Once
-	closePeer := func() { closeOnce.Do(func() { close(closed) }) }
+	closePeer := func() {
+		closeOnce.Do(func() {
+			cancel()
+			close(closed)
+		})
+	}
 	peer.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		defer a.recoverWorker("visitor WebRTC state change")
 		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
 			closePeer()
 		}
 	})
 	peer.OnDataChannel(func(channel *webrtc.DataChannel) {
-		a.bindVisitorDataChannel(ctx, channel, payload.LocalHost, payload.LocalPort, closePeer)
+		defer a.recoverWorker("visitor WebRTC data channel binding")
+		a.bindVisitorDataChannel(visitorCtx, channel, payload.LocalHost, payload.LocalPort, closePeer)
 	})
 	if err := peer.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
@@ -53,7 +62,7 @@ func (a *Agent) handleVisitorWebRTC(ctx context.Context, conn controlConn, messa
 	if err := peer.SetLocalDescription(answer); err != nil {
 		return a.sendVisitorSignalError(conn, message, payload.SessionID, err)
 	}
-	if err := waitVisitorGathering(ctx, peer); err != nil {
+	if err := waitVisitorGathering(visitorCtx, peer); err != nil {
 		return a.sendVisitorSignalError(conn, message, payload.SessionID, err)
 	}
 	local := peer.LocalDescription()
@@ -117,11 +126,19 @@ func (a *Agent) bindVisitorDataChannel(
 	localPort int,
 	closePeer func(),
 ) {
-	dataSession := newVisitorDataSession(a)
+	dataSession := newVisitorDataSession(a, ctx)
+	dataSession.configureChannel(channel)
+	go func() {
+		defer a.recoverWorker("visitor data session cleanup")
+		<-ctx.Done()
+		dataSession.close()
+	}()
 	channel.OnMessage(func(message webrtc.DataChannelMessage) {
-		dataSession.handle(ctx, channel, localHost, localPort, message.Data)
+		defer a.recoverWorker("visitor data channel")
+		dataSession.handle(channel, localHost, localPort, message.Data)
 	})
 	channel.OnClose(func() {
+		defer a.recoverWorker("visitor data channel close")
 		dataSession.close()
 		closePeer()
 	})

@@ -2,12 +2,14 @@ package agent
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"testing"
 	"time"
 
@@ -34,6 +36,34 @@ func TestOpenAndRelayConnectsLocalServiceThroughDataChannel(t *testing.T) {
 	}
 	if err := <-done; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNormalizeCopyErrorTreatsPeerDisconnectAsNormal(t *testing.T) {
+	for _, err := range expectedSocketCloseErrors() {
+		if got := normalizeCopyError(err); got != nil {
+			t.Fatalf("normalizeCopyError(%v)=%v", err, got)
+		}
+	}
+	wrapped := &net.OpError{Op: "readfrom", Net: "tcp", Err: &os.SyscallError{Syscall: "wsasend", Err: expectedSocketCloseErrors()[0]}}
+	if got := normalizeCopyError(wrapped); got != nil {
+		t.Fatalf("normalizeCopyError(wrapped peer disconnect)=%v", got)
+	}
+}
+
+func TestTransferWriterReportsWhileStreamIsOpen(t *testing.T) {
+	var destination bytes.Buffer
+	var reported int64
+	writer := &transferWriter{
+		writer:     &destination,
+		observe:    func(size int64) { reported += size },
+		lastReport: time.Now().Add(-time.Second),
+	}
+	if _, err := writer.Write(make([]byte, 64*1024)); err != nil {
+		t.Fatal(err)
+	}
+	if reported != 64*1024 {
+		t.Fatalf("reported=%d want=%d before stream close", reported, 64*1024)
 	}
 }
 

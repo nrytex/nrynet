@@ -5,9 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -20,17 +18,23 @@ import (
 const (
 	visitorStreamChunkBytes  = 24 * 1024
 	visitorMaxRequestBytes   = 16 * 1024 * 1024
-	visitorMaxVisitorStreams = 64
+	visitorMaxResponseBytes  = 16 * 1024 * 1024
+	visitorMaxVisitorStreams = 32
+	visitorMaxTotalStreams   = 64
 )
 
 type visitorDataSession struct {
-	agent *Agent
+	agent  *Agent
+	ctx    context.Context
+	cancel context.CancelFunc
 
-	mu       sync.Mutex
-	closed   bool
-	requests map[string]*visitorStreamRequest
-	slots    chan struct{}
-	sendMu   sync.Mutex
+	mu                sync.Mutex
+	closed            bool
+	requests          map[string]*visitorStreamRequest
+	slots             chan struct{}
+	globalSlots       chan struct{}
+	sendMu            sync.Mutex
+	bufferedAmountLow chan struct{}
 }
 
 type visitorStreamRequest struct {
@@ -40,23 +44,38 @@ type visitorStreamRequest struct {
 	body    bytes.Buffer
 }
 
-func newVisitorDataSession(agent *Agent) *visitorDataSession {
+func newVisitorDataSession(agent *Agent, parent context.Context) *visitorDataSession {
+	ctx, cancel := context.WithCancel(parent)
 	return &visitorDataSession{
-		agent:    agent,
-		requests: make(map[string]*visitorStreamRequest),
-		slots:    make(chan struct{}, visitorMaxVisitorStreams),
+		agent:             agent,
+		ctx:               ctx,
+		cancel:            cancel,
+		requests:          make(map[string]*visitorStreamRequest),
+		slots:             make(chan struct{}, visitorMaxVisitorStreams),
+		globalSlots:       agent.visitorStreamSlots(),
+		bufferedAmountLow: make(chan struct{}, 1),
 	}
 }
 
 func (s *visitorDataSession) close() {
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
 	s.closed = true
+	pending := len(s.requests)
 	s.requests = make(map[string]*visitorStreamRequest)
+	for range pending {
+		<-s.slots
+		<-s.globalSlots
+	}
+	cancel := s.cancel
 	s.mu.Unlock()
+	cancel()
 }
 
 func (s *visitorDataSession) handle(
-	ctx context.Context,
 	channel *webrtc.DataChannel,
 	localHost string,
 	localPort int,
@@ -73,41 +92,82 @@ func (s *visitorDataSession) handle(
 	}
 	switch message.Kind {
 	case "request":
-		go s.agent.handleVisitorDataMessage(ctx, channel, localHost, localPort, data)
+		if !s.reserveSlot() {
+			_ = s.sendErrorForID(channel, message.ID, "too many visitor requests")
+			return
+		}
+		s.agent.goWorker("visitor request", func() {
+			defer s.releaseSlot()
+			s.agent.handleVisitorDataMessageWithSender(s.ctx, localHost, localPort, data, func(response protocol.VisitorWebRTCDataMessage) error {
+				return s.sendFrame(channel, response)
+			})
+		})
 	case "request_start":
-		s.start(channel, message)
+		if err := s.start(message); err != nil {
+			_ = s.sendErrorForID(channel, message.ID, err.Error())
+		}
 	case "request_chunk":
 		s.chunk(channel, message)
 	case "request_end":
-		s.end(ctx, channel, localHost, localPort, message)
+		s.end(channel, localHost, localPort, message)
 	default:
 		_ = s.sendError(channel, "unknown visitor request frame")
 	}
 }
 
-func (s *visitorDataSession) start(channel *webrtc.DataChannel, message protocol.VisitorWebRTCDataMessage) {
+func (s *visitorDataSession) start(message protocol.VisitorWebRTCDataMessage) error {
 	if message.ID == "" || message.Method == "" {
-		_ = s.sendErrorForID(channel, message.ID, "request id and method are required")
-		return
+		return fmt.Errorf("request id and method are required")
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.closed {
-		return
-	}
-	if len(s.requests) >= visitorMaxVisitorStreams {
-		go s.sendErrorForID(channel, message.ID, "too many visitor requests")
-		return
+		s.mu.Unlock()
+		return context.Canceled
 	}
 	if _, exists := s.requests[message.ID]; exists {
-		go s.sendErrorForID(channel, message.ID, "duplicate visitor request id")
-		return
+		s.mu.Unlock()
+		return fmt.Errorf("duplicate visitor request id")
+	}
+	if !s.reserveSlotLocked() {
+		s.mu.Unlock()
+		return fmt.Errorf("too many visitor requests")
 	}
 	s.requests[message.ID] = &visitorStreamRequest{
 		method:  message.Method,
 		path:    message.Path,
 		headers: cloneVisitorHeaders(message.Headers),
 	}
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *visitorDataSession) reserveSlot() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false
+	}
+	return s.reserveSlotLocked()
+}
+
+func (s *visitorDataSession) reserveSlotLocked() bool {
+	select {
+	case s.slots <- struct{}{}:
+	default:
+		return false
+	}
+	select {
+	case s.globalSlots <- struct{}{}:
+		return true
+	default:
+		<-s.slots
+		return false
+	}
+}
+
+func (s *visitorDataSession) releaseSlot() {
+	<-s.slots
+	<-s.globalSlots
 }
 
 func (s *visitorDataSession) chunk(channel *webrtc.DataChannel, message protocol.VisitorWebRTCDataMessage) {
@@ -133,7 +193,6 @@ func (s *visitorDataSession) chunk(channel *webrtc.DataChannel, message protocol
 }
 
 func (s *visitorDataSession) end(
-	ctx context.Context,
 	channel *webrtc.DataChannel,
 	localHost string,
 	localPort int,
@@ -147,69 +206,10 @@ func (s *visitorDataSession) end(
 		_ = s.sendErrorForID(channel, message.ID, "visitor request was not started")
 		return
 	}
-	go func() {
-		select {
-		case s.slots <- struct{}{}:
-			defer func() { <-s.slots }()
-		case <-ctx.Done():
-			_ = s.sendErrorForID(channel, message.ID, ctx.Err().Error())
-			return
-		}
-		s.execute(ctx, channel, localHost, localPort, message.ID, request)
-	}()
-}
-
-func (s *visitorDataSession) execute(
-	ctx context.Context,
-	channel *webrtc.DataChannel,
-	localHost string,
-	localPort int,
-	id string,
-	request *visitorStreamRequest,
-) {
-	target, err := visitorTargetURL(localHost, localPort, request.path)
-	if err != nil {
-		_ = s.sendErrorForID(channel, id, err.Error())
-		return
-	}
-	httpRequest, err := http.NewRequestWithContext(ctx, request.method, target, bytes.NewReader(request.body.Bytes()))
-	if err != nil {
-		_ = s.sendErrorForID(channel, id, fmt.Errorf("invalid HTTP request: %w", err).Error())
-		return
-	}
-	copyVisitorStreamHeaders(httpRequest.Header, request.headers)
-	response, err := visitorHTTPClient().Do(httpRequest)
-	if err != nil {
-		_ = s.sendErrorForID(channel, id, fmt.Errorf("local service request failed: %w", err).Error())
-		return
-	}
-	defer response.Body.Close()
-	if err := s.sendFrame(channel, protocol.VisitorWebRTCDataMessage{
-		Kind: "response_start", ID: id, Status: response.StatusCode,
-		Headers: visitorResponseHeaders(response.Header),
-	}); err != nil {
-		return
-	}
-	buffer := make([]byte, visitorStreamChunkBytes)
-	for {
-		count, readErr := response.Body.Read(buffer)
-		if count > 0 {
-			if err := s.sendFrame(channel, protocol.VisitorWebRTCDataMessage{
-				Kind: "response_chunk", ID: id,
-				Body: base64.StdEncoding.EncodeToString(buffer[:count]),
-			}); err != nil {
-				return
-			}
-		}
-		if errors.Is(readErr, io.EOF) {
-			break
-		}
-		if readErr != nil {
-			_ = s.sendErrorForID(channel, id, fmt.Errorf("read local service response: %w", readErr).Error())
-			return
-		}
-	}
-	_ = s.sendFrame(channel, protocol.VisitorWebRTCDataMessage{Kind: "response_end", ID: id})
+	s.agent.goWorker("visitor stream request", func() {
+		defer s.releaseSlot()
+		s.execute(channel, localHost, localPort, message.ID, request)
+	})
 }
 
 func (s *visitorDataSession) sendError(channel *webrtc.DataChannel, message string) error {
@@ -222,22 +222,13 @@ func (s *visitorDataSession) sendErrorForID(channel *webrtc.DataChannel, id, mes
 
 func (s *visitorDataSession) removeAndError(channel *webrtc.DataChannel, id, message string) error {
 	s.mu.Lock()
-	delete(s.requests, id)
+	if _, exists := s.requests[id]; exists {
+		delete(s.requests, id)
+		<-s.slots
+		<-s.globalSlots
+	}
 	s.mu.Unlock()
 	return s.sendErrorForID(channel, id, message)
-}
-
-func (s *visitorDataSession) sendFrame(channel *webrtc.DataChannel, message protocol.VisitorWebRTCDataMessage) error {
-	data, err := json.Marshal(message)
-	if err != nil {
-		return err
-	}
-	if len(data) > visitorMaxMessageBytes {
-		return fmt.Errorf("visitor response frame is too large")
-	}
-	s.sendMu.Lock()
-	defer s.sendMu.Unlock()
-	return channel.SendText(string(data))
 }
 
 func cloneVisitorHeaders(source map[string][]string) map[string][]string {

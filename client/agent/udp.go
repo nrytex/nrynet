@@ -104,12 +104,21 @@ func (r *udpRelay) createSession(
 	}
 	r.sessions[key] = session
 	r.mu.Unlock()
-	go session.readLoop(context.WithoutCancel(ctx), message)
+	go agent.goWorker("udp session", func() { session.readLoop(ctx, message) })
 	return session, nil
 }
 
 func (s *udpSession) readLoop(ctx context.Context, source protocol.ControlMessage) {
 	defer s.close()
+	stop := make(chan struct{})
+	go s.agent.goWorker("udp session cleanup", func() {
+		select {
+		case <-ctx.Done():
+			_ = s.conn.Close()
+		case <-stop:
+		}
+	})
+	defer close(stop)
 	buffer := make([]byte, 64*1024)
 	for ctx.Err() == nil {
 		_ = s.conn.SetReadDeadline(time.Now().Add(s.relay.idle))

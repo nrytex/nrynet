@@ -21,6 +21,7 @@ const (
 	p2pStreamSetupTimeout = 2 * time.Second
 	maxP2PStreamSessions  = 128
 	p2pRetryCooldown      = 30 * time.Second
+	p2pRuntimeCooldown    = 5 * time.Second
 )
 
 func (m *Manager) SetP2PEnabled(enabled bool) {
@@ -83,6 +84,10 @@ func (m *Manager) tryP2PStream(tunnel model.Tunnel, visitor net.Conn) bool {
 		_ = m.store.RecordTraffic(context.Background(), tunnel.ID, upload, download)
 	})
 	if err != nil {
+		// A stream can fail after ICE/QUIC setup succeeds. Keep the next
+		// visitor on Relay for a short window instead of repeatedly sending
+		// traffic into the same broken direct path.
+		m.deferP2PRetryFor(tunnel.ID, p2pRuntimeCooldown)
 		m.recordConnectionFailure(tunnel.ID, "p2p", err)
 	}
 	return true
@@ -122,12 +127,16 @@ func (m *Manager) p2pRetryAllowed(tunnelID string) bool {
 }
 
 func (m *Manager) deferP2PRetry(tunnelID string) {
+	m.deferP2PRetryFor(tunnelID, p2pRetryCooldown)
+}
+
+func (m *Manager) deferP2PRetryFor(tunnelID string, cooldown time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.p2pRetryAt == nil {
 		m.p2pRetryAt = make(map[string]time.Time)
 	}
-	m.p2pRetryAt[tunnelID] = time.Now().Add(p2pRetryCooldown)
+	m.p2pRetryAt[tunnelID] = time.Now().Add(cooldown)
 }
 
 func (m *Manager) clearP2PRetry(tunnelID string) {

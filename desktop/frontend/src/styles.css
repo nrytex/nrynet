@@ -1,7 +1,7 @@
 :root {
   color: #152033;
   background: #eef5f2;
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -14,7 +14,7 @@ button, input, textarea, select { letter-spacing: 0; }
 .desktop-frame {
   width: 100%;
   height: 100vh;
-  min-height: 620px;
+  min-height: 0;
   overflow: auto;
   background: #fff;
   color: #152033;
@@ -77,7 +77,7 @@ button, input, textarea, select { letter-spacing: 0; }
 }
 .header-action:hover { background: #f1f7f4 !important; color: #0d9f5c !important; }
 
-.home-view { display: flex; flex-direction: column; }
+.home-view { display: flex; min-height: 0; overflow: hidden; flex-direction: column; }
 .update-banner {
   display: flex;
   flex: none;
@@ -144,12 +144,27 @@ button, input, textarea, select { letter-spacing: 0; }
 .metric-item.blue strong { color: #2678ed; }
 .sparkline { width: 100%; height: 72px; margin-top: 10px; }
 
-.tunnel-section { display: flex; min-height: 0; flex: 1; flex-direction: column; padding: 18px 28px; }
+.tunnel-section { display: flex; min-height: 0; flex: 1; overflow: hidden; flex-direction: column; padding: 18px 28px 12px; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .section-heading > div { display: flex; align-items: baseline; gap: 10px; }
 .section-heading .ant-typography { margin: 0; font-size: 16px; }
 .section-heading span { color: #8a95a5; font-size: 12px; }
-.tunnel-list { display: flex; flex-direction: column; gap: 8px; }
+.tunnel-list {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 2px 4px 8px 0;
+  overscroll-behavior: contain;
+  scrollbar-color: #c8d5ce transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+.tunnel-list::-webkit-scrollbar { width: 7px; }
+.tunnel-list::-webkit-scrollbar-thumb { border-radius: 999px; background: #c8d5ce; }
+.tunnel-list::-webkit-scrollbar-track { background: transparent; }
 .tunnel-row {
   display: grid;
   grid-template-columns: 12px minmax(0, 1fr) auto auto 38px 24px;
@@ -189,6 +204,9 @@ button, input, textarea, select { letter-spacing: 0; }
   padding: 0 28px;
   border-top: 1px solid #e7ece9;
   background: #fbfcfc;
+  box-shadow: 0 -8px 18px rgba(26, 63, 46, 0.05);
+  position: relative;
+  z-index: 2;
 }
 .footer-control { display: flex; align-items: center; gap: 9px; color: #536074; font-size: 13px; }
 .footer-control .ant-switch { margin-left: 4px; }

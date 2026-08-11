@@ -21,7 +21,7 @@ export default function App() {
   return (
     <ConfigProvider theme={{ token: {
       colorPrimary: "#13ad68", colorInfo: "#13ad68", borderRadius: 8,
-      colorText: "#152033", colorBorder: "#e5ebe8", fontFamily: "Inter, PingFang SC, Microsoft YaHei, sans-serif",
+      colorText: "#152033", colorBorder: "#e5ebe8", fontFamily: "Segoe UI, PingFang SC, Microsoft YaHei, system-ui, sans-serif",
     } }}>
       <AntApp><DesktopApp /></AntApp>
     </ConfigProvider>
@@ -35,25 +35,32 @@ function DesktopApp() {
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm<AppConfig>();
   const previewTick = useRef(0);
+  const refreshInFlight = useRef(false);
 
   const showError = (error: unknown, action: FeedbackAction) => {
     message.error({ content: userErrorMessage(error, action), duration: 6 });
   };
 
   const refresh = async () => {
-    let next: DesktopSnapshot;
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     try {
-      next = await DesktopService.Snapshot();
-    } catch (error) {
-      if (!import.meta.env.DEV) throw error;
-      next = makePreviewSnapshot(previewTick.current++);
+      let next: DesktopSnapshot;
+      try {
+        next = await DesktopService.Snapshot();
+      } catch (error) {
+        if (!import.meta.env.DEV) throw error;
+        next = makePreviewSnapshot(previewTick.current++);
+      }
+      setSnapshot(next);
+    } finally {
+      refreshInFlight.current = false;
     }
-    setSnapshot(next);
   };
 
   useEffect(() => {
     refresh().catch((error) => showError(error, "load"));
-    const id = window.setInterval(() => refresh().catch(() => undefined), 2000);
+    const id = window.setInterval(() => refresh().catch(() => undefined), 1000);
     return () => window.clearInterval(id);
   }, []);
 

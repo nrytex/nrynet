@@ -21,9 +21,17 @@ import (
 )
 
 type Agent struct {
-	options Options
-	logger  *slog.Logger
-	udp     *udpRelay
+	options             Options
+	logger              *slog.Logger
+	udp                 *udpRelay
+	visitorMu           sync.Mutex
+	visitorSlots        chan struct{}
+	visitorSessionMu    sync.Mutex
+	visitorSessionSlots chan struct{}
+	streamWorkerMu      sync.Mutex
+	streamWorkerSlots   chan struct{}
+	relayMu             sync.Mutex
+	relaySlots          chan struct{}
 }
 
 type controlConn interface {
@@ -52,7 +60,7 @@ func New(options Options, logger *slog.Logger) (*Agent, error) {
 func (a *Agent) Run(ctx context.Context) error {
 	backoff := a.options.ReconnectMin
 	for ctx.Err() == nil {
-		err := a.runSession(ctx)
+		err := a.runWorker("agent session", func() error { return a.runSession(ctx) })
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -78,10 +86,20 @@ func (a *Agent) runSession(ctx context.Context) error {
 	errCh := make(chan error, 2)
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go func() { errCh <- a.heartbeat(sessionCtx, conn) }()
-	go func() { errCh <- a.readLoop(sessionCtx, conn) }()
+	var workers sync.WaitGroup
+	workers.Add(2)
+	go func() {
+		defer workers.Done()
+		errCh <- a.runWorker("heartbeat", func() error { return a.heartbeat(sessionCtx, conn) })
+	}()
+	go func() {
+		defer workers.Done()
+		errCh <- a.runWorker("control read loop", func() error { return a.readLoop(sessionCtx, conn) })
+	}()
 	err = <-errCh
 	cancel()
+	_ = conn.close()
+	workers.Wait()
 	a.notifySessionEnded(err)
 	return err
 }
@@ -138,39 +156,6 @@ func (a *Agent) readLoop(ctx context.Context, conn controlConn) error {
 		}
 	}
 	return nil
-}
-
-func (a *Agent) handleControlMessage(
-	ctx context.Context,
-	conn controlConn,
-	message protocol.ControlMessage,
-) error {
-	switch message.Type {
-	case protocol.TypeTunnelSnapshot:
-		return a.handleTunnelSnapshot(message)
-	case protocol.TypeTunnelPath:
-		return a.handleTunnelPath(message)
-	case protocol.TypeOpenConnection:
-		go a.handleOpenConnection(ctx, conn, message)
-		return nil
-	case protocol.TypeUDPPacket:
-		return a.handleUDPPacket(ctx, conn, message)
-	case protocol.TypeP2PConnect:
-		go a.handleP2PConnect(ctx, message)
-		return nil
-	case protocol.TypeVisitorWebRTC:
-		go a.handleVisitorWebRTC(ctx, conn, message)
-		return nil
-	case protocol.TypeError:
-		payload, err := protocol.DecodePayload[protocol.ErrorPayload](message)
-		if err != nil {
-			return err
-		}
-		return fmt.Errorf("server error: %s", payload.Message)
-	default:
-		a.logger.Debug("ignored control message", "type", message.Type)
-		return nil
-	}
 }
 
 func (a *Agent) sendHello(conn controlConn) error {
