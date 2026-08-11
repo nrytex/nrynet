@@ -14,6 +14,7 @@ import (
 
 	netx "github.com/nrytex/nrynet/internal/advanced"
 	"github.com/nrytex/nrynet/internal/model"
+	"github.com/nrytex/nrynet/internal/protocol"
 	"github.com/nrytex/nrynet/internal/storage"
 	clienthub "github.com/nrytex/nrynet/server/client"
 	"github.com/nrytex/nrynet/server/relay"
@@ -31,7 +32,11 @@ type Manager struct {
 	registry    *netx.RelayRegistry
 	binder      RelayBinder
 	rdvAddress  string
+	p2pEnabled  bool
 	active      atomic.Int64
+	p2pStreams  atomic.Int64
+	p2pRetryAt  map[string]time.Time
+	tunnelPaths map[string]string
 }
 
 func NewManager(store *storage.Store, hub *clienthub.Hub, broker *relay.Broker) *Manager {
@@ -42,8 +47,12 @@ func NewManager(store *storage.Store, hub *clienthub.Hub, broker *relay.Broker) 
 		listeners:   make(map[string]net.Listener),
 		udpRuntimes: make(map[string]*udpRuntime),
 		relayBinds:  make(map[string]RelayBinding),
+		p2pEnabled:  true,
+		p2pRetryAt:  make(map[string]time.Time),
+		tunnelPaths: make(map[string]string),
 	}
 	hub.SetUDPPacketHandler(manager.HandleUDPPacket)
+	hub.SetDisconnectHandler(manager.handleClientDisconnected)
 	return manager
 }
 
@@ -85,6 +94,9 @@ func (m *Manager) StartTunnel(ctx context.Context, id string) error {
 }
 
 func (m *Manager) start(tunnel model.Tunnel) error {
+	if tunnel.Protocol == "visitor_webrtc" {
+		return nil
+	}
 	if tunnel.Protocol == "http" || tunnel.Protocol == "https" {
 		return nil
 	}
@@ -94,7 +106,7 @@ func (m *Manager) start(tunnel model.Tunnel) error {
 	if tunnel.Protocol == "udp" {
 		return m.startUDP(tunnel)
 	}
-	if tunnel.Protocol != "tcp" {
+	if tunnel.Protocol != "tcp" && tunnel.Protocol != "p2p" {
 		return fmt.Errorf("%s tunnel runtime is not available yet", tunnel.Protocol)
 	}
 	m.mu.Lock()
@@ -151,6 +163,7 @@ func (m *Manager) stop(id string) error {
 	delete(m.udpRuntimes, id)
 	relayBind := m.relayBinds[id]
 	delete(m.relayBinds, id)
+	delete(m.tunnelPaths, id)
 	registry := m.registry
 	m.mu.Unlock()
 	if registry != nil {
@@ -178,7 +191,18 @@ func (m *Manager) SyncClient(ctx context.Context, clientID string) error {
 }
 
 func (m *Manager) DisconnectClient(clientID string) {
-	m.hub.Disconnect(clientID)
+	if !m.hub.Disconnect(clientID) {
+		m.handleClientDisconnected(clientID)
+	}
+}
+
+func (m *Manager) handleClientDisconnected(clientID string) {
+	m.mu.Lock()
+	// Paths are session-scoped: a reconnecting Agent must receive a fresh
+	// path notification instead of inheriting the previous control session's
+	// cached value. Clearing the cache also bounds it when tunnels are deleted.
+	m.tunnelPaths = make(map[string]string)
+	m.mu.Unlock()
 	m.broker.DisconnectClient(clientID)
 	m.disconnectUDPClient(clientID)
 }
@@ -245,6 +269,14 @@ func (m *Manager) acceptLoop(tunnel model.Tunnel, listener net.Listener) {
 }
 
 func (m *Manager) handleVisitor(tunnel model.Tunnel, visitor net.Conn) {
+	if m.tryP2PStream(tunnel, visitor) {
+		return
+	}
+	m.notifyTunnelPath(tunnel, protocol.TunnelPathRelay)
+	m.handleRelayedVisitor(tunnel, visitor)
+}
+
+func (m *Manager) handleRelayedVisitor(tunnel model.Tunnel, visitor net.Conn) {
 	requestID := uuid.NewString()
 	pending, err := m.broker.RegisterPending(requestID, visitor, tunnel, func(upload, download int64) {
 		_ = m.store.RecordTraffic(context.Background(), tunnel.ID, upload, download)

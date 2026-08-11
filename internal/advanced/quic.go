@@ -19,9 +19,11 @@ type QUICServer struct {
 }
 
 type QUICSession struct {
-	conn   *quic.Conn
-	PeerID string
-	Auth   AuthRequest
+	conn        *quic.Conn
+	packetConn  net.PacketConn
+	closePacket bool
+	PeerID      string
+	Auth        AuthRequest
 }
 
 type QUICStream struct {
@@ -34,7 +36,26 @@ func ListenQUIC(addr string, tlsConfig *tls.Config, auth Authenticator) (*QUICSe
 	if auth == nil {
 		return nil, errors.New("authenticator is required")
 	}
-	listener, err := quic.ListenAddr(addr, tlsConfig, quicConfig())
+	conn, err := net.ListenPacket("udp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("listen quic packet connection: %w", err)
+	}
+	server, err := ListenQUICPacketConn(conn, tlsConfig, auth)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return server, nil
+}
+
+func ListenQUICPacketConn(conn net.PacketConn, tlsConfig *tls.Config, auth Authenticator) (*QUICServer, error) {
+	if conn == nil {
+		return nil, errors.New("quic packet connection is required")
+	}
+	if auth == nil {
+		return nil, errors.New("authenticator is required")
+	}
+	listener, err := quic.Listen(conn, tlsConfig, quicConfig())
 	if err != nil {
 		return nil, fmt.Errorf("listen quic: %w", err)
 	}
@@ -47,7 +68,36 @@ func DialQUIC(
 	tlsConfig *tls.Config,
 	request AuthRequest,
 ) (*QUICSession, error) {
-	conn, err := quic.DialAddr(ctx, addr, tlsConfig, quicConfig())
+	packetConn, err := net.ListenPacket("udp", "0.0.0.0:0")
+	if err != nil {
+		return nil, fmt.Errorf("listen quic packet connection: %w", err)
+	}
+	udpAddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		_ = packetConn.Close()
+		return nil, fmt.Errorf("resolve quic address: %w", err)
+	}
+	session, err := DialQUICPacketConn(ctx, packetConn, udpAddr, tlsConfig, request)
+	if err != nil {
+		_ = packetConn.Close()
+		return nil, err
+	}
+	session.packetConn = packetConn
+	session.closePacket = true
+	return session, nil
+}
+
+func DialQUICPacketConn(
+	ctx context.Context,
+	packetConn net.PacketConn,
+	addr net.Addr,
+	tlsConfig *tls.Config,
+	request AuthRequest,
+) (*QUICSession, error) {
+	if packetConn == nil || addr == nil {
+		return nil, errors.New("quic packet connection and address are required")
+	}
+	conn, err := quic.Dial(ctx, packetConn, addr, tlsConfig, quicConfig())
 	if err != nil {
 		return nil, fmt.Errorf("dial quic: %w", err)
 	}
@@ -113,7 +163,11 @@ func (s *QUICSession) AcceptStream(ctx context.Context) (*QUICStream, error) {
 }
 
 func (s *QUICSession) Close() error {
-	return s.conn.CloseWithError(0, "")
+	err := s.conn.CloseWithError(0, "")
+	if s.closePacket && s.packetConn != nil {
+		err = errors.Join(err, s.packetConn.Close())
+	}
+	return err
 }
 
 func (s *QUICSession) RemoteAddr() net.Addr {

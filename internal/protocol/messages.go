@@ -7,13 +7,20 @@ import (
 )
 
 const (
-	TypeHello          = "hello"
-	TypeHeartbeat      = "heartbeat"
-	TypeTunnelSnapshot = "tunnel_snapshot"
-	TypeOpenConnection = "open_connection"
-	TypeUDPPacket      = "udp_packet"
-	TypeP2PConnect     = "p2p_connect"
-	TypeError          = "error"
+	TypeHello              = "hello"
+	TypeHeartbeat          = "heartbeat"
+	TypeTunnelSnapshot     = "tunnel_snapshot"
+	TypeTunnelPath         = "tunnel_path"
+	TypeOpenConnection     = "open_connection"
+	TypeUDPPacket          = "udp_packet"
+	TypeP2PConnect         = "p2p_connect"
+	TypeVisitorWebRTC      = "visitor_webrtc"
+	TypeError              = "error"
+	P2PModeStream          = "stream"
+	TunnelPathP2P          = "p2p"
+	TunnelPathRelay        = "relay"
+	TunnelPathVisitorP2P   = "visitor_p2p"
+	TunnelPathVisitorRelay = "visitor_relay"
 )
 
 type ControlMessage struct {
@@ -32,6 +39,10 @@ type HelloPayload struct {
 
 type TunnelSnapshotPayload struct {
 	Tunnels []model.Tunnel `json:"tunnels"`
+}
+
+type TunnelPathPayload struct {
+	Path string `json:"path"`
 }
 
 type OpenConnectionPayload struct {
@@ -53,6 +64,30 @@ type P2PConnectPayload struct {
 	WantsPeerID       string `json:"wants_peer_id"`
 	LocalHost         string `json:"local_host"`
 	LocalPort         int    `json:"local_port"`
+	Mode              string `json:"mode,omitempty"`
+	RequestID         string `json:"request_id,omitempty"`
+	TunnelID          string `json:"tunnel_id,omitempty"`
+}
+
+type VisitorWebRTCSignalPayload struct {
+	Kind       string   `json:"kind"`
+	SessionID  string   `json:"session_id"`
+	SDP        string   `json:"sdp,omitempty"`
+	LocalHost  string   `json:"local_host,omitempty"`
+	LocalPort  int      `json:"local_port,omitempty"`
+	ICEServers []string `json:"ice_servers,omitempty"`
+	Error      string   `json:"error,omitempty"`
+}
+
+type VisitorWebRTCDataMessage struct {
+	Kind    string              `json:"kind"`
+	ID      string              `json:"id"`
+	Method  string              `json:"method,omitempty"`
+	Path    string              `json:"path,omitempty"`
+	Headers map[string][]string `json:"headers,omitempty"`
+	Body    string              `json:"body,omitempty"`
+	Status  int                 `json:"status,omitempty"`
+	Error   string              `json:"error,omitempty"`
 }
 
 type ErrorPayload struct {

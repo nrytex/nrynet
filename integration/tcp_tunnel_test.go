@@ -175,9 +175,13 @@ func waitForClient(t *testing.T, store *storage.Store, hub *clienthub.Hub, devic
 }
 
 func createTunnel(t *testing.T, store *storage.Store, clientID string, localPort, remotePort int) model.Tunnel {
+	return createTunnelWithProtocol(t, store, clientID, localPort, remotePort, "tcp")
+}
+
+func createTunnelWithProtocol(t *testing.T, store *storage.Store, clientID string, localPort, remotePort int, protocol string) model.Tunnel {
 	t.Helper()
 	tunnel, err := store.CreateTunnel(context.Background(), model.Tunnel{
-		Name: "echo", Protocol: "tcp", ClientID: clientID,
+		Name: "echo", Protocol: protocol, ClientID: clientID,
 		LocalHost: "127.0.0.1", LocalPort: localPort, RemotePort: remotePort,
 	})
 	if err != nil {

@@ -148,6 +148,8 @@ func (a *Agent) handleControlMessage(
 	switch message.Type {
 	case protocol.TypeTunnelSnapshot:
 		return a.handleTunnelSnapshot(message)
+	case protocol.TypeTunnelPath:
+		return a.handleTunnelPath(message)
 	case protocol.TypeOpenConnection:
 		go a.handleOpenConnection(ctx, conn, message)
 		return nil
@@ -155,6 +157,9 @@ func (a *Agent) handleControlMessage(
 		return a.handleUDPPacket(ctx, conn, message)
 	case protocol.TypeP2PConnect:
 		go a.handleP2PConnect(ctx, message)
+		return nil
+	case protocol.TypeVisitorWebRTC:
+		go a.handleVisitorWebRTC(ctx, conn, message)
 		return nil
 	case protocol.TypeError:
 		payload, err := protocol.DecodePayload[protocol.ErrorPayload](message)
@@ -195,7 +200,10 @@ func (c *websocketControl) readJSON(value any) error {
 func (c *websocketControl) writeJSON(value any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.conn.WriteJSON(value)
+	_ = c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	err := c.conn.WriteJSON(value)
+	_ = c.conn.SetWriteDeadline(time.Time{})
+	return err
 }
 
 func (c *websocketControl) close() error {

@@ -10,16 +10,22 @@ import (
 )
 
 type DesktopService struct {
-	mu      sync.Mutex
-	store   *fileStore
-	cfg     AppConfig
-	status  RuntimeStatus
-	logs    *memoryLogHandler
-	cancel  context.CancelFunc
-	runID   uint64
-	updater *UpdateService
-	tunnels []model.Tunnel
-	window  windowControls
+	mu          sync.Mutex
+	store       *fileStore
+	cfg         AppConfig
+	status      RuntimeStatus
+	logs        *memoryLogHandler
+	cancel      context.CancelFunc
+	runID       uint64
+	updater     *UpdateService
+	tunnels     []model.Tunnel
+	tunnelPaths map[string]string
+	window      windowControls
+	browser     browserOpener
+}
+
+type browserOpener interface {
+	OpenURL(string) error
 }
 
 type windowControls interface {
@@ -36,11 +42,14 @@ func NewDesktopService(store *fileStore, logs *memoryLogHandler, updater *Update
 	if err := updater.ConfigureAutomatic(); err != nil {
 		return nil, fmt.Errorf("configure automatic updates: %w", err)
 	}
-	return &DesktopService{
+	svc := &DesktopService{
 		store: store, cfg: cfg, logs: logs, updater: updater,
-		status:  RuntimeStatus{State: "disconnected", Version: appVersion},
-		tunnels: make([]model.Tunnel, 0),
-	}, nil
+		status:      RuntimeStatus{State: "disconnected", Version: appVersion},
+		tunnels:     make([]model.Tunnel, 0),
+		tunnelPaths: make(map[string]string),
+	}
+	updater.StartAutomaticChecks(automaticCheckInterval)
+	return svc, nil
 }
 
 func (s *DesktopService) setWindow(window windowControls) {
@@ -49,12 +58,31 @@ func (s *DesktopService) setWindow(window windowControls) {
 	s.window = window
 }
 
+func (s *DesktopService) setBrowser(browser browserOpener) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.browser = browser
+}
+
 func (s *DesktopService) Snapshot() DesktopSnapshot {
 	s.mu.Lock()
 	cfg, status := s.cfg, s.status
 	tunnels := append([]model.Tunnel{}, s.tunnels...)
+	tunnelPaths := copyTunnelPaths(s.tunnelPaths)
+	var update *UpdateResult
+	if s.updater != nil {
+		update = s.updater.LastResult()
+	}
 	s.mu.Unlock()
-	return DesktopSnapshot{Config: cfg, Status: status, Tunnels: tunnels, Logs: s.logs.Snapshot()}
+	return DesktopSnapshot{Config: cfg, Status: status, Tunnels: tunnels, TunnelPaths: tunnelPaths, Logs: s.logs.Snapshot(), Update: update}
+}
+
+func copyTunnelPaths(paths map[string]string) map[string]string {
+	copy := make(map[string]string, len(paths))
+	for tunnelID, path := range paths {
+		copy[tunnelID] = path
+	}
+	return copy
 }
 
 func (s *DesktopService) SaveConfig(patch AppConfigPatch) (DesktopSnapshot, error) {
@@ -86,7 +114,17 @@ func (s *DesktopService) Status() RuntimeStatus {
 }
 
 func (s *DesktopService) CheckForUpdate() (UpdateResult, error) {
-	return s.updater.CheckAndInstall()
+	return s.updater.CheckForUpdate()
+}
+
+func (s *DesktopService) OpenURL(url string) error {
+	s.mu.Lock()
+	browser := s.browser
+	s.mu.Unlock()
+	if browser == nil {
+		return fmt.Errorf("浏览器尚未初始化")
+	}
+	return browser.OpenURL(url)
 }
 
 func (s *DesktopService) ShowWindow() {

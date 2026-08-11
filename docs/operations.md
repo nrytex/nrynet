@@ -16,7 +16,12 @@ The example configuration exposes these server listeners:
 | 7005 | TCP | Optional plaintext relay data channel for WS agents |
 | 8080 | TCP | Shared HTTP Host and HTTPS SNI gateway |
 | 7100 | HTTPS | Distributed relay control API (relay node only) |
-| tunnel-defined | TCP or UDP | Public visitor ports |
+| tunnel-defined | TCP, P2P, or UDP | Public visitor ports |
+
+`visitor_webrtc` does not allocate a public TCP port. Its visitor URL is served
+on the control/Dashboard listener. The browser uses that page for signaling and
+then sends HTTP request messages over a direct WebRTC DataChannel to the Agent;
+only signaling crosses the Server after the peer connection is established.
 
 ## Distributed relay nodes
 
@@ -179,7 +184,24 @@ When server TLS is disabled, Nrynet creates an ephemeral development
 certificate for QUIC; only controlled local testing should pair that with
 `insecure_skip_verify: true`. UDP tunnels attempt the direct punched path over
 the rendezvous listener and automatically use the authenticated control relay
-when punching or the direct round trip fails.
+when punching or the direct round trip fails. With `server.p2p_enabled: true`,
+TCP tunnel connections also try a QUIC stream over a UDP hole-punched
+server-to-Agent path and fall back to the normal broker on failure.
+
+This is a direct path between the public Nrynet server and the Agent. A
+visitor still connects to the server's public tunnel port, so it does not
+remove the server's public ingress/egress bandwidth. Full visitor-to-Agent
+P2P requires the visitor to run a compatible client or join an overlay
+network such as WireGuard or Tailscale.
+
+For a public deployment, set `server.public_rendezvous_address` to the
+server's public `host:port`, expose UDP port `7003`, and allow the dynamic
+UDP sockets used by punched sessions. Agents need outbound UDP access. A
+strict NAT or firewall may reject hole punching; the normal relay path remains
+the fallback.
+
+Each TCP visitor currently gets one punched QUIC session. The server caps
+direct TCP P2P sessions at 128; additional visitors use the broker fallback.
 
 ## Linux installation
 

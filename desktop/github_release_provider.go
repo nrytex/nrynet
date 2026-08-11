@@ -21,6 +21,7 @@ const (
 	githubWebURL      = "https://github.com"
 	checksumAssetName = "SHA256SUMS"
 	downloadURLKey    = "github.release.downloadURL"
+	userAgentPrefix   = "Nrynet-Desktop-Updater/"
 )
 
 type githubReleaseProvider struct {
@@ -96,27 +97,42 @@ func (p *githubReleaseProvider) Download(
 
 func (p *githubReleaseProvider) latestTag(ctx context.Context) (string, error) {
 	latestURL := p.baseURL + "/" + p.repository + "/releases/latest"
-	request, err := http.NewRequestWithContext(ctx, http.MethodHead, latestURL, nil)
-	if err != nil {
-		return "", err
+	var lastErr error
+	userAgent := userAgentPrefix + appVersion
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodHead, latestURL, nil)
+		if err != nil {
+			return "", err
+		}
+		request.Header.Set("User-Agent", userAgent)
+		response, err := p.client.Do(request)
+		if err != nil {
+			lastErr = fmt.Errorf("resolve latest GitHub release: %w", err)
+			continue
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("resolve latest GitHub release: HTTP %d", response.StatusCode)
+			continue
+		}
+		prefix := "/" + p.repository + "/releases/tag/"
+		if !strings.HasPrefix(response.Request.URL.Path, prefix) {
+			return "", errors.New("resolve latest GitHub release: redirect did not contain a tag")
+		}
+		tag, err := url.PathUnescape(strings.TrimPrefix(response.Request.URL.Path, prefix))
+		if err != nil || tag == "" {
+			return "", errors.New("resolve latest GitHub release: invalid tag")
+		}
+		return tag, nil
 	}
-	response, err := p.client.Do(request)
-	if err != nil {
-		return "", fmt.Errorf("resolve latest GitHub release: %w", err)
-	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("resolve latest GitHub release: HTTP %d", response.StatusCode)
-	}
-	prefix := "/" + p.repository + "/releases/tag/"
-	if !strings.HasPrefix(response.Request.URL.Path, prefix) {
-		return "", errors.New("resolve latest GitHub release: redirect did not contain a tag")
-	}
-	tag, err := url.PathUnescape(strings.TrimPrefix(response.Request.URL.Path, prefix))
-	if err != nil || tag == "" {
-		return "", errors.New("resolve latest GitHub release: invalid tag")
-	}
-	return tag, nil
+	return "", lastErr
 }
 
 func (p *githubReleaseProvider) releaseChecksum(ctx context.Context, tag, filename string) ([]byte, error) {

@@ -6,6 +6,7 @@ export interface Tunnel {
     "client_id": string;
     "name": string;
     "protocol": string;
+    "visitor_token"?: string;
     "local_host": string;
     "local_port": number;
     "remote_port": number;

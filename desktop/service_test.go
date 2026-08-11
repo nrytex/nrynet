@@ -16,10 +16,11 @@ func TestDesktopObserverUpdatesSessionTunnelsAndTraffic(t *testing.T) {
 	}
 	tunnels := []model.Tunnel{{ID: "tun-1", Name: "web"}}
 	svc.onTunnelSnapshot(1, tunnels)
+	svc.onTunnelPath(1, "tun-1", "p2p")
 	svc.onTransfer(1, agent.DirectionUpload, 12)
 	svc.onTransfer(1, agent.DirectionDownload, 34)
 	snap := svc.Snapshot()
-	if len(snap.Tunnels) != 1 || snap.Status.UploadBytes != 12 || snap.Status.DownloadBytes != 34 {
+	if len(snap.Tunnels) != 1 || snap.TunnelPaths["tun-1"] != "p2p" || snap.Status.UploadBytes != 12 || snap.Status.DownloadBytes != 34 {
 		t.Fatalf("unexpected snapshot: %+v", snap)
 	}
 	svc.onSessionEnded(1, errors.New("closed"))

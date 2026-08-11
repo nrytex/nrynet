@@ -8,15 +8,17 @@ import { resolveTunnelEndpoint } from "./tunnelEndpoint";
 import { useTrafficHistory } from "./useTrafficHistory";
 import "./details.css";
 
-export function TunnelDetailView({ tunnel, status, publicHost, onBack }: {
+export function TunnelDetailView({ tunnel, status, path, publicHost, serverUrl, onBack }: {
   tunnel: Tunnel;
   status?: RuntimeStatus;
+  path?: string;
   publicHost: string;
+  serverUrl: string;
   onBack: () => void;
 }) {
   const { message } = App.useApp();
   const { points } = useTrafficHistory(status);
-  const endpoint = resolveTunnelEndpoint(tunnel, publicHost);
+  const endpoint = resolveTunnelEndpoint(tunnel, publicHost, serverUrl);
   const copyEndpoint = async () => {
     if (!endpoint.copyValue) return;
     await navigator.clipboard.writeText(endpoint.copyValue);
@@ -37,7 +39,7 @@ export function TunnelDetailView({ tunnel, status, publicHost, onBack }: {
         <div className="endpoint-row"><span>{endpoint.label}</span><Button aria-label="复制访问地址" disabled={!endpoint.copyValue} icon={<Copy size={15} />} onClick={copyEndpoint} /></div>
       </section>
       <Tabs className="detail-tabs" defaultActiveKey="overview" items={[
-        { key: "overview", label: "概览", children: <Overview tunnel={tunnel} status={status} endpoint={endpoint.label} points={points} /> },
+        { key: "overview", label: "概览", children: <Overview tunnel={tunnel} status={status} path={path} endpoint={endpoint.label} points={points} /> },
         { key: "traffic", label: "流量统计", children: <TrafficPanel points={points} /> },
         { key: "config", label: "配置", children: <TunnelConfig tunnel={tunnel} /> },
       ]} />
@@ -45,12 +47,13 @@ export function TunnelDetailView({ tunnel, status, publicHost, onBack }: {
   );
 }
 
-function Overview({ tunnel, status, endpoint, points }: { tunnel: Tunnel; status?: RuntimeStatus; endpoint: string; points: ReturnType<typeof useTrafficHistory>["points"] }) {
+function Overview({ tunnel, status, path, endpoint, points }: { tunnel: Tunnel; status?: RuntimeStatus; path?: string; endpoint: string; points: ReturnType<typeof useTrafficHistory>["points"] }) {
   const runningTime = useElapsedTime(status?.lastStartedAt, status?.connected);
   return <>
     <div className="detail-grid">
       <DetailCell label="本地地址" value={`${tunnel.local_host}:${tunnel.local_port}`} />
       <DetailCell label="隧道类型" value={tunnel.protocol.toUpperCase()} badge />
+      <DetailCell label="当前路径" value={pathLabel(path)} badge path={path} />
       <DetailCell label="创建时间" value={new Date(tunnel.created_at).toLocaleString()} />
       <DetailCell label="连接状态" value={status?.connected ? "连接中" : "已断开"} accent={status?.connected} />
       <DetailCell label="访问地址" value={endpoint} />
@@ -77,8 +80,25 @@ function TunnelConfig({ tunnel }: { tunnel: Tunnel }) {
   </div>;
 }
 
-function DetailCell({ label, value, badge, accent }: { label: string; value: string; badge?: boolean; accent?: boolean }) {
-  return <div className="detail-cell"><span>{label}</span><strong className={`${badge ? "protocol-value" : ""} ${accent ? "accent" : ""}`}>{value}</strong></div>;
+function DetailCell({ label, value, badge, accent, path }: { label: string; value: string; badge?: boolean; accent?: boolean; path?: string }) {
+  return <div className="detail-cell"><span>{label}</span><strong className={`${badge ? "protocol-value" : ""} ${accent ? "accent" : ""} ${pathClass(path)}`}>{value}</strong></div>;
+}
+
+function pathLabel(path?: string) {
+  if (path === "p2p") return "P2P";
+  if (path === "relay") return "Relay";
+  if (path === "visitor_p2p") return "访客 P2P";
+  if (path === "visitor_relay") return "访客 Relay";
+  return "未知";
+}
+
+function pathClass(path?: string) {
+  if (!path) return "";
+  if (path === "p2p") return "path-p2p";
+  if (path === "relay") return "path-relay";
+  if (path === "visitor_p2p") return "path-visitor-p2p";
+  if (path === "visitor_relay") return "path-visitor-relay";
+  return "path-unknown";
 }
 
 function statusLabel(status: string) {

@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/nrytex/nrynet/internal/model"
+	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 const (
@@ -193,7 +194,10 @@ func (r *udpRuntime) sendToVisitor(sessionID string, payload []byte) error {
 	if _, err := r.conn.WriteToUDP(payload, session.addr); err != nil {
 		return err
 	}
-	r.recordTraffic(0, int64(len(payload)))
+	// Do not hold the control reader on the single SQLite writer while
+	// forwarding UDP responses. The datagram is already on the wire; traffic
+	// accounting can finish independently.
+	go r.recordTraffic(0, int64(len(payload)))
 	return nil
 }
 
@@ -297,4 +301,9 @@ func (r *udpRuntime) recordPath(event string, session *udpVisitorSession) {
 	r.mu.Unlock()
 	_ = r.manager.store.RecordEvent(context.Background(), "info", event,
 		"UDP packet routed", map[string]any{"tunnel_id": r.tunnel.ID, "session_id": session.id})
+	path := protocol.TunnelPathRelay
+	if event == "p2p.direct" {
+		path = protocol.TunnelPathP2P
+	}
+	r.manager.notifyTunnelPath(r.tunnel, path)
 }

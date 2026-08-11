@@ -58,6 +58,9 @@ func (m *Manager) SetRendezvousAddress(address string) {
 }
 
 func (m *Manager) tryP2PUDPPacket(tunnel model.Tunnel, session *udpVisitorSession, data []byte) bool {
+	if !m.p2pEnabledNow() {
+		return false
+	}
 	rdvAddress := m.rendezvousAddress()
 	if rdvAddress == "" {
 		return false

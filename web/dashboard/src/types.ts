@@ -50,7 +50,8 @@ export interface Tunnel {
   id: string;
   client_id: string;
   name: string;
-  protocol: "tcp" | "http" | "https" | "udp" | string;
+  protocol: "tcp" | "p2p" | "http" | "https" | "udp" | "visitor_webrtc" | string;
+  visitor_token?: string;
   local_host: string;
   local_port: number;
   remote_port: number;

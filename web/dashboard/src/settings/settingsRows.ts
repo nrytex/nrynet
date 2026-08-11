@@ -19,6 +19,11 @@ export function splitSettingsRows(items: SettingItem[]) {
   };
 }
 
+export function settingSaveMessage(key: string) {
+  if (key === "server.p2p_enabled") return "P2P 设置已保存并立即生效";
+  return "设置已保存，重启 Nrynet 后生效";
+}
+
 export function plainWsSaveMessage(enabled: boolean) {
   return `兼容明文访问已${enabled ? "开启" : "关闭"}，配置已热更新`;
 }

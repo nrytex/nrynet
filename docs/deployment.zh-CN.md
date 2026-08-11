@@ -128,7 +128,9 @@ Get-WinEvent -LogName Application -MaxEvents 50
 2. 使用安装器终端输出的管理员用户名和一次性密码登录 Dashboard。
 3. 在“访问令牌”页面创建 Agent Token。不要把管理员密码当作 Agent Token 使用。
 4. Agent 默认填写 `ws://<public-host>:7000/agent/connect` 和数据地址 `<public-host>:7001`。绑定域名后也可使用 `wss://<domain>:7000/agent/connect`，无需修改服务端端口。
-5. Agent 上线后，在 Dashboard 创建 TCP、UDP、HTTP 或 HTTPS 隧道，选择对应设备和本地服务地址，再启动隧道。
+5. Agent 上线后，在 Dashboard 创建 TCP、P2P、UDP、HTTP、HTTPS 或 `visitor_webrtc` 隧道，选择对应设备和本地服务地址，再启动隧道。P2P 隧道优先通过公网 UDP 打洞直连，失败时自动回退 Relay。
+
+`visitor_webrtc` 隧道不需要访客安装客户端。启动后，Dashboard 和桌面端会显示访客地址：浏览器打开该地址，Server 完成鉴权并转发 SDP/ICE 信令，浏览器随后通过 WebRTC DataChannel 直连 Agent，再访问 Agent 所在机器的本地 HTTP 服务。Server 不转发业务请求和响应数据。该模式不提供透明的 `curl`、SSH 或任意 TCP 入口。
 
 ### 自动分配隧道子域名
 
@@ -211,6 +213,7 @@ server:
   public_quic_address: "nat.example.com:7002"
   rendezvous_listen: "0.0.0.0:7003"
   public_rendezvous_address: "nat.example.com:7003"
+  p2p_enabled: true
   http_listen: "0.0.0.0:8080"
   database: "/opt/nrynet/data/nrynet.db"
   log_directory: "/opt/nrynet/logs"

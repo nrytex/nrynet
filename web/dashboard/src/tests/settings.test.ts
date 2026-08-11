@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PLAIN_WS_SETTING_KEY, plainWsSaveMessage, splitSettingsRows } from "../settings/settingsRows";
+import { PLAIN_WS_SETTING_KEY, plainWsSaveMessage, settingSaveMessage, splitSettingsRows } from "../settings/settingsRows";
 import type { SettingItem } from "../types";
 
 describe("settings page helpers", () => {
@@ -21,5 +21,9 @@ describe("settings page helpers", () => {
   it("describes hot updates after toggling compatibility plain access", () => {
     expect(plainWsSaveMessage(true)).toBe("兼容明文访问已开启，配置已热更新");
     expect(plainWsSaveMessage(false)).toBe("兼容明文访问已关闭，配置已热更新");
+  });
+
+  it("describes the P2P switch as an immediate runtime update", () => {
+    expect(settingSaveMessage("server.p2p_enabled")).toBe("P2P 设置已保存并立即生效");
   });
 });

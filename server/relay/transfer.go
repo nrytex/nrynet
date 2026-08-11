@@ -7,7 +7,7 @@ import (
 	"net"
 )
 
-type dataStream interface {
+type DataStream interface {
 	io.Reader
 	io.Writer
 	io.Closer
@@ -18,7 +18,11 @@ type copyResult struct {
 	err error
 }
 
-func (b *Broker) relay(dataConn dataStream, visitor net.Conn, onComplete CompleteFunc) error {
+func (b *Broker) RelayStream(dataConn DataStream, visitor net.Conn, onComplete CompleteFunc) error {
+	return b.relay(dataConn, visitor, onComplete)
+}
+
+func (b *Broker) relay(dataConn DataStream, visitor net.Conn, onComplete CompleteFunc) error {
 	defer dataConn.Close()
 	defer visitor.Close()
 	uploadCh := make(chan copyResult, 1)
@@ -33,7 +37,7 @@ func (b *Broker) relay(dataConn dataStream, visitor net.Conn, onComplete Complet
 }
 
 func waitCopies(
-	dataConn dataStream,
+	dataConn DataStream,
 	visitor net.Conn,
 	uploadCh <-chan copyResult,
 	downloadCh <-chan copyResult,

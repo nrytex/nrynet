@@ -33,4 +33,15 @@ describe("tunnel endpoints", () => {
     const host = tunnelPublicHost({ dataAddress: "[2001:db8::1]:7001", serverUrl: "" });
     expect(resolveTunnelEndpoint(tunnel({}), host).copyValue).toBe("[2001:db8::1]:6000");
   });
+
+  it("builds a browser visitor URL from the control server", () => {
+    expect(resolveTunnelEndpoint(
+      tunnel({ protocol: "visitor_webrtc", remote_port: 0, visitor_token: "visitor-secret" }),
+      "",
+      "wss://server.example:7000/agent/connect",
+    )).toEqual({
+      label: "https://server.example:7000/visitor/tunnel/visitor-secret",
+      copyValue: "https://server.example:7000/visitor/tunnel/visitor-secret",
+    });
+  });
 });

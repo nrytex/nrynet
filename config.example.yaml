@@ -13,6 +13,12 @@ server:
   public_quic_address: "127.0.0.1:7002"
   rendezvous_listen: "0.0.0.0:7003"
   public_rendezvous_address: "127.0.0.1:7003"
+  # UDP hole punching for direct Agent paths. TCP uses QUIC over the punched
+  # UDP socket and falls back to the normal broker when punching fails.
+  p2p_enabled: true
+  # ICE servers for browser visitor_webrtc sessions.
+  webrtc_ice_servers:
+    - "stun:stun.l.google.com:19302"
   # Required to enable distributed relay nodes. Use a separate long random secret.
   relay_api_token: ""
   http_listen: "0.0.0.0:8080"

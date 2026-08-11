@@ -26,6 +26,12 @@
 .detail-cell > strong { display: block; overflow-wrap: anywhere; font-size: 14px; }
 .detail-cell > strong.accent { color: #0b9e59; }
 .detail-cell > strong.protocol-value { display: inline-block; padding: 3px 8px; border-radius: 5px; background: #e6f7ed; color: #078b4e; font-size: 11px; }
+.detail-cell > strong.path-relay, .detail-cell > strong.path-p2p, .detail-cell > strong.path-visitor-p2p, .detail-cell > strong.path-visitor-relay, .detail-cell > strong.path-unknown { display: inline-block; padding: 3px 8px; border-radius: 5px; font-size: 11px; }
+.detail-cell > strong.path-p2p { background: #e6f7ed; color: #078b4e; }
+.detail-cell > strong.path-relay { background: #fff3df; color: #b46a00; }
+.detail-cell > strong.path-visitor-p2p { background: #e6f0ff; color: #245db5; }
+.detail-cell > strong.path-visitor-relay { background: #fff3df; color: #b46a00; }
+.detail-cell > strong.path-unknown { background: #eef1f3; color: #687587; }
 
 .trend-section { margin-top: 22px; }
 .trend-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }

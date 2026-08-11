@@ -22,7 +22,21 @@ and macOS.
 4. Create an agent token in the Tokens page.
 5. Put the token in the client section of `config.yaml`, then run
    `go run ./client -config config.yaml`.
-6. Create and start a TCP, HTTP, HTTPS, or UDP tunnel in the dashboard.
+6. Create and start a TCP, P2P, HTTP, HTTPS, UDP, or `visitor_webrtc` tunnel in the dashboard.
+
+`visitor_webrtc` tunnels publish a capability URL such as
+`https://server.example/visitor/<tunnel-id>/<visitor-token>`. A browser opens
+that page, negotiates a WebRTC DataChannel directly with the Agent, and sends
+HTTP requests to the Agent's local service. The Server only authenticates and
+relays SDP/ICE signaling; it does not carry the request or response bytes.
+This mode is for browser-based HTTP access, not transparent `curl`, SSH, or
+arbitrary TCP clients.
+
+Public deployments can enable UDP hole punching and TCP's direct
+server-to-Agent QUIC path with `server.p2p_enabled: true`. Set
+`public_rendezvous_address` to the public UDP endpoint and allow UDP `7003`
+plus the dynamic UDP ports used by punched sessions. Direct setup falls back
+to the normal broker when NAT or firewall policy prevents punching.
 
 WS agents use `ws://host:7000/agent/connect` with data port `7001`. After a
 domain certificate is enabled, the same ports also accept WSS and TLS data;

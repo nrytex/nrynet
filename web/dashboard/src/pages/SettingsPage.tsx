@@ -2,7 +2,7 @@ import { Button, Divider, Form, Input, message, Switch, Table, Typography } from
 import { api } from "../api/client";
 import { Page } from "../components/Page";
 import { toMessage, useAsync } from "../hooks/useAsync";
-import { splitSettingsRows } from "../settings/settingsRows";
+import { settingSaveMessage, splitSettingsRows } from "../settings/settingsRows";
 import { TransportSettings } from "../settings/TransportSettings";
 import type { SettingItem } from "../types";
 
@@ -60,7 +60,7 @@ function ValueEditor({ item, onSaved }: { item: SettingItem; onSaved: () => void
   const save = async ({ value }: { value: SettingItem["value"] }) => {
     try {
       await api.updateSetting(item.key, value);
-      message.success("设置已保存，重启 Nrynet 后生效");
+      message.success(settingSaveMessage(item.key));
       onSaved();
     } catch (error) {
       message.error(toMessage(error));

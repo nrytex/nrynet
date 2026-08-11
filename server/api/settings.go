@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -20,11 +21,16 @@ type SettingItem struct {
 	Mutable     bool   `json:"mutable"`
 }
 
+type SettingApplier interface {
+	ApplySetting(context.Context, string, string) error
+}
+
 type settingsHandler struct {
-	store *storage.Store
-	mu    sync.RWMutex
-	items map[string]SettingItem
-	order []string
+	store   *storage.Store
+	applier SettingApplier
+	mu      sync.RWMutex
+	items   map[string]SettingItem
+	order   []string
 }
 
 func (h *settingsHandler) list(c *gin.Context) {
@@ -71,6 +77,12 @@ func (h *settingsHandler) update(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if h.applier != nil {
+		if err := h.applier.ApplySetting(c.Request.Context(), item.Key, text); err != nil {
+			respondError(c, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
 	item.Value = request.Value
 	if _, ok := request.Value.(string); ok {
 		item.Value = text
@@ -91,7 +103,7 @@ func validateSetting(key string, value any) (string, error) {
 		return "", errors.New("setting value cannot be empty")
 	}
 	switch key {
-	case "server.plain_enabled", "server.tls.enabled", "server.auto_subdomain.enabled":
+	case "server.plain_enabled", "server.p2p_enabled", "server.tls.enabled", "server.auto_subdomain.enabled":
 		if _, ok := value.(bool); !ok {
 			return "", errors.New("setting value must be a boolean")
 		}
@@ -195,12 +207,12 @@ func settingText(value any) string {
 	}
 }
 
-func newSettingsHandler(store *storage.Store, items []SettingItem) *settingsHandler {
+func newSettingsHandler(store *storage.Store, items []SettingItem, applier SettingApplier) *settingsHandler {
 	indexed := make(map[string]SettingItem, len(items))
 	order := make([]string, 0, len(items))
 	for _, item := range items {
 		indexed[item.Key] = item
 		order = append(order, item.Key)
 	}
-	return &settingsHandler{store: store, items: indexed, order: order}
+	return &settingsHandler{store: store, applier: applier, items: indexed, order: order}
 }

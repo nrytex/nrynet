@@ -72,6 +72,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	desktopSvc.setBrowser(app.Browser)
 	app.RegisterService(application.NewService(desktopSvc))
 	win := app.Window.NewWithOptions(mainWindowOptions())
 	var quitting atomic.Bool

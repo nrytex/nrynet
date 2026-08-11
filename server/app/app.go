@@ -22,6 +22,7 @@ import (
 	"github.com/nrytex/nrynet/server/gateway"
 	"github.com/nrytex/nrynet/server/relay"
 	"github.com/nrytex/nrynet/server/tunnel"
+	"github.com/nrytex/nrynet/server/visitor"
 )
 
 type App struct {
@@ -37,6 +38,7 @@ type App struct {
 	broker    *relay.Broker
 	gateway   *gateway.Gateway
 	tunnels   *tunnel.Manager
+	visitor   *visitor.Service
 	quic      *serveradvanced.QUICControlServer
 	rdv       *serveradvanced.RendezvousService
 	relayDone chan struct{}
@@ -70,11 +72,13 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 	broker := relay.NewBroker(authService, store, 30*time.Second)
 	tunnelManager := tunnel.NewManager(store, hub, broker)
 	tunnelManager.SetRendezvousAddress(cfg.Server.PublicRendezvous)
+	tunnelManager.SetP2PEnabled(cfg.Server.P2PEnabled)
 	registry := netx.NewRelayRegistry(cfg.Server.HeartbeatTimeout)
 	relayToken := cfg.Server.RelayAPIToken
 	binder := &serveradvanced.RemoteRelayNode{Token: relayToken, BrokerAddress: cfg.Server.PublicDataAddress, BrokerTLS: cfg.Server.TLS.Enabled, BrokerServerName: publicDataHostname(cfg.Server.PublicDataAddress), Registry: registry}
 	tunnelManager.SetRelayRegistry(registry, binder)
 	broker.SetRelayVisitorHandler(relayToken, tunnelManager.RouteRelayVisitor)
+	visitorService := visitor.New(store, hub, cfg.Server.WebRTCICEServers)
 	tlsStore, err := newTLSStore(cfg.Server.TLS)
 	if err != nil {
 		store.Close()
@@ -101,11 +105,13 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 	webGateway := gateway.New(store, tunnelManager)
 	transport := newTransportController(nil, tlsStore, nil)
 	router := api.NewRouterWithOptions(store, authService, time.Now(), api.RouterOptions{
-		Runtime: tunnelManager, Settings: safeSettings(cfg),
+		Runtime: tunnelManager, Settings: safeSettings(cfg), SettingApplier: tunnelManager,
 		RelayRegistry: registry, RelayToken: relayToken, CertificatePinProvider: transport.CurrentCertificatePin,
 		Transport: transport,
 	})
 	router.GET("/agent/connect", hub.Handle)
+	router.GET("/visitor/:id/:token", visitorService.ServePage)
+	router.GET("/visitor/webrtc/:id/:token", visitorService.ServeSignal)
 	dashboardHandler := dashboard.Handler()
 	router.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/") || strings.HasPrefix(c.Request.URL.Path, "/agent/") {
@@ -158,6 +164,7 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 	app := &App{config: cfg, store: store, server: server, control: controlListener, plain: plainServer, plainCtrl: plainControlListener,
 		data: dataListener, plainData: plainDataListener, web: webListener,
 		broker: broker, gateway: webGateway, tunnels: tunnelManager, quic: quicServer, rdv: rdv, relayDone: make(chan struct{})}
+	app.visitor = visitorService
 	transport.bind(app, router)
 	app.transport = transport
 	return app, bootstrap, nil
@@ -215,6 +222,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 	quicErr := a.quic.Close()
 	rdvErr := a.rdv.Close()
 	tunnelErr := a.tunnels.Close()
+	a.visitor.Close()
 	storeErr := a.store.Close()
 	return errors.Join(serverErr, controlErr, plainErr, plainCtrlErr, dataErr, plainDataErr, webErr, quicErr, rdvErr, tunnelErr, storeErr)
 }

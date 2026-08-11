@@ -16,16 +16,19 @@ import (
 )
 
 func (a *Agent) handleP2PConnect(ctx context.Context, message protocol.ControlMessage) {
-	if err := a.runP2PUDP(ctx, message); err != nil {
-		a.logger.Debug("p2p udp path unavailable", "error", err)
+	payload, err := protocol.DecodePayload[protocol.P2PConnectPayload](message)
+	if err == nil && payload.Mode == protocol.P2PModeStream {
+		err = a.runP2PStream(ctx, payload)
+	} else if err == nil {
+		err = a.runP2PUDP(ctx, payload)
+	}
+	if err != nil {
+		a.logger.Debug("p2p path unavailable", "mode", payload.Mode, "error", err)
 	}
 }
 
-func (a *Agent) runP2PUDP(ctx context.Context, message protocol.ControlMessage) error {
-	payload, err := protocol.DecodePayload[protocol.P2PConnectPayload](message)
-	if err != nil {
-		return err
-	}
+func (a *Agent) runP2PUDP(ctx context.Context, payload protocol.P2PConnectPayload) error {
+	var err error
 	conn, err := net.ListenPacket("udp", "0.0.0.0:0")
 	if err != nil {
 		return err
@@ -40,7 +43,7 @@ func (a *Agent) runP2PUDP(ctx context.Context, message protocol.ControlMessage) 
 		return err
 	}
 	direct := clientadvanced.PeerConnector{Timeout: time.Second}.PunchOrRelay(
-		ctx, conn, result.Peer, payload.PeerID,
+		ctx, conn, result.Peer, payload.WantsPeerID,
 	)
 	if direct.UseRelay {
 		return fmt.Errorf("p2p fallback: %s", direct.RelayReason)
@@ -66,9 +69,9 @@ func (a *Agent) proxyP2PDatagrams(
 	payload protocol.P2PConnectPayload,
 	peer netx.Endpoint,
 ) error {
-	key, err := base64.RawStdEncoding.DecodeString(payload.SessionKey)
-	if err != nil || len(key) != 32 {
-		return errors.New("invalid p2p session key")
+	key, err := decodeP2PSessionKey(payload.SessionKey)
+	if err != nil {
+		return err
 	}
 	local, err := net.Dial("udp", net.JoinHostPort(payload.LocalHost, strconv.Itoa(payload.LocalPort)))
 	if err != nil {
@@ -81,6 +84,14 @@ func (a *Agent) proxyP2PDatagrams(
 	}
 	proxy := p2pDatagramProxy{conn: conn, local: local, peer: peerAddr, key: key}
 	return proxy.run(ctx)
+}
+
+func decodeP2PSessionKey(encoded string) ([]byte, error) {
+	key, err := base64.RawStdEncoding.DecodeString(encoded)
+	if err != nil || len(key) != 32 {
+		return nil, errors.New("invalid p2p session key")
+	}
+	return key, nil
 }
 
 type p2pDatagramProxy struct {

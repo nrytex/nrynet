@@ -14,6 +14,7 @@ import (
 type RouterOptions struct {
 	Runtime                Runtime
 	Settings               []SettingItem
+	SettingApplier         SettingApplier
 	RelayRegistry          *netx.RelayRegistry
 	RelayToken             string
 	CertificatePin         string
@@ -47,7 +48,7 @@ func NewRouterWithOptions(store *storage.Store, authService *auth.Service, start
 	overviewAPI := overviewHandler{store: store, runtime: runtime, startedAt: startedAt}
 	trafficAPI := trafficHandler{store: store}
 	logAPI := logHandler{store: store}
-	settingsAPI := newSettingsHandler(store, options.Settings)
+	settingsAPI := newSettingsHandler(store, options.Settings, options.SettingApplier)
 	relayAPI := relayHandler{registry: options.RelayRegistry, token: options.RelayToken}
 	transportAPI := newTransportHandler(options.Transport)
 	router.GET("/health", func(c *gin.Context) {

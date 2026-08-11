@@ -19,16 +19,19 @@ func (s *Store) CreateTunnel(ctx context.Context, tunnel model.Tunnel) (model.Tu
 	}
 	tunnel.ID = uuid.NewString()
 	tunnel.Protocol = strings.ToLower(tunnel.Protocol)
+	if tunnel.Protocol == "visitor_webrtc" {
+		tunnel.VisitorToken = newVisitorToken(tunnel.VisitorToken)
+	}
 	tunnel.Domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(tunnel.Domain), "."))
 	tunnel.Status = "stopped"
 	tunnel.CreatedAt = time.Now().UTC()
 	tunnel.UpdatedAt = tunnel.CreatedAt
 	allowlist, _ := json.Marshal(tunnel.IPAllowlist)
 	_, err := s.db.ExecContext(ctx, `INSERT INTO tunnels
-        (id, client_id, name, protocol, local_host, local_port, remote_port, domain,
-        status, ip_allowlist, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	        (id, client_id, name, protocol, local_host, local_port, remote_port, domain, visitor_token,
+	        status, ip_allowlist, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tunnel.ID, tunnel.ClientID, tunnel.Name, tunnel.Protocol, tunnel.LocalHost,
-		tunnel.LocalPort, tunnel.RemotePort, tunnel.Domain, tunnel.Status,
+		tunnel.LocalPort, tunnel.RemotePort, tunnel.Domain, tunnel.VisitorToken, tunnel.Status,
 		string(allowlist), tunnel.CreatedAt, tunnel.UpdatedAt)
 	return tunnel, err
 }
@@ -41,11 +44,14 @@ func validateTunnel(tunnel model.Tunnel) error {
 		return errors.New("local_port must be between 1 and 65535")
 	}
 	protocol := strings.ToLower(tunnel.Protocol)
-	if protocol != "tcp" && protocol != "http" && protocol != "https" && protocol != "udp" {
-		return errors.New("protocol must be tcp, http, https, or udp")
+	if protocol != "tcp" && protocol != "p2p" && protocol != "http" && protocol != "https" && protocol != "udp" && protocol != "visitor_webrtc" {
+		return errors.New("protocol must be tcp, p2p, http, https, udp, or visitor_webrtc")
 	}
-	if (protocol == "tcp" || protocol == "udp") && (tunnel.RemotePort < 1 || tunnel.RemotePort > 65535) {
+	if (protocol == "tcp" || protocol == "p2p" || protocol == "udp") && (tunnel.RemotePort < 1 || tunnel.RemotePort > 65535) {
 		return errors.New("remote_port must be between 1 and 65535")
+	}
+	if protocol == "visitor_webrtc" && tunnel.RemotePort != 0 {
+		return errors.New("remote_port must be empty for visitor_webrtc tunnels")
 	}
 	if (protocol == "http" || protocol == "https") && tunnel.Domain == "" {
 		return errors.New("domain is required for HTTP and HTTPS tunnels")
@@ -105,7 +111,7 @@ func (s *Store) ListClientTunnels(ctx context.Context, clientID string) ([]model
 }
 
 const tunnelSelect = `SELECT id, client_id, name, protocol, local_host, local_port,
-    remote_port, domain, status, ip_allowlist, created_at, updated_at FROM tunnels`
+    remote_port, domain, visitor_token, status, ip_allowlist, created_at, updated_at FROM tunnels`
 
 type scanner interface {
 	Scan(...any) error
@@ -115,7 +121,7 @@ func scanTunnel(row scanner) (model.Tunnel, error) {
 	var tunnel model.Tunnel
 	var allowlist string
 	err := row.Scan(&tunnel.ID, &tunnel.ClientID, &tunnel.Name, &tunnel.Protocol,
-		&tunnel.LocalHost, &tunnel.LocalPort, &tunnel.RemotePort, &tunnel.Domain,
+		&tunnel.LocalHost, &tunnel.LocalPort, &tunnel.RemotePort, &tunnel.Domain, &tunnel.VisitorToken,
 		&tunnel.Status, &allowlist, &tunnel.CreatedAt, &tunnel.UpdatedAt)
 	if err == nil {
 		err = json.Unmarshal([]byte(allowlist), &tunnel.IPAllowlist)
@@ -128,13 +134,23 @@ func (s *Store) UpdateTunnel(ctx context.Context, tunnel model.Tunnel) (model.Tu
 		return model.Tunnel{}, err
 	}
 	tunnel.Protocol = strings.ToLower(tunnel.Protocol)
+	if tunnel.Protocol == "visitor_webrtc" {
+		if tunnel.VisitorToken == "" {
+			current, err := s.GetTunnel(ctx, tunnel.ID)
+			if err != nil {
+				return model.Tunnel{}, err
+			}
+			tunnel.VisitorToken = current.VisitorToken
+		}
+		tunnel.VisitorToken = newVisitorToken(tunnel.VisitorToken)
+	}
 	tunnel.Domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(tunnel.Domain), "."))
 	tunnel.UpdatedAt = time.Now().UTC()
 	allowlist, _ := json.Marshal(tunnel.IPAllowlist)
 	result, err := s.db.ExecContext(ctx, `UPDATE tunnels SET client_id=?, name=?, protocol=?,
-        local_host=?, local_port=?, remote_port=?, domain=?, ip_allowlist=?, updated_at=? WHERE id=?`,
+		local_host=?, local_port=?, remote_port=?, domain=?, visitor_token=?, ip_allowlist=?, updated_at=? WHERE id=?`,
 		tunnel.ClientID, tunnel.Name, tunnel.Protocol, tunnel.LocalHost, tunnel.LocalPort,
-		tunnel.RemotePort, tunnel.Domain, string(allowlist), tunnel.UpdatedAt, tunnel.ID)
+		tunnel.RemotePort, tunnel.Domain, tunnel.VisitorToken, string(allowlist), tunnel.UpdatedAt, tunnel.ID)
 	if err != nil {
 		return model.Tunnel{}, err
 	}

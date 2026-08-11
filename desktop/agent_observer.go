@@ -22,3 +22,7 @@ func (o desktopObserver) TunnelSnapshot(tunnels []model.Tunnel) {
 func (o desktopObserver) Transfer(tunnelID, direction string, bytes int64) {
 	o.service.onTransfer(o.runID, direction, bytes)
 }
+
+func (o desktopObserver) TunnelPath(tunnelID, path string) {
+	o.service.onTunnelPath(o.runID, tunnelID, path)
+}

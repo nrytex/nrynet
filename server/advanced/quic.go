@@ -132,8 +132,8 @@ func (c *quicControl) WriteJSON(value any) error {
 }
 
 func (c *quicControl) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	// Closing a QUIC session is safe while another goroutine is writing a
+	// control frame. Do not let teardown wait behind a blocked writer.
 	return c.session.Close()
 }
 

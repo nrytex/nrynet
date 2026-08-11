@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -26,10 +25,12 @@ type Hub struct {
 	timeout  time.Duration
 	upgrader websocket.Upgrader
 
-	mu         sync.RWMutex
-	conns      map[string]ControlTransport
-	connected  map[string]time.Time
-	udpHandler func(string, protocol.ControlMessage)
+	mu                   sync.RWMutex
+	conns                map[string]ControlTransport
+	connected            map[string]time.Time
+	udpHandler           func(string, protocol.ControlMessage)
+	visitorWebRTCHandler func(string, protocol.ControlMessage)
+	disconnectHandler    func(string)
 }
 
 func NewHub(store *storage.Store, authService *auth.Service, timeout time.Duration) *Hub {
@@ -77,6 +78,19 @@ func (h *Hub) SendSnapshot(clientID string, tunnels []model.Tunnel) error {
 	return h.send(clientID, message)
 }
 
+func (h *Hub) SendTunnelPath(clientID, tunnelID, path string) error {
+	message, err := protocol.NewMessage(
+		protocol.TypeTunnelPath,
+		"",
+		tunnelID,
+		protocol.TunnelPathPayload{Path: path},
+	)
+	if err != nil {
+		return err
+	}
+	return h.send(clientID, message)
+}
+
 func (h *Hub) OpenConnection(clientID string, tunnel model.Tunnel, requestID string) error {
 	payload := protocol.OpenConnectionPayload{LocalHost: tunnel.LocalHost, LocalPort: tunnel.LocalPort}
 	message, err := protocol.NewMessage(protocol.TypeOpenConnection, requestID, tunnel.ID, payload)
@@ -103,20 +117,16 @@ func (h *Hub) SendControl(clientID string, message protocol.ControlMessage) erro
 	return h.send(clientID, message)
 }
 
-func (h *Hub) SetUDPPacketHandler(handler func(string, protocol.ControlMessage)) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.udpHandler = handler
-}
-
-func (h *Hub) Disconnect(clientID string) {
+func (h *Hub) Disconnect(clientID string) bool {
 	h.mu.RLock()
 	conn := h.conns[clientID]
 	h.mu.RUnlock()
 	if conn != nil {
 		_ = conn.Close()
 		h.unregister(clientID, conn)
+		return true
 	}
+	return false
 }
 
 func (h *Hub) ConnectedAt(clientID string) (time.Time, bool) {
@@ -139,7 +149,14 @@ func (h *Hub) send(clientID string, message protocol.ControlMessage) error {
 	if conn == nil {
 		return errClientOffline
 	}
-	return conn.WriteJSON(message)
+	if err := conn.WriteJSON(message); err != nil {
+		// A failed control write is a definitive transport failure. Remove the
+		// session now instead of waiting for the next heartbeat timeout.
+		_ = conn.Close()
+		h.unregister(clientID, conn)
+		return err
+	}
+	return nil
 }
 
 func (h *Hub) authenticate(c *gin.Context) (model.Token, error) {
@@ -166,8 +183,20 @@ func (h *Hub) serveTransport(ctx context.Context, conn ControlTransport, tokenID
 	_ = h.store.RecordEvent(ctx, "info", "client.connected", "Client connected", map[string]any{
 		"client_id": client.ID, "device_id": client.DeviceID, "ip": client.IP,
 	})
-	defer h.unregister(client.ID, conn)
+	// A WebSocket/QUIC handler owns the transport after the handshake. When
+	// the read loop exits (for example after a heartbeat timeout), close the
+	// underlying connection as well as removing it from the hub. Without this
+	// close the client can continue writing heartbeats into a socket that the
+	// server no longer services, leaving the desktop UI stuck on "connected".
+	defer func() {
+		_ = conn.Close()
+		h.unregister(client.ID, conn)
+	}()
 	h.sendInitialSnapshot(ctx, conn, client.ID)
+	// Listing tunnels may wait briefly on SQLite while traffic records are
+	// flushed. Start the heartbeat window after the initial snapshot, not from
+	// the hello deadline.
+	_ = conn.SetReadDeadline(time.Now().Add(h.timeout))
 	h.readLoop(ctx, conn, client.ID)
 }
 
@@ -234,46 +263,24 @@ func (h *Hub) register(clientID string, conn ControlTransport) {
 func (h *Hub) unregister(clientID string, conn ControlTransport) {
 	h.mu.Lock()
 	isCurrent := h.conns[clientID] == conn
-	if isCurrent {
-		delete(h.conns, clientID)
-		delete(h.connected, clientID)
-	}
-	h.mu.Unlock()
 	if !isCurrent {
+		h.mu.Unlock()
 		return
 	}
+	// Keep the hub lock through the offline transition. A reconnect cannot
+	// register between this session's removal and the database write, which
+	// would otherwise let the old session overwrite the new session's online
+	// status.
+	handler := h.disconnectHandler
 	_ = h.store.SetClientStatus(context.Background(), clientID, "offline")
+	delete(h.conns, clientID)
+	delete(h.connected, clientID)
+	if handler != nil {
+		// The configured handler only closes broker/UDP state and must not call
+		// back into Hub while this lock is held.
+		handler(clientID)
+	}
+	h.mu.Unlock()
 	_ = h.store.RecordEvent(context.Background(), "info", "client.disconnected",
 		"Client disconnected", map[string]any{"client_id": clientID})
-}
-
-func (h *Hub) readLoop(ctx context.Context, conn ControlTransport, clientID string) {
-	for ctx.Err() == nil {
-		var message protocol.ControlMessage
-		if err := conn.ReadJSON(&message); err != nil {
-			return
-		}
-		if message.Type == protocol.TypeHeartbeat {
-			_ = h.store.SetClientStatus(ctx, clientID, "online")
-			_ = conn.SetReadDeadline(time.Now().Add(h.timeout))
-			continue
-		}
-		if message.Type == protocol.TypeUDPPacket {
-			h.handleUDPPacket(clientID, message)
-		}
-	}
-}
-
-func (h *Hub) handleUDPPacket(clientID string, message protocol.ControlMessage) {
-	h.mu.RLock()
-	handler := h.udpHandler
-	h.mu.RUnlock()
-	if handler != nil {
-		handler(clientID, message)
-	}
-}
-
-func errorMessage(text string) protocol.ControlMessage {
-	payload, _ := json.Marshal(protocol.ErrorPayload{Message: text})
-	return protocol.ControlMessage{Type: protocol.TypeError, Payload: payload}
 }

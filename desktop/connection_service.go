@@ -104,6 +104,7 @@ func (s *DesktopService) setStopped(runID uint64, message string) {
 
 func (s *DesktopService) setStoppedLocked(message string) {
 	upload, download := s.status.UploadBytes, s.status.DownloadBytes
+	s.tunnelPaths = make(map[string]string)
 	s.status = RuntimeStatus{
 		Connected: false, State: "disconnected", Message: message,
 		Version: appVersion, UploadBytes: upload, DownloadBytes: download,
@@ -119,6 +120,7 @@ func (s *DesktopService) onSessionStarted(runID uint64) {
 	}
 	s.status.Connected = true
 	s.status.State = "connected"
+	s.tunnelPaths = make(map[string]string)
 	s.status.Message = "已连接并通过身份验证。"
 }
 
@@ -130,6 +132,7 @@ func (s *DesktopService) onSessionEnded(runID uint64, err error) {
 	}
 	s.status.Connected = false
 	s.status.State = "reconnecting"
+	s.tunnelPaths = make(map[string]string)
 	s.status.Message = "连接已中断，客户端正在尝试重新连接。"
 	if err != nil {
 		s.status.Message = connectionErrorMessage(err)
@@ -143,6 +146,27 @@ func (s *DesktopService) onTunnelSnapshot(runID uint64, tunnels []model.Tunnel) 
 		return
 	}
 	s.tunnels = append([]model.Tunnel{}, tunnels...)
+	known := make(map[string]struct{}, len(tunnels))
+	for _, tunnel := range tunnels {
+		known[tunnel.ID] = struct{}{}
+	}
+	for tunnelID := range s.tunnelPaths {
+		if _, ok := known[tunnelID]; !ok {
+			delete(s.tunnelPaths, tunnelID)
+		}
+	}
+}
+
+func (s *DesktopService) onTunnelPath(runID uint64, tunnelID, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if runID != s.runID || s.cancel == nil || tunnelID == "" || path == "" {
+		return
+	}
+	if s.tunnelPaths == nil {
+		s.tunnelPaths = make(map[string]string)
+	}
+	s.tunnelPaths[tunnelID] = path
 }
 
 func (s *DesktopService) onTransfer(runID uint64, direction string, bytes int64) {

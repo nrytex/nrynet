@@ -35,7 +35,9 @@ export interface DesktopSnapshot {
     "config": AppConfig;
     "status": RuntimeStatus;
     "tunnels": model$0.Tunnel[] | null;
+    "tunnelPaths": { [_ in string]?: string } | null;
     "logs": LogEntry[] | null;
+    "update"?: UpdateResult;
 }
 
 export interface LogEntry {
@@ -57,6 +59,9 @@ export interface RuntimeStatus {
 }
 
 export interface UpdateResult {
-    "started": boolean;
+    "checked": boolean;
+    "available": boolean;
+    "latestVersion": string;
+    "downloadURL": string;
     "message": string;
 }

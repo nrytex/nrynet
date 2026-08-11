@@ -72,7 +72,7 @@ func (c *clientConnections) disconnect(clientID string) {
 	}
 }
 
-func (b *Broker) relayPending(data dataStream, pending *pendingConn) error {
+func (b *Broker) relayPending(data DataStream, pending *pendingConn) error {
 	unregister, ok := b.connections.register(
 		pending.tunnel.ClientID,
 		pending.connectionGeneration,
@@ -90,4 +90,21 @@ func (b *Broker) relayPending(data dataStream, pending *pendingConn) error {
 
 func (b *Broker) DisconnectClient(clientID string) {
 	b.connections.disconnect(clientID)
+	var pending []*pendingConn
+	b.mu.Lock()
+	for requestID, entry := range b.pending {
+		if entry.tunnel.ClientID != clientID {
+			continue
+		}
+		delete(b.pending, requestID)
+		pending = append(pending, entry)
+	}
+	b.mu.Unlock()
+	for _, entry := range pending {
+		_ = entry.visitor.Close()
+		select {
+		case entry.done <- errClientDisconnected:
+		default:
+		}
+	}
 }

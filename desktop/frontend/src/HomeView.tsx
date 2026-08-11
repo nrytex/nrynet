@@ -1,7 +1,8 @@
 import { App, Button, Empty, Switch, Tooltip, Typography } from "antd";
-import { CircleAlert, Copy, Database, MoreHorizontal, Power, Settings, SlidersHorizontal } from "lucide-react";
+import { ArrowUpRight, CircleAlert, Copy, Database, MoreHorizontal, Power, Settings, SlidersHorizontal } from "lucide-react";
 import type { MouseEvent } from "react";
 import type { DesktopSnapshot } from "../bindings/github.com/nrytex/nrynet/desktop";
+import type { UpdateResult } from "../bindings/github.com/nrytex/nrynet/desktop";
 import type { Tunnel } from "../bindings/github.com/nrytex/nrynet/internal/model";
 import { formatBytes } from "./format";
 import { useElapsedTime } from "./elapsedTime";
@@ -15,10 +16,13 @@ import brandMark from "./assets/nrynet-mark.png";
 interface HomeViewProps {
   snapshot?: DesktopSnapshot;
   loading: boolean;
+  updateNotice?: UpdateResult;
+  onOpenUpdate: () => void;
   onConnect: () => void;
   onDisconnect: () => void;
   onSettings: (section?: SettingsSection) => void;
   onTunnel: (tunnelId: string) => void;
+  serverUrl: string;
 }
 
 export function HomeView(props: HomeViewProps) {
@@ -28,17 +32,27 @@ export function HomeView(props: HomeViewProps) {
   const connected = Boolean(status?.connected);
   const connectionDuration = useElapsedTime(status?.lastStartedAt, connected);
   const publicHost = tunnelPublicHost(config);
+  const tunnelPaths = props.snapshot?.tunnelPaths ?? {};
   const statusMessage = connectionStatusMessage(status);
   const { points, rates } = useTrafficHistory(status);
   return (
     <main className="desktop-frame home-view">
       <header className="brand-header">
         <Brand />
+        <div className={`header-status ${connected ? "connected" : "offline"}`}>
+          <span className={`status-dot ${connected ? "online" : "offline"}`} />
+          <span>{connected ? "已连接" : "未连接"}</span>
+        </div>
         <div className="header-actions">
-          <Tooltip title="运行日志"><Button aria-label="运行日志" type="text" icon={<Database size={19} />} onClick={() => props.onSettings("logs")} /></Tooltip>
-          <Tooltip title="设置"><Button aria-label="设置" type="text" icon={<Settings size={19} />} onClick={() => props.onSettings("general")} /></Tooltip>
+          <Tooltip title="运行日志"><Button aria-label="运行日志" type="text" className="header-action" icon={<Database size={16} />} onClick={() => props.onSettings("logs")}><span>日志</span></Button></Tooltip>
+          <Tooltip title="设置"><Button aria-label="设置" type="text" className="header-action" icon={<Settings size={16} />} onClick={() => props.onSettings("general")}><span>设置</span></Button></Tooltip>
         </div>
       </header>
+
+      {props.updateNotice && <div className="update-banner">
+        <div className="update-banner-text"><strong>发现新版本 {props.updateNotice.latestVersion}</strong><span>{props.updateNotice.message}</span></div>
+        <Button size="small" type="primary" icon={<ArrowUpRight size={14} />} onClick={props.onOpenUpdate}>去下载</Button>
+      </div>}
 
       <section className="connection-panel">
         <div className="connection-heading">
@@ -70,7 +84,7 @@ export function HomeView(props: HomeViewProps) {
         </div>
         {tunnels.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已分配隧道" /> : (
           <div className="tunnel-list">
-            {tunnels.map((tunnel) => <TunnelRow key={tunnel.id} tunnel={tunnel} publicHost={publicHost} onOpen={() => props.onTunnel(tunnel.id)} />)}
+            {tunnels.map((tunnel) => <TunnelRow key={tunnel.id} tunnel={tunnel} path={tunnelPaths[tunnel.id]} publicHost={publicHost} serverUrl={props.serverUrl} onOpen={() => props.onTunnel(tunnel.id)} />)}
           </div>
         )}
       </section>
@@ -84,16 +98,24 @@ export function HomeView(props: HomeViewProps) {
 }
 
 export function Brand() {
-  return <div className="brand-lockup"><img src={brandMark} alt="" /><span>Nrynet</span></div>;
+  return (
+    <div className="brand-lockup">
+      <span className="brand-mark"><img src={brandMark} alt="" /></span>
+      <span className="brand-text">
+        <strong>Nrynet</strong>
+        <small>私有网络隧道</small>
+      </span>
+    </div>
+  );
 }
 
 function Metric({ label, value, tone, compact }: { label: string; value: string; tone?: string; compact?: boolean }) {
   return <div className={`metric-item ${tone ?? ""}`}><span>{label}</span><strong className={compact ? "compact" : ""}>{value}</strong></div>;
 }
 
-function TunnelRow({ tunnel, publicHost, onOpen }: { tunnel: Tunnel; publicHost: string; onOpen: () => void }) {
+function TunnelRow({ tunnel, path, publicHost, serverUrl, onOpen }: { tunnel: Tunnel; path?: string; publicHost: string; serverUrl: string; onOpen: () => void }) {
   const { message } = App.useApp();
-  const endpoint = resolveTunnelEndpoint(tunnel, publicHost);
+  const endpoint = resolveTunnelEndpoint(tunnel, publicHost, serverUrl);
   const copy = async (event: MouseEvent) => {
     event.stopPropagation();
     if (!endpoint.copyValue) return;
@@ -105,10 +127,27 @@ function TunnelRow({ tunnel, publicHost, onOpen }: { tunnel: Tunnel; publicHost:
       <span className={`status-dot ${tunnel.status === "running" ? "online" : "offline"}`} />
       <button className="tunnel-open" onClick={onOpen}><span className="tunnel-name"><strong>{tunnel.name}</strong><small>{endpoint.label}</small></span></button>
       <span className="protocol-badge">{tunnel.protocol.toUpperCase()}</span>
+      <span className={`path-badge ${pathClass(path)}`}>{pathLabel(path)}</span>
       <Tooltip title={endpoint.copyValue ? "复制访问地址" : "请检查服务器公开地址配置"}><Button aria-label="复制访问地址" disabled={!endpoint.copyValue} icon={<Copy size={16} />} onClick={copy} /></Tooltip>
       <MoreHorizontal size={18} />
     </div>
   );
+}
+
+function pathLabel(path?: string) {
+  if (path === "p2p") return "P2P";
+  if (path === "relay") return "Relay";
+  if (path === "visitor_p2p") return "访客 P2P";
+  if (path === "visitor_relay") return "访客 Relay";
+  return "未知";
+}
+
+function pathClass(path?: string) {
+  if (path === "p2p") return "p2p";
+  if (path === "relay") return "relay";
+  if (path === "visitor_p2p") return "visitor-p2p";
+  if (path === "visitor_relay") return "visitor-relay";
+  return "unknown";
 }
 
 function formatRate(value: number) {

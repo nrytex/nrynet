@@ -26,18 +26,19 @@ type Token struct {
 }
 
 type Tunnel struct {
-	ID          string    `json:"id"`
-	ClientID    string    `json:"client_id"`
-	Name        string    `json:"name"`
-	Protocol    string    `json:"protocol"`
-	LocalHost   string    `json:"local_host"`
-	LocalPort   int       `json:"local_port"`
-	RemotePort  int       `json:"remote_port"`
-	Domain      string    `json:"domain"`
-	Status      string    `json:"status"`
-	IPAllowlist []string  `json:"ip_allowlist"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	ClientID     string    `json:"client_id"`
+	Name         string    `json:"name"`
+	Protocol     string    `json:"protocol"`
+	VisitorToken string    `json:"visitor_token,omitempty"`
+	LocalHost    string    `json:"local_host"`
+	LocalPort    int       `json:"local_port"`
+	RemotePort   int       `json:"remote_port"`
+	Domain       string    `json:"domain"`
+	Status       string    `json:"status"`
+	IPAllowlist  []string  `json:"ip_allowlist"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type Traffic struct {

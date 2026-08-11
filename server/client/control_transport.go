@@ -26,12 +26,19 @@ func (c *websocketControl) ReadJSON(value any) error {
 func (c *websocketControl) WriteJSON(value any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.ws.WriteJSON(value)
+	// A blocked browser/Agent must not pin every visitor goroutine that is
+	// waiting to send an OpenConnection command. The deadline is per write and
+	// is cleared after a successful frame so idle sessions remain long-lived.
+	_ = c.ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	err := c.ws.WriteJSON(value)
+	_ = c.ws.SetWriteDeadline(time.Time{})
+	return err
 }
 
 func (c *websocketControl) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	// Gorilla permits Close to run concurrently with reads and writes. Do not
+	// wait behind a potentially blocked WriteJSON call when tearing down a
+	// stale control session.
 	return c.ws.Close()
 }
 

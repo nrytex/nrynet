@@ -26,7 +26,8 @@ var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS tunnels (
         id TEXT PRIMARY KEY, client_id TEXT NOT NULL, name TEXT NOT NULL,
         protocol TEXT NOT NULL, local_host TEXT NOT NULL, local_port INTEGER NOT NULL,
-        remote_port INTEGER NOT NULL DEFAULT 0, domain TEXT NOT NULL DEFAULT '',
+		remote_port INTEGER NOT NULL DEFAULT 0, domain TEXT NOT NULL DEFAULT '',
+		visitor_token TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL, ip_allowlist TEXT NOT NULL DEFAULT '[]',
         created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL,
         FOREIGN KEY(client_id) REFERENCES clients(id)

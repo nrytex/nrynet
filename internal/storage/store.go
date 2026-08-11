@@ -49,7 +49,36 @@ func (s *Store) migrate(ctx context.Context) error {
 			return fmt.Errorf("database migration: %w", err)
 		}
 	}
+	if err := ensureVisitorTokenColumn(ctx, tx); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+func ensureVisitorTokenColumn(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, "PRAGMA table_info(tunnels)")
+	if err != nil {
+		return fmt.Errorf("inspect tunnels schema: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notNull, primaryKey int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return fmt.Errorf("read tunnels schema: %w", err)
+		}
+		if name == "visitor_token" {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read tunnels schema: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "ALTER TABLE tunnels ADD COLUMN visitor_token TEXT NOT NULL DEFAULT ''"); err != nil {
+		return fmt.Errorf("migrate visitor token: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) GetSetting(ctx context.Context, key string) (string, error) {

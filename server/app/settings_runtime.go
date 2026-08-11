@@ -15,6 +15,7 @@ import (
 
 func safeSettings(cfg config.Config) []api.SettingItem {
 	return []api.SettingItem{
+		{Key: "server.p2p_enabled", Value: cfg.Server.P2PEnabled, Description: "启用 UDP 打洞和 TCP/P2P 直连，失败后自动使用 Relay；立即生效", Mutable: true},
 		{Key: "server.plain_enabled", Value: cfg.Server.PlainEnabled, Description: "是否启用额外的兼容 HTTP、WS 和明文 TCP 监听；热更新", Mutable: true},
 		{Key: "server.listen", Value: cfg.Server.Listen, Description: "主 HTTP/WS 与 HTTPS/WSS 同端口监听地址；端口修改需重启", Mutable: true},
 		{Key: "server.plain_listen", Value: cfg.Server.PlainListen, Description: "额外兼容 HTTP/WS 地址；开启兼容访问时与数据地址同时生效", Mutable: true},
@@ -79,6 +80,14 @@ func applyStoredSettings(ctx context.Context, store *storage.Store, cfg *config.
 	cfg.Server.HeartbeatTimeout = duration
 	if value, err := store.GetSetting(ctx, "config.server.plain_enabled"); err == nil {
 		cfg.Server.PlainEnabled, err = strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if value, err := store.GetSetting(ctx, "config.server.p2p_enabled"); err == nil {
+		cfg.Server.P2PEnabled, err = strconv.ParseBool(value)
 		if err != nil {
 			return err
 		}

@@ -158,6 +158,42 @@ func TestHubDisconnectMarksClientOffline(t *testing.T) {
 	}
 }
 
+func TestHubTimeoutClosesClientTransport(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store, authService := newHubStore(t)
+	_, cleartext, err := authService.CreateAgentToken(context.Background(), "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := NewHub(store, authService, 50*time.Millisecond)
+	server := httptest.NewServer(routerWithHub(hub))
+	defer server.Close()
+
+	ws := dialHub(t, server.URL, cleartext)
+	defer ws.Close()
+	writeHello(t, ws, "timeout-device")
+	expectMessageType(t, ws, protocol.TypeTunnelSnapshot)
+	client, err := store.GetClientByDevice(context.Background(), "timeout-device")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = ws.SetReadDeadline(time.Now().Add(time.Second))
+	var message protocol.ControlMessage
+	if err := ws.ReadJSON(&message); err == nil {
+		t.Fatal("server heartbeat timeout left the control transport open")
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		current, getErr := store.GetClient(context.Background(), client.ID)
+		if getErr == nil && current.Status == "offline" && hub.OnlineCount() == 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	current, _ := store.GetClient(context.Background(), client.ID)
+	t.Fatalf("timeout left stale online state: client=%+v online=%d", current, hub.OnlineCount())
+}
+
 func TestHubTokenRotationRejectsOldTokenAndAcceptsNewToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store, authService := newHubStore(t)

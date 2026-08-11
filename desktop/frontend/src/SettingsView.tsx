@@ -65,7 +65,7 @@ function NavItem({ icon, label, active, onClick }: { icon: ReactNode; label: str
 function GeneralPanel() {
   return <div className="settings-group">
     <SwitchRow title="开机启动" detail="系统启动时自动运行 Nrynet" name="autoStart" />
-    <div className="switch-row"><div><strong>自动更新</strong><span>每 6 小时检查一次 GitHub 正式版本</span></div><Switch checked disabled /></div>
+    <div className="switch-row"><div><strong>自动更新</strong><span>后台自动检查，发现新版本时在首页提示</span></div><Switch checked disabled /></div>
   </div>;
 }
 

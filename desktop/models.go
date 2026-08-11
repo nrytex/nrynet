@@ -75,15 +75,20 @@ type LogEntry struct {
 }
 
 type UpdateResult struct {
-	Started bool   `json:"started"`
-	Message string `json:"message"`
+	Checked       bool   `json:"checked"`
+	Available     bool   `json:"available"`
+	LatestVersion string `json:"latestVersion"`
+	DownloadURL   string `json:"downloadURL"`
+	Message       string `json:"message"`
 }
 
 type DesktopSnapshot struct {
-	Config  AppConfig      `json:"config"`
-	Status  RuntimeStatus  `json:"status"`
-	Tunnels []model.Tunnel `json:"tunnels"`
-	Logs    []LogEntry     `json:"logs"`
+	Config      AppConfig         `json:"config"`
+	Status      RuntimeStatus     `json:"status"`
+	Tunnels     []model.Tunnel    `json:"tunnels"`
+	TunnelPaths map[string]string `json:"tunnelPaths"`
+	Logs        []LogEntry        `json:"logs"`
+	Update      *UpdateResult     `json:"update,omitempty"`
 }
 
 func (c AppConfig) toClientConfig() config.ClientConfig {

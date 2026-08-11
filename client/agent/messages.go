@@ -37,6 +37,19 @@ func (a *Agent) handleTunnelSnapshot(message protocol.ControlMessage) error {
 	return nil
 }
 
+func (a *Agent) handleTunnelPath(message protocol.ControlMessage) error {
+	payload, err := protocol.DecodePayload[protocol.TunnelPathPayload](message)
+	if err != nil {
+		return err
+	}
+	if message.TunnelID == "" || payload.Path == "" {
+		return fmt.Errorf("tunnel path is missing tunnel_id or path")
+	}
+	a.notifyTunnelPath(message.TunnelID, payload.Path)
+	a.logger.Debug("received tunnel path", "tunnel_id", message.TunnelID, "path", payload.Path)
+	return nil
+}
+
 func sleep(ctx context.Context, duration time.Duration) {
 	timer := time.NewTimer(duration)
 	defer timer.Stop()

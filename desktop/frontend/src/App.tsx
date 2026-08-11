@@ -101,10 +101,25 @@ function DesktopApp() {
   const checkUpdate = async () => {
     try {
       const result = await DesktopService.CheckForUpdate();
-      message.success(result.message);
+      if (result.available && result.downloadURL) {
+        message.info(result.message);
+      } else {
+        message.success(result.message);
+      }
+      await refresh();
     } catch (error) {
       if (import.meta.env.DEV) message.info("当前已是最新版本");
       else showError(error, "update");
+    }
+  };
+
+  const openUpdateDownload = async () => {
+    const url = snapshot?.update?.downloadURL;
+    if (!url) return;
+    try {
+      await DesktopService.OpenURL(url);
+    } catch (error) {
+      showError(error, "update");
     }
   };
 
@@ -121,12 +136,15 @@ function DesktopApp() {
     />;
   }
   if (view.name === "tunnel" && selectedTunnel) {
-    return <TunnelDetailView tunnel={selectedTunnel} status={status} publicHost={tunnelPublicHost(config)} onBack={() => setView({ name: "home" })} />;
+    return <TunnelDetailView tunnel={selectedTunnel} status={status} path={snapshot?.tunnelPaths?.[selectedTunnel.id]} publicHost={tunnelPublicHost(config)} serverUrl={config.serverUrl} onBack={() => setView({ name: "home" })} />;
   }
   return <HomeView
     snapshot={snapshot} loading={loading}
+    updateNotice={snapshot?.update}
+    onOpenUpdate={openUpdateDownload}
     onConnect={() => runConnectionAction("connect")} onDisconnect={() => runConnectionAction("disconnect")}
     onSettings={(section = "general") => setView({ name: "settings", section })}
     onTunnel={(tunnelId) => setView({ name: "tunnel", tunnelId })}
+    serverUrl={config.serverUrl}
   />;
 }

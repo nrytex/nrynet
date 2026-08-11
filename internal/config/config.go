@@ -42,6 +42,8 @@ type ServerConfig struct {
 	PublicQUICAddress string              `yaml:"public_quic_address"`
 	RendezvousListen  string              `yaml:"rendezvous_listen"`
 	PublicRendezvous  string              `yaml:"public_rendezvous_address"`
+	P2PEnabled        bool                `yaml:"p2p_enabled"`
+	WebRTCICEServers  []string            `yaml:"webrtc_ice_servers"`
 	RelayAPIToken     string              `yaml:"relay_api_token"`
 	HTTPListen        string              `yaml:"http_listen"`
 	Database          string              `yaml:"database"`
@@ -103,7 +105,9 @@ func defaults() Config {
 		PublicDataAddress: "127.0.0.1:7001", HTTPListen: "127.0.0.1:8080",
 		QUICListen: "127.0.0.1:7002", PublicQUICAddress: "127.0.0.1:7002",
 		RendezvousListen: "127.0.0.1:7003", PublicRendezvous: "127.0.0.1:7003",
-		Database: "data/nrynet.db", LogDirectory: "logs",
+		P2PEnabled:       true,
+		WebRTCICEServers: []string{"stun:stun.l.google.com:19302"},
+		Database:         "data/nrynet.db", LogDirectory: "logs",
 		JWTTTLText: "12h", HeartbeatText: "45s",
 		Bootstrap: BootstrapConfig{AdminUsername: "admin"},
 	}}

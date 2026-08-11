@@ -20,6 +20,8 @@ var (
 	errRequestNotFound  = errors.New("request is not pending")
 )
 
+const dataHandshakeTimeout = 10 * time.Second
+
 type CompleteFunc func(upload, download int64)
 
 type Broker struct {
@@ -135,12 +137,14 @@ func (b *Broker) RegisterPending(
 }
 
 func (b *Broker) handleDataConn(conn net.Conn) {
+	_ = conn.SetReadDeadline(time.Now().Add(dataHandshakeTimeout))
 	dataConn, initial, err := readInitialHandshake(conn)
 	if err != nil {
 		b.recordRejected("data handshake rejected", err)
 		_ = conn.Close()
 		return
 	}
+	_ = conn.SetReadDeadline(time.Time{})
 	if initial.Role == "relay_visitor" {
 		b.handleRelayVisitor(dataConn, initial)
 		return
@@ -177,7 +181,7 @@ func (b *Broker) recordRejected(message string, err error) {
 	})
 }
 
-func (b *Broker) HandleAuthenticatedStream(stream dataStream, handshake protocol.DataHandshake, tokenID string) {
+func (b *Broker) HandleAuthenticatedStream(stream DataStream, handshake protocol.DataHandshake, tokenID string) {
 	pending, err := b.claimAuthenticatedPending(tokenID, handshake.DeviceID, handshake.RequestID)
 	if err != nil {
 		_ = stream.Close()

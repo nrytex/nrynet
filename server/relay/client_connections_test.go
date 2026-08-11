@@ -2,6 +2,7 @@ package relay
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 	"time"
@@ -37,6 +38,33 @@ func TestBrokerDisconnectClientClosesActiveStream(t *testing.T) {
 	}
 	_ = dataConn.Close()
 	_ = visitorPeer.Close()
+}
+
+func TestBrokerDisconnectClientCancelsPendingVisitor(t *testing.T) {
+	store, authService, _, clientID := newBrokerStore(t)
+	broker := NewBroker(authService, store, time.Second)
+	visitorPeer, visitorBroker := net.Pipe()
+	defer visitorPeer.Close()
+	pending, err := broker.RegisterPending("pending-disconnect", visitorBroker,
+		model.Tunnel{ID: "tun", ClientID: clientID}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- broker.Wait("pending-disconnect", pending) }()
+
+	broker.DisconnectClient(clientID)
+	select {
+	case err := <-done:
+		if !errors.Is(err, errClientDisconnected) {
+			t.Fatalf("pending visitor ended with %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pending visitor was not cancelled on client disconnect")
+	}
+	if _, err := visitorPeer.Write([]byte("closed")); err == nil {
+		t.Fatal("pending visitor connection remained open")
+	}
 }
 
 func TestBrokerRejectsWrongTokenForAuthenticatedQUICStream(t *testing.T) {
