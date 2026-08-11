@@ -140,7 +140,7 @@ function DesktopApp() {
   }
   return <HomeView
     snapshot={snapshot} loading={loading}
-    updateNotice={snapshot?.update}
+    updateNotice={snapshot?.update ?? undefined}
     onOpenUpdate={openUpdateDownload}
     onConnect={() => runConnectionAction("connect")} onDisconnect={() => runConnectionAction("disconnect")}
     onSettings={(section = "general") => setView({ name: "settings", section })}

@@ -37,7 +37,7 @@ export interface DesktopSnapshot {
     "tunnels": model$0.Tunnel[] | null;
     "tunnelPaths": { [_ in string]?: string } | null;
     "logs": LogEntry[] | null;
-    "update"?: UpdateResult;
+    "update"?: UpdateResult | null;
 }
 
 export interface LogEntry {

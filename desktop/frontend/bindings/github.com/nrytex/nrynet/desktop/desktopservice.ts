@@ -26,7 +26,7 @@ export function HideWindow(): $CancellablePromise<void> {
 }
 
 export function OpenURL(url: string): $CancellablePromise<void> {
-    return $Call.ByID(4242552001, url);
+    return $Call.ByID(3613445466, url);
 }
 
 export function Quit(): $CancellablePromise<void> {
