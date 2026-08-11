@@ -110,7 +110,9 @@ func New(ctx context.Context, cfg config.Config) (*App, auth.BootstrapResult, er
 		Transport: transport,
 	})
 	router.GET("/agent/connect", hub.Handle)
+	router.GET("/visitor/:id/:token/", visitorService.RedirectTrailingPage)
 	router.GET("/visitor/:id/:token", visitorService.ServePage)
+	router.GET("/visitor/:id/:token/sw.js", visitorService.ServeWorker)
 	router.GET("/visitor/webrtc/:id/:token", visitorService.ServeSignal)
 	dashboardHandler := dashboard.Handler()
 	router.NoRoute(func(c *gin.Context) {

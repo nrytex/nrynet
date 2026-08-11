@@ -70,10 +70,13 @@ func (s *Service) ServePage(c *gin.Context) {
 	if !ok {
 		return
 	}
+	scopeURL := fmt.Sprintf("/visitor/%s/%s/", c.Param("id"), c.Param("token"))
 	page, err := renderPage(pageConfig{
 		TunnelName: tunnel.Name,
 		SignalURL:  signalURL(c.Request, tunnel.ID, tunnel.VisitorToken),
 		ICEServers: s.iceServers,
+		ScopeURL:   scopeURL,
+		WorkerURL:  scopeURL + "sw.js",
 	})
 	if err != nil {
 		c.String(http.StatusInternalServerError, "visitor page unavailable")
@@ -81,6 +84,20 @@ func (s *Service) ServePage(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "no-store")
 	c.Data(http.StatusOK, "text/html; charset=utf-8", page)
+}
+
+func (s *Service) RedirectTrailingPage(c *gin.Context) {
+	c.Redirect(http.StatusPermanentRedirect, fmt.Sprintf("/visitor/%s/%s", c.Param("id"), c.Param("token")))
+}
+
+func (s *Service) ServeWorker(c *gin.Context) {
+	if _, ok := s.loadTunnel(c); !ok {
+		return
+	}
+	scopeURL := fmt.Sprintf("/visitor/%s/%s/", c.Param("id"), c.Param("token"))
+	c.Header("Cache-Control", "no-store")
+	c.Header("Service-Worker-Allowed", scopeURL)
+	c.Data(http.StatusOK, "application/javascript; charset=utf-8", []byte(visitorServiceWorker))
 }
 
 func (s *Service) ServeSignal(c *gin.Context) {

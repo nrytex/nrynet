@@ -117,10 +117,14 @@ func (a *Agent) bindVisitorDataChannel(
 	localPort int,
 	closePeer func(),
 ) {
+	dataSession := newVisitorDataSession(a)
 	channel.OnMessage(func(message webrtc.DataChannelMessage) {
-		go a.handleVisitorDataMessage(ctx, channel, localHost, localPort, message.Data)
+		dataSession.handle(ctx, channel, localHost, localPort, message.Data)
 	})
-	channel.OnClose(closePeer)
+	channel.OnClose(func() {
+		dataSession.close()
+		closePeer()
+	})
 }
 
 func (a *Agent) sendVisitorSignalError(

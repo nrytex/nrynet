@@ -26,8 +26,10 @@ and macOS.
 
 `visitor_webrtc` tunnels publish a capability URL such as
 `https://server.example/visitor/<tunnel-id>/<visitor-token>`. A browser opens
-that page, negotiates a WebRTC DataChannel directly with the Agent, and sends
-HTTP requests to the Agent's local service. The Server only authenticates and
+that page, negotiates a WebRTC DataChannel directly with the Agent, and loads
+the Agent's local web application, including HTML, CSS, JavaScript, images,
+and API requests. A single reliable channel multiplexes and streams the
+browser's HTTP requests and responses. The Server only authenticates and
 relays SDP/ICE signaling; it does not carry the request or response bytes.
 This mode is for browser-based HTTP access, not transparent `curl`, SSH, or
 arbitrary TCP clients.

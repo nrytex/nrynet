@@ -20,8 +20,10 @@ The example configuration exposes these server listeners:
 
 `visitor_webrtc` does not allocate a public TCP port. Its visitor URL is served
 on the control/Dashboard listener. The browser uses that page for signaling and
-then sends HTTP request messages over a direct WebRTC DataChannel to the Agent;
-only signaling crosses the Server after the peer connection is established.
+then loads the complete local web application over a multiplexed, streaming
+WebRTC DataChannel to the Agent. HTML, CSS, JavaScript, images, and API calls
+use the direct channel; only signaling crosses the Server after the peer
+connection is established.
 
 ## Distributed relay nodes
 

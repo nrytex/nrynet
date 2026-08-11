@@ -100,7 +100,7 @@ function TunnelEditor(props: { tunnel: Tunnel | null; clients: Client[]; autoSub
             <Select options={tunnelProtocols.map((value) => ({ value, label: value === "p2p" ? "P2P" : value === "visitor_webrtc" ? "访客 WebRTC" : value.toUpperCase() }))} />
           </Form.Item>
           {protocol === "p2p" && <Alert style={{ gridColumn: "1 / -1" }} type="info" showIcon message="P2P 优先通过公网 UDP 打洞直连 Agent，失败后自动回退 Relay。" />}
-          {protocol === "visitor_webrtc" && <Alert style={{ gridColumn: "1 / -1" }} type="info" showIcon message="浏览器打开访客地址后，通过 WebRTC DataChannel 直连 Agent，再访问 Agent 所在机器的本地 HTTP 服务。" />}
+          {protocol === "visitor_webrtc" && <Alert style={{ gridColumn: "1 / -1" }} type="info" showIcon message="浏览器打开访客地址后，通过 WebRTC DataChannel 直连 Agent，加载本地完整网页及其资源和 API 请求。" />}
           <Form.Item name="status" label="状态"><Select options={["stopped", "running"].map((v) => ({ value: v, label: statusText(v) }))} /></Form.Item>
           <Form.Item name="local_host" label="本地地址" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="local_port" label="本地端口" rules={[{ required: true }]}><InputNumber min={1} max={65535} className="full-width" /></Form.Item>

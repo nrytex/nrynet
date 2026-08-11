@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,11 +20,12 @@ import (
 )
 
 func TestVisitorWebRTCBridgesDataChannelToLocalHTTP(t *testing.T) {
+	wantBody := strings.Repeat("hello from agent ", 5000)
 	local := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/hello" {
 			t.Fatalf("path=%q", request.URL.Path)
 		}
-		_, _ = writer.Write([]byte("hello from agent"))
+		_, _ = writer.Write([]byte(wantBody))
 	}))
 	defer local.Close()
 	host, port := splitTestAddress(t, local.Listener.Addr().String())
@@ -38,7 +41,7 @@ func TestVisitorWebRTCBridgesDataChannelToLocalHTTP(t *testing.T) {
 	}
 	opened := make(chan struct{})
 	channel.OnOpen(func() { close(opened) })
-	responses := make(chan protocol.VisitorWebRTCDataMessage, 1)
+	responses := make(chan protocol.VisitorWebRTCDataMessage, 8)
 	channel.OnMessage(func(message webrtc.DataChannelMessage) {
 		var response protocol.VisitorWebRTCDataMessage
 		if err := json.Unmarshal(message.Data, &response); err == nil {
@@ -83,17 +86,38 @@ func TestVisitorWebRTCBridgesDataChannelToLocalHTTP(t *testing.T) {
 	}
 	waitChannelOpen(t, opened)
 
-	request, _ := json.Marshal(protocol.VisitorWebRTCDataMessage{Kind: "request", ID: "1", Method: http.MethodGet, Path: "/hello"})
-	if err := channel.SendText(string(request)); err != nil {
-		t.Fatal(err)
+	for _, request := range []protocol.VisitorWebRTCDataMessage{
+		{Kind: "request_start", ID: "1", Method: http.MethodGet, Path: "/hello"},
+		{Kind: "request_end", ID: "1"},
+	} {
+		data, _ := json.Marshal(request)
+		if err := channel.SendText(string(data)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	response := waitVisitorResponse(t, responses)
-	if response.Error != "" || response.Status != http.StatusOK {
+	if response.Kind != "response_start" || response.Error != "" || response.Status != http.StatusOK {
 		t.Fatalf("response=%+v", response)
 	}
-	body, err := base64.StdEncoding.DecodeString(response.Body)
-	if err != nil || string(body) != "hello from agent" {
-		t.Fatalf("body=%q err=%v", body, err)
+	var body bytes.Buffer
+	for {
+		response = waitVisitorResponse(t, responses)
+		if response.Error != "" {
+			t.Fatal(response.Error)
+		}
+		if response.Kind == "response_chunk" {
+			chunk, decodeErr := base64.StdEncoding.DecodeString(response.Body)
+			if decodeErr != nil {
+				t.Fatal(decodeErr)
+			}
+			_, _ = body.Write(chunk)
+		}
+		if response.Kind == "response_end" {
+			break
+		}
+	}
+	if body.String() != wantBody {
+		t.Fatalf("body length=%d want=%d", body.Len(), len(wantBody))
 	}
 	_ = channel.Close()
 	select {
