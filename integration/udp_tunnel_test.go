@@ -36,13 +36,7 @@ func TestUDPTunnelEndToEnd(t *testing.T) {
 	defer visitor.Close()
 	assertUDPEcho(t, visitor, "first-packet")
 	assertUDPEcho(t, visitor, "second-packet")
-	summary, err := env.store.TrafficSummary(env.ctx, time.Now().Add(-time.Minute))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if summary.Upload == 0 || summary.Download == 0 {
-		t.Fatalf("udp traffic was not recorded: %#v", summary)
-	}
+	waitForTrafficDirections(t, env.store)
 	assertEventRecorded(t, env.store, "p2p.fallback")
 }
 

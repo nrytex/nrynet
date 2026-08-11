@@ -92,6 +92,19 @@ func waitForTraffic(t *testing.T, store *storage.Store, minimum int64) {
 	t.Fatal("relay traffic was not persisted")
 }
 
+func waitForTrafficDirections(t *testing.T, store *storage.Store) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		summary, err := store.TrafficSummary(context.Background(), time.Now().Add(-time.Hour))
+		if err == nil && summary.Upload > 0 && summary.Download > 0 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("relay traffic directions were not persisted")
+}
+
 func testServices(t *testing.T) (*storage.Store, *auth.Service) {
 	t.Helper()
 	directory, err := os.MkdirTemp("", "nrynet-integration-")
