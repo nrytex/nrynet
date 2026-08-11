@@ -24,7 +24,7 @@ func TestMainTransportTogglesTLSWithoutRestart(t *testing.T) {
 	cfg.Server.PlainEnabled = false
 	cfg.Server.TLS.Enabled = false
 
-	application, _, err := New(ctx, cfg)
+	application, _, err := newTestApp(t, ctx, &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestMainTransportReloadsCertificateWithoutRestart(t *testing.T) {
 	cfg := dualTransportConfig(t, certFile, keyFile)
 	cfg.Server.PlainEnabled = false
 
-	application, _, err := New(ctx, cfg)
+	application, _, err := newTestApp(t, ctx, &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestControllerRejectsTLSEnableWithoutCertificate(t *testing.T) {
 	cfg.Server.TLS.CertFile = ""
 	cfg.Server.TLS.KeyFile = ""
 
-	application, _, err := New(ctx, cfg)
+	application, _, err := newTestApp(t, ctx, &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestPlainHotDisableFromPlainRequestReturnsAndKeepsAppRunning(t *testing.T) 
 	cfg := dualTransportConfig(t, certFile, keyFile)
 	cfg.Server.TLS.Enabled = false
 
-	application, _, err := New(ctx, cfg)
+	application, _, err := newTestApp(t, ctx, &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

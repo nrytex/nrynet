@@ -4,13 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	netx "github.com/nrytex/nrynet/internal/advanced"
+	"github.com/nrytex/nrynet/internal/auth"
 	"github.com/nrytex/nrynet/internal/config"
 	relayruntime "github.com/nrytex/nrynet/relay/runtime"
 )
@@ -18,7 +22,7 @@ import (
 func TestAppStartsRendezvousAndRelayAPI(t *testing.T) {
 	ctx := context.Background()
 	cfg := advancedTestConfig(t)
-	app, bootstrap, err := New(ctx, cfg)
+	app, bootstrap, err := newTestApp(t, ctx, &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,6 +166,46 @@ func jsonRequest(t *testing.T, method, url string, value any) *http.Request {
 	}
 	request.Header.Set("Content-Type", "application/json")
 	return request
+}
+
+func newTestApp(t *testing.T, ctx context.Context, cfg *config.Config) (*App, auth.BootstrapResult, error) {
+	t.Helper()
+	const maxAttempts = 5
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		app, bootstrap, err := New(ctx, *cfg)
+		if err == nil {
+			return app, bootstrap, nil
+		}
+		if !addressInUseError(err) || attempt == maxAttempts-1 {
+			return nil, auth.BootstrapResult{}, err
+		}
+		refreshTestListenerAddresses(t, cfg)
+	}
+	panic("unreachable")
+}
+
+func addressInUseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return errors.Is(err, syscall.EADDRINUSE) || strings.Contains(message, "address already in use") || strings.Contains(message, "only one usage")
+}
+
+func refreshTestListenerAddresses(t *testing.T, cfg *config.Config) {
+	for _, address := range []*string{
+		&cfg.Server.Listen, &cfg.Server.PlainListen, &cfg.Server.DataListen,
+		&cfg.Server.PlainDataListen, &cfg.Server.HTTPListen,
+	} {
+		if strings.TrimSpace(*address) != "" {
+			*address = RendezvousFreeTCP(t)
+		}
+	}
+	for _, address := range []*string{&cfg.Server.QUICListen, &cfg.Server.RendezvousListen} {
+		if strings.TrimSpace(*address) != "" {
+			*address = RendezvousFreeUDP(t)
+		}
+	}
 }
 
 func RendezvousFreeTCP(t *testing.T) string {

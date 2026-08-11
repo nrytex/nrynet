@@ -19,7 +19,7 @@ func TestCertificateQueueAndSuccessHotEnableTLS(t *testing.T) {
 	cfg.Server.TLS.Enabled = false
 	cfg.Server.TLS.CertFile = ""
 	cfg.Server.TLS.KeyFile = ""
-	application, _, err := New(ctx, cfg)
+	application, _, err := newTestApp(t, ctx, &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestDisabledTLSStaysDisabledAcrossOldCertbotStatus(t *testing.T) {
 	ctx := context.Background()
 	certFile, keyFile, _ := writeTLSPair(t)
 	cfg := dualTransportConfig(t, certFile, keyFile)
-	application, _, err := New(ctx, cfg)
+	application, _, err := newTestApp(t, ctx, &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

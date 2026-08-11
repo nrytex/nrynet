@@ -26,7 +26,7 @@ func TestPlaintextDisabledDoesNotBindConfiguredPorts(t *testing.T) {
 	cfg.Server.PlainEnabled = false
 	plainListen := cfg.Server.PlainListen
 	plainDataListen := cfg.Server.PlainDataListen
-	application, _, err := New(context.Background(), cfg)
+	application, _, err := newTestApp(t, context.Background(), &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestStoredPlainEnabledControlsNextStartup(t *testing.T) {
 	cfg := dualTransportConfig(t, certFile, keyFile)
 	cfg.Server.PlainEnabled = false
 	persistAppSetting(t, cfg.Server.Database, "config.server.plain_enabled", "true")
-	application, _, err := New(context.Background(), cfg)
+	application, _, err := newTestApp(t, context.Background(), &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestStoredPlainDisabledControlsNextStartup(t *testing.T) {
 	certFile, keyFile, _ := writeTLSPair(t)
 	cfg := dualTransportConfig(t, certFile, keyFile)
 	persistAppSetting(t, cfg.Server.Database, "config.server.plain_enabled", "false")
-	application, _, err := New(context.Background(), cfg)
+	application, _, err := newTestApp(t, context.Background(), &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

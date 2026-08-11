@@ -88,7 +88,7 @@ func TestTransportControllerUpdatesAutoSubdomainSettings(t *testing.T) {
 	ctx := context.Background()
 	certFile, keyFile, _ := writeTLSPair(t)
 	cfg := dualTransportConfig(t, certFile, keyFile)
-	application, _, err := New(ctx, cfg)
+	application, _, err := newTestApp(t, ctx, &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestTransportControllerRejectsEnabledAutoSubdomainWithoutBase(t *testing.T)
 	ctx := context.Background()
 	certFile, keyFile, _ := writeTLSPair(t)
 	cfg := dualTransportConfig(t, certFile, keyFile)
-	application, _, err := New(ctx, cfg)
+	application, _, err := newTestApp(t, ctx, &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

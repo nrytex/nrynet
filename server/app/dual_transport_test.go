@@ -31,7 +31,7 @@ func TestAppServesWSPlainDataAndWSSTLSDataTogether(t *testing.T) {
 	certFile, keyFile, pin := writeTLSPair(t)
 	cfg := dualTransportConfig(t, certFile, keyFile)
 	cfg.Server.PlainEnabled = false
-	application, _, err := New(ctx, cfg)
+	application, _, err := newTestApp(t, ctx, &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestShutdownReleasesPlaintextPorts(t *testing.T) {
 	defer cancel()
 	certFile, keyFile, _ := writeTLSPair(t)
 	cfg := dualTransportConfig(t, certFile, keyFile)
-	application, _, err := New(ctx, cfg)
+	application, _, err := newTestApp(t, ctx, &cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
