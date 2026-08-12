@@ -64,6 +64,66 @@ func TestPunchHandshakeWaitsForReciprocalAcknowledgement(t *testing.T) {
 	}
 }
 
+func TestPunchHandshakeWaitsForPeerReady(t *testing.T) {
+	left := listenUDP(t)
+	right := listenUDP(t)
+	defer left.Close()
+	defer right.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	result := make(chan error, 1)
+	go func() {
+		result <- PunchHandshake(ctx, left, endpointFromAddr(right.LocalAddr()), "left")
+	}()
+
+	buffer := make([]byte, 1024)
+	peer := left.LocalAddr()
+	readySeen := false
+	for {
+		_ = right.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		n, _, err := right.ReadFrom(buffer)
+		if err != nil {
+			if isTimeout(err) {
+				continue
+			}
+			t.Fatal(err)
+		}
+		packet, err := decodePacket(buffer[:n])
+		if err != nil {
+			continue
+		}
+		switch packet.Type {
+		case PacketPunch:
+			if err := writePacket(right, peer, RendezvousPacket{Type: PacketPunch, PeerID: "right"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := writePacket(right, peer, RendezvousPacket{Type: PacketPunchAck, PeerID: "right"}); err != nil {
+				t.Fatal(err)
+			}
+		case PacketReady:
+			readySeen = true
+			if err := writePacket(right, peer, RendezvousPacket{Type: PacketReady, PeerID: "right"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := writePacket(right, peer, RendezvousPacket{Type: PacketReadyAck, PeerID: "right"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if readySeen {
+			if err := <-result; err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		select {
+		case err := <-result:
+			t.Fatalf("punch handshake completed before ready exchange: %v", err)
+		default:
+		}
+	}
+}
+
 func TestRendezvousCapsUnmatchedRegistrations(t *testing.T) {
 	conn := listenUDP(t)
 	defer conn.Close()

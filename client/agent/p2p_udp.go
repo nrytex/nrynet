@@ -159,7 +159,8 @@ func isP2PControlPacket(data []byte) bool {
 	if err := json.Unmarshal(data, &packet); err != nil {
 		return false
 	}
-	return packet.Type == netx.PacketPunch || packet.Type == netx.PacketPunchAck
+	return packet.Type == netx.PacketPunch || packet.Type == netx.PacketPunchAck ||
+		packet.Type == netx.PacketReady || packet.Type == netx.PacketReadyAck
 }
 
 func roundTripLocalUDP(local net.Conn, data []byte) ([]byte, error) {

@@ -8,7 +8,10 @@ tasks:
     # two `go mod tidy` processes racing on go.mod can corrupt it (#4637).
     run: once
     cmds:
-      - go mod tidy
+      # The desktop frontend's node_modules tree contains package names with
+      # @version suffixes that Go 1.25 may scan as import paths. Keep module
+      # cleanup scoped to Go source instead of traversing frontend artifacts.
+      - go mod tidy -e
 
   install:frontend:deps:
     summary: Install frontend dependencies

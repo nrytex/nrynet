@@ -24,7 +24,6 @@ jobs:
           cache-dependency-path: |
             web/dashboard/package-lock.json
             desktop/frontend/package-lock.json
-      - run: go test ./...
       - name: Validate server dashboard
         working-directory: web/dashboard
         run: npm ci && npm test && npm run build
@@ -53,6 +52,9 @@ jobs:
             $implicitReturns | Format-List
             throw "Guard clauses must use an explicit return status under set -e."
           }
+      - name: Run Go tests
+        shell: bash
+        run: go test ./... -count=1 -timeout=15m
 
   cli-bundles:
     needs: validate
@@ -135,6 +137,8 @@ jobs:
       - name: Build desktop application
         working-directory: desktop
         shell: bash
+        env:
+          GOWORK: "off"
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"

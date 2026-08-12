@@ -56,8 +56,10 @@ func Punch(
 	return ctx.Err()
 }
 
-// PunchHandshake completes only after both peers have received a punch.
-// This keeps the first application datagram out of the peer's punch reader.
+// PunchHandshake completes only after both peers have finished a two-phase
+// punch and ready exchange. The ready acknowledgement prevents one peer from
+// sending application data while the other is still consuming handshake
+// packets.
 func PunchHandshake(
 	ctx context.Context,
 	conn net.PacketConn,
@@ -69,47 +71,54 @@ func PunchHandshake(
 		return err
 	}
 	buffer := make([]byte, 1024)
+	peerPunchSeen := false
+	peerPunchAckSeen := false
+	peerReadySeen := false
+	peerReadyAckSeen := false
 	for ctx.Err() == nil {
-		if err := writePacket(conn, addr, punchPacket(selfID)); err != nil {
+		packet := punchPacket(selfID)
+		if peerPunchSeen && peerPunchAckSeen {
+			packet = RendezvousPacket{Type: PacketReady, PeerID: selfID}
+		}
+		if err := writePacket(conn, addr, packet); err != nil {
 			return err
 		}
-		acknowledged, err := awaitPunchAcknowledgement(ctx, conn, addr, buffer)
+		_ = conn.SetReadDeadline(time.Now().Add(20 * time.Millisecond))
+		n, source, err := conn.ReadFrom(buffer)
 		if err != nil {
+			if isTimeout(err) {
+				continue
+			}
 			return err
 		}
-		if acknowledged {
+		if !IsExpectedUDPPeer(source, addr) {
+			continue
+		}
+		packet, err = decodePacket(buffer[:n])
+		if err != nil {
+			continue
+		}
+		switch packet.Type {
+		case PacketPunch:
+			peerPunchSeen = true
+			if err := writePacket(conn, source, RendezvousPacket{Type: PacketPunchAck, PeerID: selfID}); err != nil {
+				return err
+			}
+		case PacketPunchAck:
+			peerPunchAckSeen = true
+		case PacketReady:
+			peerReadySeen = true
+			if err := writePacket(conn, source, RendezvousPacket{Type: PacketReadyAck, PeerID: selfID}); err != nil {
+				return err
+			}
+		case PacketReadyAck:
+			peerReadyAckSeen = true
+		}
+		if peerPunchSeen && peerPunchAckSeen && peerReadySeen && peerReadyAckSeen {
 			return nil
 		}
 	}
 	return ctx.Err()
-}
-
-func awaitPunchAcknowledgement(
-	ctx context.Context,
-	conn net.PacketConn,
-	peer *net.UDPAddr,
-	buffer []byte,
-) (bool, error) {
-	_ = conn.SetReadDeadline(time.Now().Add(20 * time.Millisecond))
-	n, source, err := conn.ReadFrom(buffer)
-	if err != nil {
-		if isTimeout(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	if !IsExpectedUDPPeer(source, peer) {
-		return false, nil
-	}
-	packet, err := decodePacket(buffer[:n])
-	if err != nil {
-		return false, nil
-	}
-	if packet.Type == PacketPunch {
-		_ = writePacket(conn, source, RendezvousPacket{Type: PacketPunchAck})
-		return false, nil
-	}
-	return packet.Type == PacketPunchAck, nil
 }
 
 func AwaitPunch(ctx context.Context, conn net.PacketConn) (Endpoint, error) {

@@ -11,6 +11,8 @@ const (
 	PacketPeer     = "peer"
 	PacketPunch    = "punch"
 	PacketPunchAck = "punch_ack"
+	PacketReady    = "ready"
+	PacketReadyAck = "ready_ack"
 )
 
 type Endpoint struct {
