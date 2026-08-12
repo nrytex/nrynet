@@ -272,3 +272,14 @@ func assertEventRecorded(t *testing.T, store *storage.Store, eventName string) {
 	}
 	t.Fatalf("event %s was not recorded", eventName)
 }
+
+func assertNoEventRecorded(t *testing.T, store *storage.Store, eventName string) {
+	t.Helper()
+	events, err := store.ListEvents(context.Background(), storage.EventFilter{Keyword: eventName})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("unexpected event %s: %+v", eventName, events)
+	}
+}

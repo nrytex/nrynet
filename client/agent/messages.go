@@ -9,22 +9,41 @@ import (
 )
 
 func (a *Agent) heartbeat(ctx context.Context, conn controlConn) error {
-	ticker := time.NewTicker(a.options.HeartbeatInterval)
+	interval := a.options.HeartbeatInterval
+	if interval <= 0 {
+		interval = defaultHeartbeatInterval
+	}
+	if err := a.sendHeartbeat(conn); err != nil {
+		return err
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			message, err := protocol.NewMessage(protocol.TypeHeartbeat, "", "", nil)
-			if err != nil {
+			if err := a.sendHeartbeat(conn); err != nil {
 				return err
-			}
-			if err := conn.writeJSON(message); err != nil {
-				return fmt.Errorf("send heartbeat: %w", err)
 			}
 		}
 	}
+}
+
+func (a *Agent) sendHeartbeat(conn controlConn) error {
+	message, err := protocol.NewMessage(protocol.TypeHeartbeat, "", "", nil)
+	if err != nil {
+		return err
+	}
+	if err := conn.writeJSON(message); err != nil {
+		return fmt.Errorf("send heartbeat: %w", err)
+	}
+	if pinger, ok := conn.(interface{ ping() error }); ok {
+		if err := pinger.ping(); err != nil {
+			return fmt.Errorf("send WebSocket ping: %w", err)
+		}
+	}
+	return nil
 }
 
 func (a *Agent) handleTunnelSnapshot(message protocol.ControlMessage) error {

@@ -194,6 +194,29 @@ func TestHubTimeoutClosesClientTransport(t *testing.T) {
 	t.Fatalf("timeout left stale online state: client=%+v online=%d", current, hub.OnlineCount())
 }
 
+func TestHubRefreshesWebSocketDeadlineAfterAgentPing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store, authService := newHubStore(t)
+	_, cleartext, err := authService.CreateAgentToken(context.Background(), "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub := NewHub(store, authService, 200*time.Millisecond)
+	server := httptest.NewServer(routerWithHub(hub))
+	defer server.Close()
+	ws := dialHub(t, server.URL, cleartext)
+	defer ws.Close()
+	writeHello(t, ws, "ping-device")
+	expectMessageType(t, ws, protocol.TypeTunnelSnapshot)
+	if err := ws.WriteControl(websocket.PingMessage, []byte("keepalive"), time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if err := ws.WriteJSON(protocol.ControlMessage{Type: protocol.TypeHeartbeat}); err != nil {
+		t.Fatalf("ping did not keep WebSocket alive: %v", err)
+	}
+}
+
 func TestHubTokenRotationRejectsOldTokenAndAcceptsNewToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store, authService := newHubStore(t)

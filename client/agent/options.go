@@ -11,7 +11,7 @@ import (
 	"github.com/nrytex/nrynet/internal/config"
 )
 
-const defaultHeartbeatInterval = 15 * time.Second
+const defaultHeartbeatInterval = 10 * time.Second
 
 type Options struct {
 	Config            config.ClientConfig
@@ -60,6 +60,22 @@ func (o Options) Validate() error {
 		return errors.New("client.device_id is required")
 	}
 	return nil
+}
+
+func normalizeOptions(options Options) Options {
+	if options.HeartbeatInterval <= 0 {
+		options.HeartbeatInterval = defaultHeartbeatInterval
+	}
+	if options.ReconnectMin <= 0 {
+		options.ReconnectMin = time.Second
+	}
+	if options.ReconnectMax < options.ReconnectMin {
+		options.ReconnectMax = 30 * time.Second
+		if options.ReconnectMax < options.ReconnectMin {
+			options.ReconnectMax = options.ReconnectMin
+		}
+	}
+	return options
 }
 
 func normalizeClientConfig(cfg config.ClientConfig) config.ClientConfig {

@@ -8,6 +8,7 @@ import (
 
 	netx "github.com/nrytex/nrynet/internal/advanced"
 	"github.com/nrytex/nrynet/internal/model"
+	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 type RelayBinder interface {
@@ -183,5 +184,6 @@ func (m *Manager) bindRelayTunnel(
 	m.mu.Lock()
 	m.relayBinds[tunnel.ID] = binding
 	m.mu.Unlock()
+	m.notifyTunnelPath(tunnel, protocol.TunnelPathRelay)
 	return true
 }

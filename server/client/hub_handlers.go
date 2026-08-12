@@ -18,6 +18,12 @@ func (h *Hub) SetVisitorWebRTCHandler(handler func(string, protocol.ControlMessa
 	h.visitorWebRTCHandler = handler
 }
 
+func (h *Hub) SetConnectHandler(handler func(string)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.connectHandler = handler
+}
+
 func (h *Hub) SetDisconnectHandler(handler func(string)) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

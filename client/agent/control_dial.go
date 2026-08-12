@@ -95,6 +95,11 @@ func (a *Agent) dialWebSocketControl(ctx context.Context) (controlConn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dial WebSocket control: %w", err)
 	}
+	logger := a.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Debug("WebSocket control connected", "server_url", a.options.Config.ServerURL)
 	return &websocketControl{conn: conn, agent: a}, nil
 }
 

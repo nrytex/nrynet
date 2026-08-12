@@ -45,6 +45,7 @@ func New(options Options, logger *slog.Logger) (*Agent, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	options = normalizeOptions(options)
 	if err := options.Validate(); err != nil {
 		return nil, err
 	}
@@ -52,7 +53,7 @@ func New(options Options, logger *slog.Logger) (*Agent, error) {
 }
 
 func (a *Agent) Run(ctx context.Context) error {
-	backoff := a.options.ReconnectMin
+	backoff := a.reconnectMin()
 	for ctx.Err() == nil {
 		err := a.runWorker("agent session", func() error { return a.runSession(ctx) })
 		if ctx.Err() != nil {
@@ -70,6 +71,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		backoff = nextBackoff(backoff, a.options.ReconnectMax)
 	}
 	return nil
+}
+
+func (a *Agent) reconnectMin() time.Duration {
+	if a.options.ReconnectMin > 0 {
+		return a.options.ReconnectMin
+	}
+	return time.Second
 }
 
 func (a *Agent) runSession(ctx context.Context) (sessionErr error) {

@@ -52,6 +52,7 @@ func NewManager(store *storage.Store, hub *clienthub.Hub, broker *relay.Broker) 
 		tunnelPaths: make(map[string]string),
 	}
 	hub.SetUDPPacketHandler(manager.HandleUDPPacket)
+	hub.SetConnectHandler(manager.handleClientConnected)
 	hub.SetDisconnectHandler(manager.handleClientDisconnected)
 	return manager
 }
@@ -87,10 +88,44 @@ func (m *Manager) StartTunnel(ctx context.Context, id string) error {
 		_ = m.stop(id)
 		return err
 	}
+	m.notifyTunnelPath(tunnel, tunnelPathForProtocol(tunnel.Protocol))
 	_ = m.store.RecordEvent(ctx, "info", "tunnel.started", "Tunnel started", map[string]any{
 		"tunnel_id": tunnel.ID, "name": tunnel.Name, "remote_port": tunnel.RemotePort,
 	})
 	return m.SyncClient(ctx, tunnel.ClientID)
+}
+
+func tunnelPathForProtocol(protocolName string) string {
+	if protocolName == "tcp" {
+		return protocol.TunnelPathRelay
+	}
+	return ""
+}
+
+func (m *Manager) startTCP(tunnel model.Tunnel) error {
+	if m.tryRelayStart(tunnel) {
+		m.notifyTunnelPath(tunnel, protocol.TunnelPathRelay)
+		return nil
+	}
+	return m.startTCPListener(tunnel)
+}
+
+func (m *Manager) startTCPListener(tunnel model.Tunnel) error {
+	m.mu.Lock()
+	if _, exists := m.listeners[tunnel.ID]; exists {
+		m.mu.Unlock()
+		return nil
+	}
+	listener, err := net.Listen("tcp", net.JoinHostPort("", strconv.Itoa(tunnel.RemotePort)))
+	if err != nil {
+		m.mu.Unlock()
+		return fmt.Errorf("listen on remote port %d: %w", tunnel.RemotePort, err)
+	}
+	m.listeners[tunnel.ID] = listener
+	m.mu.Unlock()
+	go m.acceptLoop(tunnel, listener)
+	m.notifyTunnelPath(tunnel, protocol.TunnelPathRelay)
+	return nil
 }
 
 func (m *Manager) start(tunnel model.Tunnel) error {
@@ -100,27 +135,16 @@ func (m *Manager) start(tunnel model.Tunnel) error {
 	if tunnel.Protocol == "http" || tunnel.Protocol == "https" {
 		return nil
 	}
-	if m.tryRelayStart(tunnel) {
-		return nil
+	if tunnel.Protocol == "tcp" {
+		return m.startTCP(tunnel)
 	}
 	if tunnel.Protocol == "udp" {
 		return m.startUDP(tunnel)
 	}
-	if tunnel.Protocol != "tcp" && tunnel.Protocol != "p2p" {
+	if tunnel.Protocol != "p2p" {
 		return fmt.Errorf("%s tunnel runtime is not available yet", tunnel.Protocol)
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, exists := m.listeners[tunnel.ID]; exists {
-		return nil
-	}
-	listener, err := net.Listen("tcp", net.JoinHostPort("", strconv.Itoa(tunnel.RemotePort)))
-	if err != nil {
-		return fmt.Errorf("listen on remote port %d: %w", tunnel.RemotePort, err)
-	}
-	m.listeners[tunnel.ID] = listener
-	go m.acceptLoop(tunnel, listener)
-	return nil
+	return m.startTCPListener(tunnel)
 }
 
 func (m *Manager) RouteVisitor(tunnelID string, visitor net.Conn) error {
@@ -197,14 +221,34 @@ func (m *Manager) DisconnectClient(clientID string) {
 }
 
 func (m *Manager) handleClientDisconnected(clientID string) {
-	m.mu.Lock()
-	// Paths are session-scoped: a reconnecting Agent must receive a fresh
-	// path notification instead of inheriting the previous control session's
-	// cached value. Clearing the cache also bounds it when tunnels are deleted.
-	m.tunnelPaths = make(map[string]string)
-	m.mu.Unlock()
+	// Keep the last observed route so a reconnecting Agent can render the same
+	// path immediately. Entries are removed when a tunnel is stopped.
 	m.broker.DisconnectClient(clientID)
 	m.disconnectUDPClient(clientID)
+}
+
+func (m *Manager) handleClientConnected(clientID string) {
+	tunnels, err := m.store.ListClientTunnels(context.Background(), clientID)
+	if err != nil {
+		return
+	}
+	m.mu.Lock()
+	paths := make(map[string]string, len(tunnels))
+	for _, tunnel := range tunnels {
+		if path := m.tunnelPaths[tunnel.ID]; path != "" {
+			paths[tunnel.ID] = path
+			continue
+		}
+		if tunnel.Status == "running" && tunnel.Protocol == "tcp" {
+			paths[tunnel.ID] = protocol.TunnelPathRelay
+		}
+	}
+	m.mu.Unlock()
+	for _, tunnel := range tunnels {
+		if path := paths[tunnel.ID]; path != "" {
+			_ = m.hub.SendTunnelPath(clientID, tunnel.ID, path)
+		}
+	}
 }
 
 func (m *Manager) ClientConnectedAt(clientID string) (time.Time, bool) {

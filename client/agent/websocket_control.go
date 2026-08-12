@@ -38,6 +38,12 @@ func (c *websocketControl) close() error {
 	return c.conn.Close()
 }
 
+func (c *websocketControl) ping() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn.WriteControl(websocket.PingMessage, []byte("nrynet"), time.Now().Add(5*time.Second))
+}
+
 func (c *websocketControl) openData(ctx context.Context, _ string) (dataConn, error) {
 	data, err := c.agent.dialLegacyData(ctx)
 	if err != nil {

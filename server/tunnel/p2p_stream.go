@@ -49,7 +49,9 @@ func (m *Manager) ApplySetting(_ context.Context, key, value string) error {
 }
 
 func (m *Manager) tryP2PStream(tunnel model.Tunnel, visitor net.Conn) bool {
-	if (tunnel.Protocol != "tcp" && tunnel.Protocol != "p2p") || !m.p2pEnabledNow() {
+	// TCP is the explicit relay protocol. Only a tunnel configured as P2P may
+	// attempt the UDP-hole-punched QUIC stream path.
+	if tunnel.Protocol != "p2p" || !m.p2pEnabledNow() {
 		return false
 	}
 	if !m.p2pRetryAllowed(tunnel.ID) {
@@ -69,14 +71,14 @@ func (m *Manager) tryP2PStream(tunnel model.Tunnel, visitor net.Conn) bool {
 	if err != nil {
 		m.deferP2PRetry(tunnel.ID)
 		_ = m.store.RecordEvent(context.Background(), "info", "p2p.tcp.fallback",
-			"TCP P2P setup failed; using relay", map[string]any{
+			"P2P stream setup failed; using relay", map[string]any{
 				"tunnel_id": tunnel.ID, "error": err.Error(),
 			})
 		return false
 	}
 	m.clearP2PRetry(tunnel.ID)
 	_ = m.store.RecordEvent(context.Background(), "info", "p2p.tcp.direct",
-		"TCP P2P path established", map[string]any{"tunnel_id": tunnel.ID})
+		"P2P stream path established", map[string]any{"tunnel_id": tunnel.ID})
 	m.notifyTunnelPath(tunnel, protocol.TunnelPathP2P)
 	m.active.Add(1)
 	defer m.active.Add(-1)

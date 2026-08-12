@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -30,6 +32,7 @@ type Hub struct {
 	connected            map[string]time.Time
 	udpHandler           func(string, protocol.ControlMessage)
 	visitorWebRTCHandler func(string, protocol.ControlMessage)
+	connectHandler       func(string)
 	disconnectHandler    func(string)
 }
 
@@ -63,6 +66,7 @@ func (h *Hub) Handle(c *gin.Context) {
 	if err != nil {
 		return
 	}
+	configureWebSocketKeepAlive(conn, h.timeout)
 	h.serve(c.Request.Context(), conn, token.ID, c.ClientIP())
 }
 
@@ -154,6 +158,7 @@ func (h *Hub) send(clientID string, message protocol.ControlMessage) error {
 		// session now instead of waiting for the next heartbeat timeout.
 		_ = conn.Close()
 		h.unregister(clientID, conn)
+		slog.Default().Debug("agent control write failed", "client_id", clientID, "error", fmt.Sprint(err))
 		return err
 	}
 	return nil
@@ -193,6 +198,12 @@ func (h *Hub) serveTransport(ctx context.Context, conn ControlTransport, tokenID
 		h.unregister(client.ID, conn)
 	}()
 	h.sendInitialSnapshot(ctx, conn, client.ID)
+	h.mu.RLock()
+	connectHandler := h.connectHandler
+	h.mu.RUnlock()
+	if connectHandler != nil {
+		connectHandler(client.ID)
+	}
 	// Listing tunnels may wait briefly on SQLite while traffic records are
 	// flushed. Start the heartbeat window after the initial snapshot, not from
 	// the hello deadline.

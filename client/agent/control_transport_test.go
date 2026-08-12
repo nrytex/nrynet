@@ -92,3 +92,10 @@ func TestMarkWebSocketFallbackOnlyAppliesToQUICControl(t *testing.T) {
 		t.Fatal("WebSocket failure incorrectly disabled QUIC retries")
 	}
 }
+
+func TestNormalizeOptionsFillsMissingTimingValues(t *testing.T) {
+	options := normalizeOptions(Options{})
+	if options.HeartbeatInterval <= 0 || options.ReconnectMin <= 0 || options.ReconnectMax < options.ReconnectMin {
+		t.Fatalf("invalid normalized timing options: %+v", options)
+	}
+}

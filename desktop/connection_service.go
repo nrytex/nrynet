@@ -74,7 +74,7 @@ func (s *DesktopService) Disconnect() RuntimeStatus {
 func (s *DesktopService) newAgent(cfg AppConfig, runID uint64) (*agent.Agent, error) {
 	opts := agent.Options{
 		Config: cfg.toClientConfig(), Version: appVersion,
-		HeartbeatInterval: 15 * time.Second, ReconnectMin: time.Second,
+		HeartbeatInterval: 10 * time.Second, ReconnectMin: time.Second,
 		ReconnectMax: 30 * time.Second, Observer: desktopObserver{service: s, runID: runID},
 	}
 	normal := agent.NewOptions(config.Config{Client: opts.Config}, appVersion)

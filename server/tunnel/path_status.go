@@ -22,11 +22,8 @@ func (m *Manager) notifyTunnelPath(tunnel model.Tunnel, path string) {
 	}
 	m.tunnelPaths[tunnel.ID] = path
 	m.mu.Unlock()
-	if err := m.hub.SendTunnelPath(tunnel.ClientID, tunnel.ID, path); err != nil {
-		m.mu.Lock()
-		if m.tunnelPaths[tunnel.ID] == path {
-			delete(m.tunnelPaths, tunnel.ID)
-		}
-		m.mu.Unlock()
-	}
+	// Keep the route even when the Agent is temporarily offline. A reconnect
+	// callback replays the cached route, so the desktop does not stay on
+	// "unknown" until the next visitor arrives.
+	_ = m.hub.SendTunnelPath(tunnel.ClientID, tunnel.ID, path)
 }

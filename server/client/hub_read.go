@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/nrytex/nrynet/internal/protocol"
@@ -11,6 +13,7 @@ func (h *Hub) readLoop(ctx context.Context, conn ControlTransport, clientID stri
 	for ctx.Err() == nil {
 		var message protocol.ControlMessage
 		if err := conn.ReadJSON(&message); err != nil {
+			slog.Default().Debug("agent control read ended", "client_id", clientID, "error", fmt.Sprint(err))
 			return
 		}
 		if message.Type == protocol.TypeHeartbeat {
