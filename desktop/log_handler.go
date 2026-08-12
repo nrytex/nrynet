@@ -29,12 +29,26 @@ func (h *memoryLogHandler) Handle(_ context.Context, r slog.Record) error {
 	}
 	fields := map[string]any{}
 	r.Attrs(func(a slog.Attr) bool {
-		fields[a.Key] = a.Value.Any()
+		fields[a.Key] = logFieldValue(a.Value)
 		return true
 	})
 	entry.Fields = fields
 	h.append(entry)
 	return nil
+}
+
+func logFieldValue(value slog.Value) any {
+	if value.Kind() == slog.KindLogValuer {
+		return logFieldValue(value.Resolve())
+	}
+	if value.Kind() != slog.KindAny {
+		return value.Any()
+	}
+	field := value.Any()
+	if err, ok := field.(error); ok {
+		return err.Error()
+	}
+	return field
 }
 
 func (h *memoryLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {

@@ -40,6 +40,11 @@ var connectionErrorRules = []struct {
 	{"no such host", "找不到服务器域名，请检查地址拼写和 DNS 网络设置。"},
 	{"connection refused", "服务器拒绝连接，请确认服务端已启动且端口可访问。"},
 	{"actively refused it", "服务器拒绝连接，请确认服务端已启动且端口可访问。"},
+	{"quic control unavailable", "QUIC 控制通道暂不可用，客户端将自动改用 WebSocket 重连；请确认服务端 TCP 7000 可访问。"},
+	{"read quic control frame", "QUIC 控制连接已断开，客户端正在自动改用 WebSocket 重连。"},
+	{"write quic control frame", "QUIC 控制连接已断开，客户端正在自动改用 WebSocket 重连。"},
+	{"read control message", "控制连接已断开，客户端正在自动重连。"},
+	{"send heartbeat", "控制连接心跳失败，客户端正在自动重连。"},
 	{"i/o timeout", "连接服务器超时，请检查网络、防火墙和服务器端口。"},
 	{"deadline exceeded", "连接服务器超时，请检查网络、防火墙和服务器端口。"},
 }

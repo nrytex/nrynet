@@ -51,6 +51,8 @@ const errorRules = [
   { pattern: /unknown authority|certificate/i, message: "服务器证书校验失败，请在新版 Nrynet Dashboard 重新生成 Agent Token。" },
   { pattern: /no such host/i, message: "找不到服务器域名，请检查地址拼写和 DNS 网络设置。" },
   { pattern: /connection refused|actively refused/i, message: "服务器拒绝连接，请确认服务端已启动且端口可访问。" },
+  { pattern: /quic control unavailable|read quic control frame|write quic control frame/i, message: "QUIC 控制连接已断开，客户端正在自动改用 WebSocket 重连。" },
+  { pattern: /read control message|send heartbeat/i, message: "控制连接已断开，客户端正在自动重连。" },
   { pattern: /timeout|deadline exceeded/i, message: "连接服务器超时，请检查网络、防火墙和服务器端口。" },
   { pattern: /update check is already running/i, message: "正在检查更新，请稍候。" },
   { pattern: /update settings changed/i, message: "更新设置已变更，请重启 Nrynet 后再检查更新。" },

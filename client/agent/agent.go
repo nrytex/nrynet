@@ -2,21 +2,12 @@ package agent
 
 import (
 	"context"
-	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net"
-	"net/http"
-	"net/url"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
-
-	netx "github.com/nrytex/nrynet/internal/advanced"
 	"github.com/nrytex/nrynet/internal/protocol"
 )
 
@@ -32,6 +23,9 @@ type Agent struct {
 	streamWorkerSlots   chan struct{}
 	relayMu             sync.Mutex
 	relaySlots          chan struct{}
+	controlMu           sync.Mutex
+	webSocketFallback   bool
+	sessionEstablished  bool
 }
 
 type controlConn interface {
@@ -64,25 +58,39 @@ func (a *Agent) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
+		sessionEstablished := a.consumeSessionEstablished()
+		if sessionEstablished {
+			backoff = a.options.ReconnectMin
+		}
 		a.logger.Warn("agent control session ended", "error", err, "retry_in", backoff)
 		sleep(ctx, backoff)
+		if sessionEstablished {
+			continue
+		}
 		backoff = nextBackoff(backoff, a.options.ReconnectMax)
 	}
 	return nil
 }
 
-func (a *Agent) runSession(ctx context.Context) error {
+func (a *Agent) runSession(ctx context.Context) (sessionErr error) {
+	a.clearSessionEstablished()
 	conn, err := a.dialControl(ctx)
 	if err != nil {
 		a.notifySessionEnded(err)
 		return err
 	}
 	defer conn.close()
+	defer func() {
+		if sessionErr != nil && ctx.Err() == nil {
+			a.markWebSocketFallback(conn, sessionErr)
+		}
+	}()
 	if err := a.sendHello(conn); err != nil {
 		a.notifySessionEnded(err)
 		return err
 	}
 	a.notifySessionStarted()
+	a.markSessionEstablished()
 	errCh := make(chan error, 2)
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -96,53 +104,12 @@ func (a *Agent) runSession(ctx context.Context) error {
 		defer workers.Done()
 		errCh <- a.runWorker("control read loop", func() error { return a.readLoop(sessionCtx, conn) })
 	}()
-	err = <-errCh
+	sessionErr = <-errCh
 	cancel()
 	_ = conn.close()
 	workers.Wait()
-	a.notifySessionEnded(err)
-	return err
-}
-
-func (a *Agent) dialControl(ctx context.Context) (controlConn, error) {
-	if a.options.Config.Transport == "quic" {
-		return a.dialQUICControl(ctx)
-	}
-	tlsConfig, err := a.webSocketTLSConfig()
-	if err != nil {
-		return nil, err
-	}
-	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second, TLSClientConfig: tlsConfig}
-	header := http.Header{}
-	header.Set("Authorization", "Bearer "+a.options.Config.Token)
-	header.Set("X-Nrynet-Device-ID", a.options.Config.DeviceID)
-	header.Set("X-NAT-Link-Device-ID", a.options.Config.DeviceID)
-	conn, _, err := dialer.DialContext(ctx, a.options.Config.ServerURL, header)
-	if err != nil {
-		return nil, fmt.Errorf("dial control websocket: %w", err)
-	}
-	return &websocketControl{conn: conn, agent: a}, nil
-}
-
-func (a *Agent) dialQUICControl(ctx context.Context) (controlConn, error) {
-	tlsConfig, err := secureClientTLS(
-		quicServerName(a.options.Config.QUICAddress), a.options.Config, netx.QUICALPN,
-	)
-	if err != nil {
-		return nil, err
-	}
-	session, err := netx.DialQUIC(ctx, a.options.Config.QUICAddress, tlsConfig, netx.AuthRequest{
-		Token: a.options.Config.Token, DeviceID: a.options.Config.DeviceID, Role: "agent",
-	})
-	if err != nil {
-		return nil, err
-	}
-	stream, err := session.OpenStream(ctx, netx.FrameControl)
-	if err != nil {
-		_ = session.Close()
-		return nil, err
-	}
-	return &quicControl{session: session, stream: stream, agent: a}, nil
+	a.notifySessionEnded(sessionErr)
+	return sessionErr
 }
 
 func (a *Agent) readLoop(ctx context.Context, conn controlConn) error {
@@ -170,103 +137,4 @@ func (a *Agent) sendHello(conn controlConn) error {
 		return err
 	}
 	return conn.writeJSON(message)
-}
-
-type websocketControl struct {
-	conn  *websocket.Conn
-	agent *Agent
-	mu    sync.Mutex
-}
-
-func (c *websocketControl) readJSON(value any) error {
-	return c.conn.ReadJSON(value)
-}
-
-func (c *websocketControl) writeJSON(value any) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	_ = c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	err := c.conn.WriteJSON(value)
-	_ = c.conn.SetWriteDeadline(time.Time{})
-	return err
-}
-
-func (c *websocketControl) close() error {
-	return c.conn.Close()
-}
-
-func (c *websocketControl) openData(ctx context.Context, _ string) (dataConn, error) {
-	return c.agent.dialLegacyData(ctx)
-}
-
-type quicControl struct {
-	session *netx.QUICSession
-	stream  *netx.QUICStream
-	agent   *Agent
-	mu      sync.Mutex
-}
-
-func (c *quicControl) readJSON(value any) error {
-	frame, err := netx.ReadFrame(c.stream)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(frame.Payload, value)
-}
-
-func (c *quicControl) writeJSON(value any) error {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return netx.WriteFrame(c.stream, netx.Frame{Kind: netx.FrameControl, Payload: data})
-}
-
-func (c *quicControl) close() error {
-	_ = c.stream.Close()
-	return c.session.Close()
-}
-
-func (c *quicControl) openData(ctx context.Context, requestID string) (dataConn, error) {
-	data, err, usedFallback := openQUICDataWithFallback(
-		ctx,
-		requestID,
-		func(openCtx context.Context, id string) (dataConn, error) {
-			return c.session.OpenStreamFrame(openCtx, netx.Frame{Kind: netx.FrameData, RequestID: id})
-		},
-		func(fallbackCtx context.Context) (dataConn, error) {
-			if c.agent == nil || c.agent.options.Config.DataAddress == "" {
-				return nil, fmt.Errorf("legacy data address is not configured")
-			}
-			return c.agent.dialLegacyData(fallbackCtx)
-		},
-	)
-	if usedFallback && c.agent != nil && err != nil {
-		c.agent.logger.Warn("QUIC data channel unavailable; using TCP relay", "request_id", requestID, "error", err)
-	}
-	if usedFallback && err == nil {
-		return &dataChannel{dataConn: data, needsHandshake: true}, nil
-	}
-	return data, err
-}
-
-func quicServerName(address string) string {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil || host == "" {
-		return "localhost"
-	}
-	return host
-}
-
-func (a *Agent) webSocketTLSConfig() (*tls.Config, error) {
-	if !strings.HasPrefix(strings.ToLower(a.options.Config.ServerURL), "wss://") {
-		return nil, nil
-	}
-	parsed, err := url.Parse(a.options.Config.ServerURL)
-	if err != nil {
-		return nil, err
-	}
-	return secureClientTLS(parsed.Hostname(), a.options.Config)
 }
