@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,6 +114,35 @@ func TestOpenConnectionDispatchDoesNotWaitForStreamCapacity(t *testing.T) {
 	case <-finished:
 	case <-time.After(250 * time.Millisecond):
 		t.Fatal("open connection dispatch waited for the stream worker semaphore")
+	}
+}
+
+func TestOpenQUICDataWithFallbackUsesLegacyRelay(t *testing.T) {
+	legacy := &testDataConn{}
+	data, err, usedFallback := openQUICDataWithFallback(
+		context.Background(), "fallback-1",
+		func(context.Context, string) (dataConn, error) { return nil, context.DeadlineExceeded },
+		func(context.Context) (dataConn, error) { return legacy, nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data != legacy || !usedFallback {
+		t.Fatalf("data=%v usedFallback=%v", data, usedFallback)
+	}
+}
+
+func TestOpenQUICDataWithFallbackReportsBothErrors(t *testing.T) {
+	_, err, usedFallback := openQUICDataWithFallback(
+		context.Background(), "fallback-2",
+		func(context.Context, string) (dataConn, error) { return nil, errors.New("quic unavailable") },
+		func(context.Context) (dataConn, error) { return nil, errors.New("tcp unavailable") },
+	)
+	if err == nil || !strings.Contains(err.Error(), "quic unavailable") || !strings.Contains(err.Error(), "tcp unavailable") {
+		t.Fatalf("unexpected error=%v", err)
+	}
+	if !usedFallback {
+		t.Fatal("expected fallback attempt")
 	}
 }
 

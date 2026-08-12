@@ -254,9 +254,15 @@ func (h *Hub) register(clientID string, conn ControlTransport) {
 	old := h.conns[clientID]
 	h.conns[clientID] = conn
 	h.connected[clientID] = time.Now().UTC()
+	handler := h.disconnectHandler
 	h.mu.Unlock()
 	if old != nil {
 		_ = old.Close()
+		if handler != nil {
+			// A replacement session invalidates active broker streams even though
+			// the old transport's deferred cleanup is intentionally ignored.
+			handler(clientID)
+		}
 	}
 }
 

@@ -142,7 +142,7 @@ func (a *Agent) dialQUICControl(ctx context.Context) (controlConn, error) {
 		_ = session.Close()
 		return nil, err
 	}
-	return &quicControl{session: session, stream: stream}, nil
+	return &quicControl{session: session, stream: stream, agent: a}, nil
 }
 
 func (a *Agent) readLoop(ctx context.Context, conn controlConn) error {
@@ -202,6 +202,7 @@ func (c *websocketControl) openData(ctx context.Context, _ string) (dataConn, er
 type quicControl struct {
 	session *netx.QUICSession
 	stream  *netx.QUICStream
+	agent   *Agent
 	mu      sync.Mutex
 }
 
@@ -229,7 +230,26 @@ func (c *quicControl) close() error {
 }
 
 func (c *quicControl) openData(ctx context.Context, requestID string) (dataConn, error) {
-	return c.session.OpenStreamFrame(ctx, netx.Frame{Kind: netx.FrameData, RequestID: requestID})
+	data, err, usedFallback := openQUICDataWithFallback(
+		ctx,
+		requestID,
+		func(openCtx context.Context, id string) (dataConn, error) {
+			return c.session.OpenStreamFrame(openCtx, netx.Frame{Kind: netx.FrameData, RequestID: id})
+		},
+		func(fallbackCtx context.Context) (dataConn, error) {
+			if c.agent == nil || c.agent.options.Config.DataAddress == "" {
+				return nil, fmt.Errorf("legacy data address is not configured")
+			}
+			return c.agent.dialLegacyData(fallbackCtx)
+		},
+	)
+	if usedFallback && c.agent != nil && err != nil {
+		c.agent.logger.Warn("QUIC data channel unavailable; using TCP relay", "request_id", requestID, "error", err)
+	}
+	if usedFallback && err == nil {
+		return &dataChannel{dataConn: data, needsHandshake: true}, nil
+	}
+	return data, err
 }
 
 func quicServerName(address string) string {

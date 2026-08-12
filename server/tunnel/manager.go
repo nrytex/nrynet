@@ -287,6 +287,7 @@ func (m *Manager) handleRelayedVisitor(tunnel model.Tunnel, visitor net.Conn) {
 	}
 	if err := m.hub.OpenConnection(tunnel.ClientID, tunnel, requestID); err != nil {
 		m.broker.Cancel(requestID, pending)
+		m.recordConnectionFailure(tunnel.ID, requestID, err)
 		return
 	}
 	m.active.Add(1)

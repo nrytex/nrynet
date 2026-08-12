@@ -19,6 +19,7 @@ import (
 const (
 	openConnectionSetupTimeout = 10 * time.Second
 	dataChannelOpenAttempts    = 3
+	quicDataChannelTimeout     = 1200 * time.Millisecond
 )
 
 func (a *Agent) handleOpenConnection(ctx context.Context, conn controlConn, message protocol.ControlMessage) {
@@ -39,7 +40,7 @@ func (a *Agent) openAndRelay(ctx context.Context, conn controlConn, message prot
 		return normalizeSetupError("dial data channel", err)
 	}
 	defer dataConn.Close()
-	if a.options.Config.Transport != "quic" {
+	if a.options.Config.Transport != "quic" || needsDataHandshake(dataConn) {
 		err = writeHandshake(dataConn, a.options.Config.Token, a.options.Config.DeviceID, message.RequestID)
 	}
 	if err != nil {
@@ -52,6 +53,18 @@ func (a *Agent) openAndRelay(ctx context.Context, conn controlConn, message prot
 	}
 	defer localConn.Close()
 	return a.relay(ctx, message.TunnelID, dataConn, localConn)
+}
+
+type dataChannel struct {
+	dataConn
+	needsHandshake bool
+}
+
+func (c *dataChannel) needsDataHandshake() bool { return c.needsHandshake }
+
+func needsDataHandshake(data dataConn) bool {
+	channel, ok := data.(*dataChannel)
+	return ok && channel.needsDataHandshake()
 }
 
 func openDataWithRetry(ctx context.Context, conn controlConn, requestID string) (dataConn, error) {
@@ -74,6 +87,28 @@ func openDataWithRetry(ctx context.Context, conn controlConn, requestID string) 
 		}
 	}
 	return nil, lastErr
+}
+
+func openQUICDataWithFallback(
+	ctx context.Context,
+	requestID string,
+	quicOpen func(context.Context, string) (dataConn, error),
+	legacyOpen func(context.Context) (dataConn, error),
+) (dataConn, error, bool) {
+	quicCtx, cancel := context.WithTimeout(ctx, quicDataChannelTimeout)
+	data, quicErr := quicOpen(quicCtx, requestID)
+	cancel()
+	if quicErr == nil {
+		return data, nil, false
+	}
+	if ctx.Err() != nil {
+		return nil, quicErr, false
+	}
+	data, legacyErr := legacyOpen(ctx)
+	if legacyErr == nil {
+		return data, nil, true
+	}
+	return nil, fmt.Errorf("QUIC data channel: %w; TCP relay fallback: %w", quicErr, legacyErr), true
 }
 
 func (a *Agent) dialLegacyData(ctx context.Context) (dataConn, error) {
