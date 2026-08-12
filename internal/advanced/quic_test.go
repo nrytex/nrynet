@@ -60,6 +60,16 @@ func TestQUICAuthenticatedStreamsCarryFrames(t *testing.T) {
 	}
 }
 
+func TestQUICConfigAllowsConcurrentDataStreams(t *testing.T) {
+	config := quicConfig()
+	if config.MaxIncomingStreams < 512 {
+		t.Fatalf("MaxIncomingStreams=%d, want at least 512", config.MaxIncomingStreams)
+	}
+	if config.MaxIncomingUniStreams < 64 {
+		t.Fatalf("MaxIncomingUniStreams=%d, want at least 64", config.MaxIncomingUniStreams)
+	}
+}
+
 func testAuthenticator(_ context.Context, request AuthRequest, _ net.Addr) error {
 	if request.Token != "secret" || request.DeviceID != "agent-1" {
 		return errUnauthorizedForTest{}

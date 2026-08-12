@@ -184,6 +184,7 @@ func (b *Broker) recordRejected(message string, err error) {
 func (b *Broker) HandleAuthenticatedStream(stream DataStream, handshake protocol.DataHandshake, tokenID string) {
 	pending, err := b.claimAuthenticatedPending(tokenID, handshake.DeviceID, handshake.RequestID)
 	if err != nil {
+		b.recordRejected("agent data stream rejected", fmt.Errorf("request_id=%s: %w", handshake.RequestID, err))
 		_ = stream.Close()
 		return
 	}

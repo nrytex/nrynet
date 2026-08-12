@@ -202,7 +202,12 @@ func readAuth(ctx context.Context, conn *quic.Conn) (AuthRequest, error) {
 
 func quicConfig() *quic.Config {
 	return &quic.Config{
-		MaxIdleTimeout:  30 * time.Second,
-		KeepAlivePeriod: 10 * time.Second,
+		// One Agent QUIC session carries the control stream plus one data
+		// stream per active visitor. The application caps relay workers at 128,
+		// so the transport must advertise a larger concurrent stream window.
+		MaxIdleTimeout:        30 * time.Second,
+		KeepAlivePeriod:       10 * time.Second,
+		MaxIncomingStreams:    1024,
+		MaxIncomingUniStreams: 128,
 	}
 }

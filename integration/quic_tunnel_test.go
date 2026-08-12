@@ -56,7 +56,10 @@ func TestQUICTunnelEndToEnd(t *testing.T) {
 
 func assertConcurrentQUICTunnels(t *testing.T, remotePort int) {
 	t.Helper()
-	const connections = 8
+	// quic-go defaults to 100 incoming bidirectional streams. Keep this
+	// above that threshold so a long-lived Agent session cannot regress to
+	// pairing timeouts once the first hundred visitors are still active.
+	const connections = 110
 	errors := make(chan error, connections)
 	var wait sync.WaitGroup
 	for index := 0; index < connections; index++ {

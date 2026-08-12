@@ -16,6 +16,11 @@ import (
 	"github.com/nrytex/nrynet/internal/protocol"
 )
 
+const (
+	openConnectionSetupTimeout = 10 * time.Second
+	dataChannelOpenAttempts    = 3
+)
+
 func (a *Agent) handleOpenConnection(ctx context.Context, conn controlConn, message protocol.ControlMessage) {
 	if err := a.openAndRelay(ctx, conn, message); err != nil {
 		a.logger.Warn("connection relay failed", "request_id", message.RequestID, "error", err)
@@ -27,13 +32,9 @@ func (a *Agent) openAndRelay(ctx context.Context, conn controlConn, message prot
 	if err != nil {
 		return err
 	}
-	localAddress := net.JoinHostPort(payload.LocalHost, strconv.Itoa(payload.LocalPort))
-	localConn, err := dialTCP(ctx, localAddress)
-	if err != nil {
-		return normalizeSetupError("dial local service", err)
-	}
-	defer localConn.Close()
-	dataConn, err := conn.openData(ctx, message.RequestID)
+	setupCtx, cancel := context.WithTimeout(ctx, openConnectionSetupTimeout)
+	defer cancel()
+	dataConn, err := openDataWithRetry(setupCtx, conn, message.RequestID)
 	if err != nil {
 		return normalizeSetupError("dial data channel", err)
 	}
@@ -44,7 +45,35 @@ func (a *Agent) openAndRelay(ctx context.Context, conn controlConn, message prot
 	if err != nil {
 		return normalizeSetupError("write data handshake", err)
 	}
+	localAddress := net.JoinHostPort(payload.LocalHost, strconv.Itoa(payload.LocalPort))
+	localConn, err := dialTCP(setupCtx, localAddress)
+	if err != nil {
+		return normalizeSetupError("dial local service", err)
+	}
+	defer localConn.Close()
 	return a.relay(ctx, message.TunnelID, dataConn, localConn)
+}
+
+func openDataWithRetry(ctx context.Context, conn controlConn, requestID string) (dataConn, error) {
+	var lastErr error
+	for attempt := 0; attempt < dataChannelOpenAttempts; attempt++ {
+		attemptCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		data, err := conn.openData(attemptCtx, requestID)
+		cancel()
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+		if ctx.Err() != nil || attempt == dataChannelOpenAttempts-1 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(150 * time.Millisecond):
+		}
+	}
+	return nil, lastErr
 }
 
 func (a *Agent) dialLegacyData(ctx context.Context) (dataConn, error) {

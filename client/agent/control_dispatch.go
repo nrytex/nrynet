@@ -18,22 +18,14 @@ func (a *Agent) handleControlMessage(
 	case protocol.TypeTunnelPath:
 		return a.handleTunnelPath(message)
 	case protocol.TypeOpenConnection:
-		if !a.acquireStreamWorker(ctx) {
-			return nil
-		}
 		a.goWorker("open connection", func() {
-			defer a.releaseStreamWorker()
 			a.handleOpenConnection(ctx, conn, message)
 		})
 		return nil
 	case protocol.TypeUDPPacket:
 		return a.handleUDPPacket(ctx, conn, message)
 	case protocol.TypeP2PConnect:
-		if !a.acquireStreamWorker(ctx) {
-			return nil
-		}
-		a.goWorker("p2p connection", func() {
-			defer a.releaseStreamWorker()
+		a.dispatchStreamWorker(ctx, "p2p connection", func() {
 			a.handleP2PConnect(ctx, message)
 		})
 		return nil
@@ -57,4 +49,14 @@ func (a *Agent) handleControlMessage(
 		a.logger.Debug("ignored control message", "type", message.Type)
 		return nil
 	}
+}
+
+func (a *Agent) dispatchStreamWorker(ctx context.Context, name string, work func()) {
+	a.goWorker(name, func() {
+		if !a.acquireStreamWorker(ctx) {
+			return
+		}
+		defer a.releaseStreamWorker()
+		work()
+	})
 }

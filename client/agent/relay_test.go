@@ -67,6 +67,73 @@ func TestTransferWriterReportsWhileStreamIsOpen(t *testing.T) {
 	}
 }
 
+func TestOpenAndRelayOpensDataChannelBeforeLocalDial(t *testing.T) {
+	data := &testDataConn{}
+	control := &trackingControl{data: data, opened: make(chan struct{})}
+	agent := &Agent{
+		options: Options{Config: config.ClientConfig{Transport: "quic"}},
+		logger:  slog.Default(),
+	}
+	message := openMessage(t, "order-1", net.JoinHostPort("127.0.0.1", "1"))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := agent.openAndRelay(ctx, control, message); err == nil {
+		t.Fatal("expected local dial to fail")
+	}
+	select {
+	case <-control.opened:
+	default:
+		t.Fatal("data channel was not opened before local service dial")
+	}
+}
+
+func TestOpenConnectionDispatchDoesNotWaitForStreamCapacity(t *testing.T) {
+	agent := &Agent{logger: slog.Default()}
+	for index := 0; index < maxActiveStreamWorkers; index++ {
+		if !agent.acquireStreamWorker(context.Background()) {
+			t.Fatalf("failed to fill stream worker slot %d", index)
+		}
+	}
+	defer func() {
+		for index := 0; index < maxActiveStreamWorkers; index++ {
+			agent.releaseStreamWorker()
+		}
+	}()
+
+	started := make(chan struct{})
+	control := &trackingControl{data: &testDataConn{}, opened: started}
+	message := protocol.ControlMessage{Type: protocol.TypeOpenConnection, RequestID: "capacity-1"}
+	finished := make(chan struct{})
+	go func() {
+		_ = agent.handleControlMessage(context.Background(), control, message)
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("open connection dispatch waited for the stream worker semaphore")
+	}
+}
+
+type trackingControl struct {
+	data   dataConn
+	opened chan struct{}
+}
+
+func (c *trackingControl) readJSON(any) error  { return nil }
+func (c *trackingControl) writeJSON(any) error { return nil }
+func (c *trackingControl) close() error        { return nil }
+func (c *trackingControl) openData(context.Context, string) (dataConn, error) {
+	close(c.opened)
+	return c.data, nil
+}
+
+type testDataConn struct{}
+
+func (*testDataConn) Read([]byte) (int, error)       { return 0, io.EOF }
+func (*testDataConn) Write(data []byte) (int, error) { return len(data), nil }
+func (*testDataConn) Close() error                   { return nil }
+
 type testControl struct {
 	agent *Agent
 }
