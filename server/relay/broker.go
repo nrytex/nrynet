@@ -2,7 +2,6 @@ package relay
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net"
@@ -33,6 +32,10 @@ type Broker struct {
 	pending      map[string]*pendingConn
 	connections  *clientConnections
 	meter        *bandwidthMeter
+	authCache    *relayAuthCache
+	rejectMu     sync.Mutex
+	rejectWindow time.Time
+	rejectCount  int
 	relayToken   string
 	relayVisitor func(nodeID, tunnelID, visitorAddr string, visitor net.Conn) error
 }
@@ -55,6 +58,7 @@ func NewBroker(authService *auth.Service, store *storage.Store, timeout time.Dur
 		pending:     make(map[string]*pendingConn),
 		connections: newClientConnections(),
 		meter:       newBandwidthMeter(),
+		authCache:   newRelayAuthCache(authService, store),
 	}
 }
 
@@ -64,6 +68,32 @@ func (b *Broker) BandwidthBPS() int64 {
 
 func (b *Broker) RecordBytes(bytes int64) {
 	b.meter.Add(bytes)
+}
+
+// InvalidateAuthCache is used after an administrator changes a token or client
+// so an already-open data connection cannot continue using stale credentials.
+func (b *Broker) InvalidateAuthCache() {
+	if b.authCache != nil {
+		b.authCache.invalidateAll()
+	}
+}
+
+func (b *Broker) InvalidateClientAuthCache(clientID string) {
+	if b.authCache != nil {
+		b.authCache.invalidateClient(clientID)
+	}
+}
+
+func (b *Broker) InvalidateTokenAuthCache(tokenID string) {
+	if b.authCache != nil {
+		b.authCache.invalidateToken(tokenID)
+	}
+}
+
+func (b *Broker) InvalidateDeviceAuthCache(deviceID string) {
+	if b.authCache != nil {
+		b.authCache.invalidateDevice(deviceID)
+	}
 }
 
 func (b *Broker) Run(listener net.Listener) error {
@@ -160,27 +190,6 @@ func (b *Broker) handleDataConn(conn net.Conn) {
 	pending.done <- err
 }
 
-func (b *Broker) handleRelayVisitor(visitor net.Conn, handshake initialHandshake) {
-	b.mu.Lock()
-	token, handler := b.relayToken, b.relayVisitor
-	b.mu.Unlock()
-	if handler == nil || handshake.NodeID == "" || handshake.TunnelID == "" || handshake.VisitorAddr == "" ||
-		token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(handshake.Token)) != 1 {
-		_ = visitor.Close()
-		return
-	}
-	if err := handler(handshake.NodeID, handshake.TunnelID, handshake.VisitorAddr, visitor); err != nil {
-		b.recordRejected("relay visitor rejected", err)
-		_ = visitor.Close()
-	}
-}
-
-func (b *Broker) recordRejected(message string, err error) {
-	_ = b.store.RecordEvent(context.Background(), "warn", "relay.rejected", message, map[string]any{
-		"error": err.Error(),
-	})
-}
-
 func (b *Broker) HandleAuthenticatedStream(stream DataStream, handshake protocol.DataHandshake, tokenID string) {
 	pending, err := b.claimAuthenticatedPending(tokenID, handshake.DeviceID, handshake.RequestID)
 	if err != nil {
@@ -193,12 +202,12 @@ func (b *Broker) HandleAuthenticatedStream(stream DataStream, handshake protocol
 }
 
 func (b *Broker) claimPending(handshake protocol.DataHandshake) (*pendingConn, error) {
-	client, err := b.store.GetClientByDevice(context.Background(), handshake.DeviceID)
+	client, err := b.authCache.clientByDevice(context.Background(), handshake.DeviceID)
 	if err != nil {
 		return nil, err
 	}
 	generation := b.connections.generationFor(client.ID)
-	token, err := b.auth.AuthenticateAgent(context.Background(), handshake.Token)
+	token, err := b.authCache.authenticate(context.Background(), handshake.Token)
 	if err != nil {
 		return nil, err
 	}
@@ -212,12 +221,12 @@ func (b *Broker) claimAuthenticatedPending(tokenID, deviceID, requestID string) 
 	if tokenID == "" || deviceID == "" || requestID == "" {
 		return nil, errors.New("token_id, device_id and request_id are required")
 	}
-	client, err := b.store.GetClientByDevice(context.Background(), deviceID)
+	client, err := b.authCache.clientByDevice(context.Background(), deviceID)
 	if err != nil {
 		return nil, err
 	}
 	generation := b.connections.generationFor(client.ID)
-	token, err := b.store.GetToken(context.Background(), tokenID)
+	token, err := b.authCache.tokenByID(context.Background(), tokenID)
 	if err != nil {
 		return nil, err
 	}

@@ -12,20 +12,20 @@ import (
 )
 
 type Agent struct {
-	options             Options
-	logger              *slog.Logger
-	udp                 *udpRelay
-	visitorMu           sync.Mutex
-	visitorSlots        chan struct{}
-	visitorSessionMu    sync.Mutex
-	visitorSessionSlots chan struct{}
-	streamWorkerMu      sync.Mutex
-	streamWorkerSlots   chan struct{}
-	relayMu             sync.Mutex
-	relaySlots          chan struct{}
-	controlMu           sync.Mutex
-	webSocketFallback   bool
-	sessionEstablished  bool
+	options                Options
+	logger                 *slog.Logger
+	udp                    *udpRelay
+	visitorMu              sync.Mutex
+	visitorSlots           chan struct{}
+	controlMu              sync.Mutex
+	transferMu             sync.Mutex
+	transferPending        map[string]*transferCounters
+	transferLoopMu         sync.Mutex
+	transferLoopActive     bool
+	transferLoopDone       chan struct{}
+	webSocketFallback      bool
+	webSocketFallbackUntil time.Time
+	sessionEstablished     bool
 }
 
 type controlConn interface {
@@ -49,10 +49,56 @@ func New(options Options, logger *slog.Logger) (*Agent, error) {
 	if err := options.Validate(); err != nil {
 		return nil, err
 	}
-	return &Agent{options: options, logger: logger, udp: newUDPRelay(2 * time.Minute)}, nil
+	return &Agent{
+		options:         options,
+		logger:          logger,
+		udp:             newUDPRelay(2 * time.Minute),
+		transferPending: make(map[string]*transferCounters),
+	}, nil
+}
+
+func (a *Agent) transferFlushLoop(ctx context.Context) {
+	ticker := time.NewTicker(transferReportInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			a.flushTransfers()
+		case <-ctx.Done():
+			a.flushTransfers()
+			return
+		}
+	}
+}
+
+func (a *Agent) startTransferFlushLoop(contexts ...context.Context) {
+	ctx := context.Background()
+	if len(contexts) > 0 && contexts[0] != nil {
+		ctx = contexts[0]
+	}
+	a.transferLoopMu.Lock()
+	if a.transferLoopActive {
+		a.transferLoopMu.Unlock()
+		return
+	}
+	a.transferLoopActive = true
+	done := make(chan struct{})
+	a.transferLoopDone = done
+	a.transferLoopMu.Unlock()
+	go func() {
+		defer func() {
+			a.transferLoopMu.Lock()
+			a.transferLoopActive = false
+			close(done)
+			a.transferLoopMu.Unlock()
+		}()
+		a.transferFlushLoop(ctx)
+	}()
 }
 
 func (a *Agent) Run(ctx context.Context) error {
+	a.startTransferFlushLoop(ctx)
+	defer a.waitTransferFlushLoop()
 	backoff := a.reconnectMin()
 	for ctx.Err() == nil {
 		err := a.runWorker("agent session", func() error { return a.runSession(ctx) })
@@ -73,6 +119,15 @@ func (a *Agent) Run(ctx context.Context) error {
 	return nil
 }
 
+func (a *Agent) waitTransferFlushLoop() {
+	a.transferLoopMu.Lock()
+	done := a.transferLoopDone
+	a.transferLoopMu.Unlock()
+	if done != nil {
+		<-done
+	}
+}
+
 func (a *Agent) reconnectMin() time.Duration {
 	if a.options.ReconnectMin > 0 {
 		return a.options.ReconnectMin
@@ -82,15 +137,18 @@ func (a *Agent) reconnectMin() time.Duration {
 
 func (a *Agent) runSession(ctx context.Context) (sessionErr error) {
 	a.clearSessionEstablished()
-	conn, err := a.dialControl(ctx)
+	baseConn, err := a.dialControl(ctx)
 	if err != nil {
 		a.notifySessionEnded(err)
 		return err
 	}
-	defer conn.close()
+	conn := newQueuedControlConn(baseConn)
+	defer func() {
+		_ = conn.close()
+	}()
 	defer func() {
 		if sessionErr != nil && ctx.Err() == nil {
-			a.markWebSocketFallback(conn, sessionErr)
+			a.markWebSocketFallback(baseConn, sessionErr)
 		}
 	}()
 	if err := a.sendHello(conn); err != nil {
@@ -116,8 +174,21 @@ func (a *Agent) runSession(ctx context.Context) (sessionErr error) {
 	cancel()
 	_ = conn.close()
 	workers.Wait()
+	a.flushTransfers()
 	a.notifySessionEnded(sessionErr)
 	return sessionErr
+}
+
+func (a *Agent) flushTransfers() {
+	a.transferMu.Lock()
+	tunnelIDs := make([]string, 0, len(a.transferPending))
+	for tunnelID := range a.transferPending {
+		tunnelIDs = append(tunnelIDs, tunnelID)
+	}
+	a.transferMu.Unlock()
+	for _, tunnelID := range tunnelIDs {
+		a.flushTransfer(tunnelID)
+	}
 }
 
 func (a *Agent) readLoop(ctx context.Context, conn controlConn) error {

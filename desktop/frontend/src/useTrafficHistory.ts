@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { RuntimeStatus } from "../bindings/github.com/nrytex/nrynet/desktop";
 
-const rateWindowMs = 3000;
-const maxHistoryPoints = 120;
+const rateWindowMs = 1000;
+const maxHistoryPoints = 300;
 
 export interface TrafficPoint {
   time: string;
@@ -29,7 +29,7 @@ export function useTrafficHistory(status?: RuntimeStatus) {
     const stateChanged = previousConnectionState.current !== undefined && previousConnectionState.current !== status.connected;
     previousConnectionState.current = status.connected;
     if (stateChanged || samples.current.length === 0) samples.current = [sample];
-    else samples.current = [...samples.current.filter((item) => now - item.time <= rateWindowMs * 2), sample];
+    else samples.current = [...samples.current.filter((item) => now - item.time <= rateWindowMs * 10), sample];
 
     const baseline = samples.current.find((item) => now - item.time >= rateWindowMs) ?? samples.current[0];
     const seconds = Math.max(0.25, (now - baseline.time) / 1000);

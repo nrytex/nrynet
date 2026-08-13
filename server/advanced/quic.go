@@ -81,6 +81,10 @@ func (s *QUICControlServer) handleStream(
 	case netx.FrameControl:
 		ip := hostOnly(session.RemoteAddr())
 		s.hub.ServeTransport(ctx, &quicControl{stream: stream, session: session}, tokenID, ip)
+		// The control stream owns the Agent session. Do not keep accepting data
+		// streams after it ends; those streams belong to a stale generation and
+		// only create relay.rejected noise under load.
+		_ = session.Close()
 	case netx.FrameData:
 		handshake := protocol.DataHandshake{
 			DeviceID:  session.Auth.DeviceID,

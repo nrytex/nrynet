@@ -25,17 +25,12 @@ func (a *Agent) handleControlMessage(
 	case protocol.TypeUDPPacket:
 		return a.handleUDPPacket(ctx, conn, message)
 	case protocol.TypeP2PConnect:
-		a.dispatchStreamWorker(ctx, "p2p connection", func() {
+		a.goWorker("p2p connection", func() {
 			a.handleP2PConnect(ctx, message)
 		})
 		return nil
 	case protocol.TypeVisitorWebRTC:
-		if !a.acquireVisitorSession() {
-			a.logger.Warn("visitor WebRTC session capacity exhausted", "request_id", message.RequestID)
-			return nil
-		}
 		a.goWorker("visitor WebRTC", func() {
-			defer a.releaseVisitorSession()
 			_ = a.handleVisitorWebRTC(ctx, conn, message)
 		})
 		return nil
@@ -49,14 +44,4 @@ func (a *Agent) handleControlMessage(
 		a.logger.Debug("ignored control message", "type", message.Type)
 		return nil
 	}
-}
-
-func (a *Agent) dispatchStreamWorker(ctx context.Context, name string, work func()) {
-	a.goWorker(name, func() {
-		if !a.acquireStreamWorker(ctx) {
-			return
-		}
-		defer a.releaseStreamWorker()
-		work()
-	})
 }

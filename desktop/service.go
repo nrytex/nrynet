@@ -117,6 +117,10 @@ func (s *DesktopService) CheckForUpdate() (UpdateResult, error) {
 	return s.updater.CheckForUpdate()
 }
 
+func (s *DesktopService) ApplyUpdate() error {
+	return s.updater.ApplyUpdate()
+}
+
 func (s *DesktopService) OpenURL(url string) error {
 	s.mu.Lock()
 	browser := s.browser

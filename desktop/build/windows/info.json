@@ -1,12 +1,12 @@
 {
 	"fixed": {
-		"file_version": "1.0.0"
+		"file_version": "1.3.5"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "1.0.0",
+			"ProductVersion": "1.3.5",
 			"CompanyName": "Nrynet",
-			"FileDescription": "Nrynet desktop client",
+			"FileDescription": "Nrynet private network agent",
 			"LegalCopyright": "(c) 2026 Nrynet",
 			"ProductName": "Nrynet",
 			"Comments": "Self-hosted private network tunnel client"

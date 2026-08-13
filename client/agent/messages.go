@@ -35,7 +35,10 @@ func (a *Agent) sendHeartbeat(conn controlConn) error {
 	if err != nil {
 		return err
 	}
-	if err := conn.writeJSON(message); err != nil {
+	if queued, ok := conn.(*queuedControlConn); ok && queued.isClosed() {
+		return errAgentControlWriteQueueClosed
+	}
+	if err := a.writeControl(conn, message); err != nil {
 		return fmt.Errorf("send heartbeat: %w", err)
 	}
 	if pinger, ok := conn.(interface{ ping() error }); ok {
@@ -44,6 +47,10 @@ func (a *Agent) sendHeartbeat(conn controlConn) error {
 		}
 	}
 	return nil
+}
+
+func (a *Agent) writeControl(conn controlConn, message protocol.ControlMessage) error {
+	return conn.writeJSON(message)
 }
 
 func (a *Agent) handleTunnelSnapshot(message protocol.ControlMessage) error {

@@ -3,23 +3,26 @@ import type { FormInstance } from "antd";
 import { ArrowLeft, CircleUserRound, Info, Network, RadioTower, Save, ScrollText, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import type { AppConfig, LogEntry, RuntimeStatus } from "../bindings/github.com/nrytex/nrynet/desktop";
+import type { AppConfig, LogEntry, RuntimeStatus, UpdateResult } from "../bindings/github.com/nrytex/nrynet/desktop";
 import { formatTime, logLine } from "./format";
 import "./settings.css";
 import brandMark from "./assets/nrynet-mark.png";
 
 export type SettingsSection = "general" | "network" | "connection" | "logs" | "about";
 
-export function SettingsView({ form, config, status, logs, loading, initialSection, onBack, onSave, onCheckUpdate }: {
+export function SettingsView({ form, config, status, logs, loading, update, updateLoading, initialSection, onBack, onSave, onCheckUpdate, onApplyUpdate }: {
   form: FormInstance<AppConfig>;
   config: AppConfig;
   status?: RuntimeStatus;
   logs: LogEntry[];
   loading: boolean;
+  update?: UpdateResult;
+  updateLoading: boolean;
   initialSection: SettingsSection;
   onBack: () => void;
   onSave: (values: Partial<AppConfig>) => void;
   onCheckUpdate: () => void;
+  onApplyUpdate: () => void;
 }) {
   const [section, setSection] = useState(initialSection);
   useEffect(() => {
@@ -42,7 +45,7 @@ export function SettingsView({ form, config, status, logs, loading, initialSecti
         </nav>
         <section className="settings-content">
           {section === "logs" ? <LogsPanel logs={logs} /> : section === "about" ? (
-            <AboutPanel status={status} onCheckUpdate={onCheckUpdate} />
+            <AboutPanel status={status} update={update} updateLoading={updateLoading} onCheckUpdate={onCheckUpdate} onApplyUpdate={onApplyUpdate} />
           ) : (
             <Form form={form} layout="vertical" initialValues={config} onFinish={() => onSave(form.getFieldsValue(true))}>
               <Typography.Title level={4}>{sectionTitle(section)}</Typography.Title>
@@ -65,7 +68,7 @@ function NavItem({ icon, label, active, onClick }: { icon: ReactNode; label: str
 function GeneralPanel() {
   return <div className="settings-group">
     <SwitchRow title="开机启动" detail="系统启动时自动运行 Nrynet" name="autoStart" />
-    <div className="switch-row"><div><strong>自动更新</strong><span>后台自动检查，发现新版本时在首页提示</span></div><Switch checked disabled /></div>
+    <div className="switch-row"><div><strong>自动更新</strong><span>后台自动检查并下载，重启后完成更新</span></div><Switch checked disabled /></div>
   </div>;
 }
 
@@ -100,7 +103,7 @@ function LogsPanel({ logs }: { logs: LogEntry[] }) {
   </>;
 }
 
-function AboutPanel({ status, onCheckUpdate }: { status?: RuntimeStatus; onCheckUpdate: () => void }) {
+function AboutPanel({ status, update, updateLoading, onCheckUpdate, onApplyUpdate }: { status?: RuntimeStatus; update?: UpdateResult; updateLoading: boolean; onCheckUpdate: () => void; onApplyUpdate: () => void }) {
   return <>
     <Typography.Title level={4}>关于 Nrynet</Typography.Title>
     <div className="about-lockup"><img src={brandMark} alt="" /><div><strong>Nrynet</strong><span>安全、稳定的私有网络隧道客户端</span></div></div>
@@ -109,7 +112,10 @@ function AboutPanel({ status, onCheckUpdate }: { status?: RuntimeStatus; onCheck
       <div><span>连接状态</span><strong>{status?.connected ? "已连接" : "未连接"}</strong></div>
       <div><span>上次启动</span><strong>{formatTime(status?.lastStartedAt)}</strong></div>
     </div>
-    <Button onClick={onCheckUpdate}>检查更新</Button>
+    <div className="about-update-actions">
+      <Button loading={updateLoading} onClick={onCheckUpdate}>检查更新</Button>
+      {update?.ready && <Button type="primary" onClick={onApplyUpdate}>立即重启更新</Button>}
+    </div>
   </>;
 }
 

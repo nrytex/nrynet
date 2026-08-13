@@ -8,7 +8,7 @@ import (
 	"github.com/nrytex/nrynet/internal/model"
 )
 
-var appVersion = "1.3.3"
+var appVersion = "1.3.5"
 
 type AppConfig struct {
 	ServerURL          string `json:"serverUrl"`
@@ -79,6 +79,8 @@ type UpdateResult struct {
 	Available     bool   `json:"available"`
 	LatestVersion string `json:"latestVersion"`
 	DownloadURL   string `json:"downloadURL"`
+	DownloadState string `json:"downloadState"`
+	Ready         bool   `json:"ready"`
 	Message       string `json:"message"`
 }
 

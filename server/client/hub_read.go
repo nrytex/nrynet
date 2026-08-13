@@ -24,11 +24,24 @@ func (h *Hub) readLoop(ctx context.Context, conn ControlTransport, clientID stri
 			continue
 		}
 		if message.Type == protocol.TypeUDPPacket {
-			h.handleUDPPacket(clientID, message)
+			h.dispatchUDP(clientID, message)
 			continue
 		}
 		if message.Type == protocol.TypeVisitorWebRTC {
 			go h.handleVisitorWebRTC(clientID, message)
+			continue
 		}
+		if message.Type == protocol.TypeConnectionFailed {
+			h.handleConnectionFailure(clientID, message)
+		}
+	}
+}
+
+func (h *Hub) dispatchUDP(clientID string, message protocol.ControlMessage) {
+	h.mu.RLock()
+	handler := h.udpHandler
+	h.mu.RUnlock()
+	if handler != nil {
+		handler(clientID, message)
 	}
 }

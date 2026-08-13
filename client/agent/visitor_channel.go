@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	visitorDataChannelMaxBufferedBytes = 4 * 1024 * 1024
-	visitorDataChannelLowThreshold     = 1 * 1024 * 1024
+	visitorDataChannelMaxBufferedBytes = 64 * 1024 * 1024
+	visitorDataChannelLowThreshold     = 16 * 1024 * 1024
 	visitorDataChannelPollInterval     = 100 * time.Millisecond
 	visitorDataChannelSendTimeout      = 30 * time.Second
 )

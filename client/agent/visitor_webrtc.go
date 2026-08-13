@@ -74,7 +74,7 @@ func (a *Agent) handleVisitorWebRTC(ctx context.Context, conn controlConn, messa
 	if err != nil {
 		return err
 	}
-	if err := conn.writeJSON(answerMessage); err != nil {
+	if err := a.writeControl(conn, answerMessage); err != nil {
 		return fmt.Errorf("send WebRTC answer: %w", err)
 	}
 	select {
@@ -155,7 +155,7 @@ func (a *Agent) sendVisitorSignalError(
 	if messageErr != nil {
 		return messageErr
 	}
-	if writeErr := conn.writeJSON(errorMessage); writeErr != nil {
+	if writeErr := a.writeControl(conn, errorMessage); writeErr != nil {
 		return fmt.Errorf("send WebRTC error: %w", writeErr)
 	}
 	return err

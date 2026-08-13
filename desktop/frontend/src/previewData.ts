@@ -30,7 +30,8 @@ export function makePreviewSnapshot(tick: number): DesktopSnapshot {
     update: {
       checked: true, available: true, latestVersion: "2.5.0",
       downloadURL: "https://github.com/nrytex/nrynet/releases/download/v2.5.0/nrynet-desktop-windows-amd64.zip",
-      message: "发现新版本 2.5.0，请前往 GitHub Release 下载。",
+      downloadState: "ready", ready: true,
+      message: "新版本 2.5.0 已下载，重启应用即可完成更新。",
     },
   };
 }

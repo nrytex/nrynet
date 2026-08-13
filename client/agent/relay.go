@@ -11,6 +11,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nrytex/nrynet/internal/protocol"
@@ -19,12 +20,18 @@ import (
 const (
 	openConnectionSetupTimeout = 10 * time.Second
 	dataChannelOpenAttempts    = 3
-	quicDataChannelTimeout     = 1200 * time.Millisecond
+	quicDataChannelTimeout     = 5 * time.Second
 )
+
+var relayCopyBufferPool = sync.Pool{
+	New: func() any { return make([]byte, 32*1024) },
+}
 
 func (a *Agent) handleOpenConnection(ctx context.Context, conn controlConn, message protocol.ControlMessage) {
 	if err := a.openAndRelay(ctx, conn, message); err != nil {
 		a.logger.Warn("connection relay failed", "request_id", message.RequestID, "error", err)
+		a.reportConnectionFailure(ctx, conn, message, err)
+		return
 	}
 }
 
@@ -35,6 +42,12 @@ func (a *Agent) openAndRelay(ctx context.Context, conn controlConn, message prot
 	}
 	setupCtx, cancel := context.WithTimeout(ctx, openConnectionSetupTimeout)
 	defer cancel()
+	localAddress := net.JoinHostPort(payload.LocalHost, strconv.Itoa(payload.LocalPort))
+	localConn, err := a.dialLocalService(setupCtx, localAddress)
+	if err != nil {
+		return normalizeSetupError("dial local service", err)
+	}
+	defer localConn.Close()
 	dataConn, err := openDataWithRetry(setupCtx, conn, message.RequestID)
 	if err != nil {
 		return normalizeSetupError("dial data channel", err)
@@ -46,12 +59,6 @@ func (a *Agent) openAndRelay(ctx context.Context, conn controlConn, message prot
 	if err != nil {
 		return normalizeSetupError("write data handshake", err)
 	}
-	localAddress := net.JoinHostPort(payload.LocalHost, strconv.Itoa(payload.LocalPort))
-	localConn, err := dialTCP(setupCtx, localAddress)
-	if err != nil {
-		return normalizeSetupError("dial local service", err)
-	}
-	defer localConn.Close()
 	return a.relay(ctx, message.TunnelID, dataConn, localConn)
 }
 
@@ -123,15 +130,6 @@ func (a *Agent) dialLegacyData(ctx context.Context) (dataConn, error) {
 	return dialer.DialContext(ctx, "tcp", a.options.Config.DataAddress)
 }
 
-func dialTCP(ctx context.Context, address string) (net.Conn, error) {
-	var dialer net.Dialer
-	conn, err := dialer.DialContext(ctx, "tcp", address)
-	if err != nil {
-		return nil, err
-	}
-	return conn, nil
-}
-
 func writeHandshake(writer io.Writer, token, deviceID, requestID string) error {
 	buffered := bufio.NewWriter(writer)
 	handshake := protocol.DataHandshake{Token: token, DeviceID: deviceID, RequestID: requestID}
@@ -142,10 +140,7 @@ func writeHandshake(writer io.Writer, token, deviceID, requestID string) error {
 }
 
 func (a *Agent) relay(ctx context.Context, tunnelID string, left dataConn, right net.Conn) error {
-	if !a.acquireRelaySlot(ctx) {
-		return ctx.Err()
-	}
-	defer a.releaseRelaySlot()
+	defer a.flushTransfer(tunnelID)
 	stop := make(chan struct{})
 	go func() {
 		select {
@@ -185,8 +180,10 @@ func (a *Agent) relay(ctx context.Context, tunnelID string, left dataConn, right
 }
 
 func copyBytes(dst io.Writer, src io.Reader, observe func(int64)) error {
+	buffer := relayCopyBufferPool.Get().([]byte)
+	defer relayCopyBufferPool.Put(buffer)
 	writer := &transferWriter{writer: dst, observe: observe, lastReport: time.Now()}
-	_, err := io.Copy(writer, src)
+	_, err := io.CopyBuffer(writer, src, buffer)
 	writer.flush()
 	return err
 }
@@ -201,7 +198,7 @@ type transferWriter struct {
 func (w *transferWriter) Write(data []byte) (int, error) {
 	written, err := w.writer.Write(data)
 	w.pending += int64(written)
-	if time.Since(w.lastReport) >= 100*time.Millisecond {
+	if time.Since(w.lastReport) >= transferReportInterval {
 		w.flush()
 	}
 	return written, err

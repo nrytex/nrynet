@@ -14,6 +14,22 @@ type Runtime interface {
 	ClientConnectedAt(string) (time.Time, bool)
 }
 
+type AuthCacheInvalidator interface {
+	InvalidateAuthCache()
+}
+
+type ClientAuthCacheInvalidator interface {
+	InvalidateClientAuthCache(string)
+}
+
+type TokenAuthCacheInvalidator interface {
+	InvalidateTokenAuthCache(string)
+}
+
+type DeviceAuthCacheInvalidator interface {
+	InvalidateDeviceAuthCache(string)
+}
+
 type unavailableRuntime struct{}
 
 func (unavailableRuntime) StartTunnel(context.Context, string) error {

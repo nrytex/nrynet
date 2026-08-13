@@ -8,6 +8,12 @@ import (
 	"github.com/nrytex/nrynet/internal/model"
 )
 
+type TrafficDelta struct {
+	TunnelID string
+	Upload   int64
+	Download int64
+}
+
 func (s *Store) RecordTraffic(ctx context.Context, tunnelID string, upload, download int64) error {
 	if upload < 0 || download < 0 {
 		return errors.New("traffic values cannot be negative")
@@ -18,6 +24,38 @@ func (s *Store) RecordTraffic(ctx context.Context, tunnelID string, upload, down
 	_, err := s.db.ExecContext(ctx, `INSERT INTO traffic_logs(tunnel_id, upload, download, created_at)
         VALUES(?, ?, ?, ?)`, tunnelID, upload, download, time.Now().UTC())
 	return err
+}
+
+func (s *Store) RecordTrafficBatch(ctx context.Context, items []TrafficDelta) error {
+	if len(items) == 0 {
+		return nil
+	}
+	for _, item := range items {
+		if item.TunnelID == "" || item.Upload < 0 || item.Download < 0 {
+			return errors.New("invalid traffic delta")
+		}
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	statement, err := tx.PrepareContext(ctx, `INSERT INTO traffic_logs(tunnel_id, upload, download, created_at)
+        VALUES(?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer statement.Close()
+	now := time.Now().UTC()
+	for _, item := range items {
+		if item.Upload == 0 && item.Download == 0 {
+			continue
+		}
+		if _, err := statement.ExecContext(ctx, item.TunnelID, item.Upload, item.Download, now); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) TrafficSummary(ctx context.Context, since time.Time) (model.TrafficSummary, error) {

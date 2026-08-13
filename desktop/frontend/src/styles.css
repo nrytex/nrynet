@@ -94,6 +94,7 @@ button, input, textarea, select { letter-spacing: 0; }
 .update-banner-text strong { color: #0b9153; font-size: 13px; }
 .update-banner-text span { overflow: hidden; color: #4f6a5c; font-size: 12px; line-height: 1.45; text-overflow: ellipsis; }
 .update-banner .ant-btn { flex: none; height: 28px; }
+.update-progress { flex: none; color: #4f6a5c; font-size: 12px; }
 .connection-panel {
   flex: none;
   margin: 18px 28px 0;

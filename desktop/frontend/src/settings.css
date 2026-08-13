@@ -53,6 +53,7 @@
 .about-details > div:last-child { border-bottom: 0; }
 .about-details span { color: #7a8797; font-size: 12px; }
 .about-details strong { font-size: 12px; }
+.about-update-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 
 @media (max-width: 620px) {
   .settings-layout { grid-template-columns: 150px minmax(0, 1fr); }

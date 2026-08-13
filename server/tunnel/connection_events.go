@@ -9,7 +9,7 @@ func (m *Manager) recordConnectionFailure(tunnelID, requestID string, err error)
 	if err == nil {
 		return
 	}
-	_ = m.store.RecordEvent(
+	m.recordEvent(
 		context.Background(),
 		"warn",
 		"connection.failed",

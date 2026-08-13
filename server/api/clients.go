@@ -92,6 +92,7 @@ func (h clientHandler) update(c *gin.Context) {
 	if request.Disabled != nil && *request.Disabled {
 		h.runtime.DisconnectClient(c.Param("id"))
 	}
+	invalidateClientAuthCache(h.runtime, c.Param("id"))
 	c.Status(http.StatusNoContent)
 }
 
@@ -107,6 +108,8 @@ func (h clientHandler) delete(c *gin.Context) {
 		return
 	}
 	h.runtime.DisconnectClient(client.ID)
+	invalidateDeviceAuthCache(h.runtime, client.DeviceID)
+	invalidateClientAuthCache(h.runtime, client.ID)
 	tunnels, err := h.store.ListClientTunnels(c.Request.Context(), id)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
@@ -147,5 +150,22 @@ func (h clientHandler) resetToken(c *gin.Context) {
 		return
 	}
 	h.runtime.DisconnectClient(client.ID)
+	invalidateClientAuthCache(h.runtime, client.ID)
 	c.JSON(http.StatusCreated, gin.H{"token": token, "value": cleartext})
+}
+
+func invalidateClientAuthCache(runtime Runtime, clientID string) {
+	if invalidator, ok := runtime.(ClientAuthCacheInvalidator); ok {
+		invalidator.InvalidateClientAuthCache(clientID)
+		return
+	}
+	invalidateRuntimeAuthCache(runtime)
+}
+
+func invalidateDeviceAuthCache(runtime Runtime, deviceID string) {
+	if invalidator, ok := runtime.(DeviceAuthCacheInvalidator); ok {
+		invalidator.InvalidateDeviceAuthCache(deviceID)
+		return
+	}
+	invalidateRuntimeAuthCache(runtime)
 }

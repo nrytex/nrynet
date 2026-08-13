@@ -38,6 +38,7 @@ func (a *Agent) dialControlWith(
 	conn, quicErr := quicDial(quicCtx)
 	cancel()
 	if quicErr == nil {
+		a.disableWebSocketFallback()
 		return conn, nil
 	}
 	if ctx.Err() != nil {
@@ -55,12 +56,23 @@ func (a *Agent) dialControlWith(
 func (a *Agent) webSocketFallbackEnabled() bool {
 	a.controlMu.Lock()
 	defer a.controlMu.Unlock()
+	if a.webSocketFallback && !a.webSocketFallbackUntil.IsZero() && !time.Now().Before(a.webSocketFallbackUntil) {
+		a.webSocketFallback = false
+	}
 	return a.webSocketFallback
 }
 
 func (a *Agent) enableWebSocketFallback() {
 	a.controlMu.Lock()
 	a.webSocketFallback = true
+	a.webSocketFallbackUntil = time.Now().Add(30 * time.Second)
+	a.controlMu.Unlock()
+}
+
+func (a *Agent) disableWebSocketFallback() {
+	a.controlMu.Lock()
+	a.webSocketFallback = false
+	a.webSocketFallbackUntil = time.Time{}
 	a.controlMu.Unlock()
 }
 
@@ -68,17 +80,12 @@ func (a *Agent) markWebSocketFallback(conn controlConn, reason error) {
 	if _, ok := conn.(*quicControl); !ok {
 		return
 	}
-	a.controlMu.Lock()
-	wasEnabled := a.webSocketFallback
-	a.webSocketFallback = true
-	a.controlMu.Unlock()
-	if !wasEnabled {
-		logger := a.logger
-		if logger == nil {
-			logger = slog.Default()
-		}
-		logger.Warn("QUIC control session ended; using WebSocket control on reconnect", "error", reason.Error())
+	a.enableWebSocketFallback()
+	logger := a.logger
+	if logger == nil {
+		logger = slog.Default()
 	}
+	logger.Warn("QUIC control session ended; using WebSocket control on reconnect", "error", reason.Error())
 }
 
 func (a *Agent) dialWebSocketControl(ctx context.Context) (controlConn, error) {

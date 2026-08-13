@@ -15,6 +15,7 @@ const (
 	TypeUDPPacket          = "udp_packet"
 	TypeP2PConnect         = "p2p_connect"
 	TypeVisitorWebRTC      = "visitor_webrtc"
+	TypeConnectionFailed   = "connection_failed"
 	TypeError              = "error"
 	P2PModeStream          = "stream"
 	TunnelPathP2P          = "p2p"

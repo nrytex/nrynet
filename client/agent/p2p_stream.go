@@ -71,7 +71,7 @@ func (a *Agent) runP2PStream(ctx context.Context, payload protocol.P2PConnectPay
 		return err
 	}
 	localAddress := net.JoinHostPort(payload.LocalHost, strconv.Itoa(payload.LocalPort))
-	local, err := dialTCP(setupCtx, localAddress)
+	local, err := a.dialLocalService(setupCtx, localAddress)
 	if err != nil {
 		_ = dataStream.Close()
 		return err

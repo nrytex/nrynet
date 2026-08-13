@@ -35,7 +35,7 @@ html,body{height:100%;margin:0;background:#f4f7f5;color:#172235;font:14px system
 </style></head>
 <body><div id="shell"><div id="bar"><i id="dot"></i><span id="status">Connecting to the visitor tunnel...</span></div><iframe id="content" title="Visitor web application"></iframe></div>
 <script>
-const config=__NRYNET_CONFIG__,limits={maxPendingRequests:32,maxRequestBytes:16*1024*1024,maxBufferedBytes:4*1024*1024,lowBufferedBytes:1024*1024,sendTimeoutMs:30000},state={pending:new Map(),sendQueue:Promise.resolve(),sequence:0};let peer,channel;
+const config=__NRYNET_CONFIG__,limits={maxPendingRequests:256,maxRequestBytes:16*1024*1024,maxBufferedBytes:32*1024*1024,lowBufferedBytes:8*1024*1024,sendTimeoutMs:30000},state={pending:new Map(),sendQueue:Promise.resolve(),sequence:0};let peer,channel;
 const dot=document.getElementById('dot'),status=document.getElementById('status'),frame=document.getElementById('content');
 function setStatus(value,kind){status.textContent=value;dot.className=kind||''}
 function waitGathering(pc){if(pc.iceGatheringState==='complete')return Promise.resolve();return new Promise(resolve=>pc.addEventListener('icegatheringstatechange',()=>pc.iceGatheringState==='complete'&&resolve(),{once:false}))}

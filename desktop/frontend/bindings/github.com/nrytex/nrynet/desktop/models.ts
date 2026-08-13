@@ -63,5 +63,7 @@ export interface UpdateResult {
     "available": boolean;
     "latestVersion": string;
     "downloadURL": string;
+    "downloadState": string;
+    "ready": boolean;
     "message": string;
 }

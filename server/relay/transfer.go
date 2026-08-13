@@ -5,7 +5,10 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync"
 )
+
+var relayCopyBufferPool = sync.Pool{New: func() any { return make([]byte, 32*1024) }}
 
 type DataStream interface {
 	io.Reader
@@ -65,7 +68,9 @@ func firstCopy(uploadCh, downloadCh <-chan copyResult) (copyResult, copyResult, 
 }
 
 func copyMeasured(dst io.Writer, src io.Reader, ch chan<- copyResult, meter *bandwidthMeter) {
-	n, err := io.Copy(countingWriter{Writer: dst, meter: meter}, src)
+	buffer := relayCopyBufferPool.Get().([]byte)
+	defer relayCopyBufferPool.Put(buffer)
+	n, err := io.CopyBuffer(countingWriter{Writer: dst, meter: meter}, src, buffer)
 	ch <- copyResult{n: n, err: err}
 }
 

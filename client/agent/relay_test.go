@@ -69,7 +69,7 @@ func TestTransferWriterReportsWhileStreamIsOpen(t *testing.T) {
 	}
 }
 
-func TestOpenAndRelayOpensDataChannelBeforeLocalDial(t *testing.T) {
+func TestOpenAndRelayFailsBeforeDataChannelWhenLocalServiceIsUnavailable(t *testing.T) {
 	data := &testDataConn{}
 	control := &trackingControl{data: data, opened: make(chan struct{})}
 	agent := &Agent{
@@ -84,24 +84,28 @@ func TestOpenAndRelayOpensDataChannelBeforeLocalDial(t *testing.T) {
 	}
 	select {
 	case <-control.opened:
+		t.Fatal("data channel opened after local service dial failed")
 	default:
-		t.Fatal("data channel was not opened before local service dial")
 	}
 }
 
-func TestOpenConnectionDispatchDoesNotWaitForStreamCapacity(t *testing.T) {
+func TestReportConnectionFailureSendsRequestID(t *testing.T) {
+	control := &failureReportingControl{writes: make(chan protocol.ControlMessage, 1)}
 	agent := &Agent{logger: slog.Default()}
-	for index := 0; index < maxActiveStreamWorkers; index++ {
-		if !agent.acquireStreamWorker(context.Background()) {
-			t.Fatalf("failed to fill stream worker slot %d", index)
+	message := protocol.ControlMessage{Type: protocol.TypeOpenConnection, RequestID: "failed-1", TunnelID: "tun-1"}
+	agent.reportConnectionFailure(context.Background(), control, message, errors.New("local service refused"))
+	select {
+	case got := <-control.writes:
+		if got.Type != protocol.TypeConnectionFailed || got.RequestID != message.RequestID || got.TunnelID != message.TunnelID {
+			t.Fatalf("unexpected failure message: %+v", got)
 		}
+	case <-time.After(time.Second):
+		t.Fatal("failure message was not sent")
 	}
-	defer func() {
-		for index := 0; index < maxActiveStreamWorkers; index++ {
-			agent.releaseStreamWorker()
-		}
-	}()
+}
 
+func TestOpenConnectionDispatchReturnsWithoutWaitingForRelay(t *testing.T) {
+	agent := &Agent{logger: slog.Default()}
 	started := make(chan struct{})
 	control := &trackingControl{data: &testDataConn{}, opened: started}
 	message := protocol.ControlMessage{Type: protocol.TypeOpenConnection, RequestID: "capacity-1"}
@@ -113,7 +117,7 @@ func TestOpenConnectionDispatchDoesNotWaitForStreamCapacity(t *testing.T) {
 	select {
 	case <-finished:
 	case <-time.After(250 * time.Millisecond):
-		t.Fatal("open connection dispatch waited for the stream worker semaphore")
+		t.Fatal("open connection dispatch blocked on relay setup")
 	}
 }
 
@@ -149,6 +153,27 @@ func TestOpenQUICDataWithFallbackReportsBothErrors(t *testing.T) {
 type trackingControl struct {
 	data   dataConn
 	opened chan struct{}
+}
+
+type failureReportingControl struct {
+	writes chan protocol.ControlMessage
+}
+
+func (c *failureReportingControl) readJSON(any) error { return nil }
+
+func (c *failureReportingControl) writeJSON(value any) error {
+	message, ok := value.(protocol.ControlMessage)
+	if !ok {
+		return fmt.Errorf("unexpected control message type %T", value)
+	}
+	c.writes <- message
+	return nil
+}
+
+func (c *failureReportingControl) close() error { return nil }
+
+func (c *failureReportingControl) openData(context.Context, string) (dataConn, error) {
+	return nil, errors.New("not used")
 }
 
 func (c *trackingControl) readJSON(any) error  { return nil }

@@ -19,8 +19,8 @@ const (
 	visitorStreamChunkBytes  = 24 * 1024
 	visitorMaxRequestBytes   = 16 * 1024 * 1024
 	visitorMaxResponseBytes  = 16 * 1024 * 1024
-	visitorMaxVisitorStreams = 32
-	visitorMaxTotalStreams   = 64
+	visitorMaxVisitorStreams = 4096
+	visitorMaxTotalStreams   = 16384
 )
 
 type visitorDataSession struct {

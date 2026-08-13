@@ -138,7 +138,7 @@ func (s *udpSession) send(source protocol.ControlMessage, data []byte) error {
 	if err != nil {
 		return err
 	}
-	if err := s.writer.writeJSON(message); err != nil {
+	if err := s.agent.writeControl(s.writer, message); err != nil {
 		return err
 	}
 	s.agent.notifyTransfer(source.TunnelID, DirectionUpload, int64(len(data)))

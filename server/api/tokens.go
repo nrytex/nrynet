@@ -73,6 +73,7 @@ func (h tokenHandler) update(c *gin.Context) {
 		}
 		disconnectClients(h.runtime, clients)
 	}
+	invalidateTokenAuthCache(h.runtime, c.Param("id"))
 	c.Status(http.StatusNoContent)
 }
 
@@ -95,5 +96,20 @@ func (h tokenHandler) delete(c *gin.Context) {
 		respondError(c, http.StatusConflict, err.Error())
 		return
 	}
+	invalidateTokenAuthCache(h.runtime, c.Param("id"))
 	c.Status(http.StatusNoContent)
+}
+
+func invalidateRuntimeAuthCache(runtime Runtime) {
+	if invalidator, ok := runtime.(AuthCacheInvalidator); ok {
+		invalidator.InvalidateAuthCache()
+	}
+}
+
+func invalidateTokenAuthCache(runtime Runtime, tokenID string) {
+	if invalidator, ok := runtime.(TokenAuthCacheInvalidator); ok {
+		invalidator.InvalidateTokenAuthCache(tokenID)
+		return
+	}
+	invalidateRuntimeAuthCache(runtime)
 }

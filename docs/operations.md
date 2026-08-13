@@ -202,8 +202,11 @@ UDP sockets used by punched sessions. Agents need outbound UDP access. A
 strict NAT or firewall may reject hole punching; the normal relay path remains
 the fallback.
 
-Each TCP visitor currently gets one punched QUIC session. The server caps
-direct TCP P2P sessions at 128; additional visitors use the broker fallback.
+Each TCP visitor gets its own punched QUIC session. Direct P2P no longer has a
+fixed 128-session application cap; capacity is governed by available CPU,
+memory, socket/file-descriptor limits, and the QUIC flow-control windows. If a
+network cannot punch successfully, that individual visitor falls back to the
+authenticated broker relay.
 
 ## Linux installation
 

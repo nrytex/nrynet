@@ -24,9 +24,9 @@ module.
   the tray's Quit command exits the application.
 - Open-at-login setting: Windows `HKCU\...\Run`, macOS LaunchAgent.
 - Wails updater backed directly by public `nrytex/nrynet` GitHub Releases. It
-  selects the matching desktop asset and verifies its SHA-256 digest from
-  `SHA256SUMS`. It checks every six hours in the background; the Update button
-  remains available on demand.
+  selects the matching desktop asset, verifies its SHA-256 digest from
+  `SHA256SUMS`, and downloads updates automatically. Once the package is ready,
+  the desktop app offers a restart action to finish the update.
 
 ## Development
 

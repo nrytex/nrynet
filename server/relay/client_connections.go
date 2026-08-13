@@ -9,8 +9,9 @@ import (
 var errClientDisconnected = errors.New("client was disconnected")
 
 type activeConnection struct {
-	data    io.Closer
-	visitor io.Closer
+	requestID string
+	data      io.Closer
+	visitor   io.Closer
 }
 
 type clientConnections struct {
@@ -35,6 +36,7 @@ func (c *clientConnections) generationFor(clientID string) uint64 {
 func (c *clientConnections) register(
 	clientID string,
 	generation uint64,
+	requestID string,
 	data io.Closer,
 	visitor io.Closer,
 ) (func(), bool) {
@@ -43,12 +45,27 @@ func (c *clientConnections) register(
 	if c.generations[clientID] != generation {
 		return nil, false
 	}
-	connection := &activeConnection{data: data, visitor: visitor}
+	connection := &activeConnection{requestID: requestID, data: data, visitor: visitor}
 	if c.active[clientID] == nil {
 		c.active[clientID] = make(map[*activeConnection]struct{})
 	}
 	c.active[clientID][connection] = struct{}{}
 	return func() { c.remove(clientID, connection) }, true
+}
+
+func (c *clientConnections) closeRequest(clientID, requestID string) {
+	c.mu.Lock()
+	connections := make([]*activeConnection, 0)
+	for connection := range c.active[clientID] {
+		if connection.requestID == requestID {
+			connections = append(connections, connection)
+		}
+	}
+	c.mu.Unlock()
+	for _, connection := range connections {
+		_ = connection.data.Close()
+		_ = connection.visitor.Close()
+	}
 }
 
 func (c *clientConnections) remove(clientID string, connection *activeConnection) {
@@ -76,6 +93,7 @@ func (b *Broker) relayPending(data DataStream, pending *pendingConn) error {
 	unregister, ok := b.connections.register(
 		pending.tunnel.ClientID,
 		pending.connectionGeneration,
+		pending.requestID,
 		data,
 		pending.visitor,
 	)

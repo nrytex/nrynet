@@ -18,6 +18,12 @@ func (h *Hub) SetVisitorWebRTCHandler(handler func(string, protocol.ControlMessa
 	h.visitorWebRTCHandler = handler
 }
 
+func (h *Hub) SetConnectionFailureHandler(handler func(string, protocol.ControlMessage)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.connectionFailureHandler = handler
+}
+
 func (h *Hub) SetConnectHandler(handler func(string)) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -39,9 +45,9 @@ func (h *Hub) handleVisitorWebRTC(clientID string, message protocol.ControlMessa
 	}
 }
 
-func (h *Hub) handleUDPPacket(clientID string, message protocol.ControlMessage) {
+func (h *Hub) handleConnectionFailure(clientID string, message protocol.ControlMessage) {
 	h.mu.RLock()
-	handler := h.udpHandler
+	handler := h.connectionFailureHandler
 	h.mu.RUnlock()
 	if handler != nil {
 		handler(clientID, message)

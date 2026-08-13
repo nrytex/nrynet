@@ -18,10 +18,11 @@ import (
 )
 
 const (
-	githubWebURL      = "https://github.com"
-	checksumAssetName = "SHA256SUMS"
-	downloadURLKey    = "github.release.downloadURL"
-	userAgentPrefix   = "Nrynet-Desktop-Updater/"
+	githubWebURL       = "https://github.com"
+	checksumAssetName  = "SHA256SUMS"
+	downloadURLKey     = "github.release.downloadURL"
+	userAgentPrefix    = "Nrynet-Desktop-Updater/"
+	releaseHTTPTimeout = 15 * time.Minute
 )
 
 type githubReleaseProvider struct {
@@ -36,7 +37,7 @@ func newGitHubReleaseProvider(repository string, client *http.Client) (*githubRe
 		return nil, fmt.Errorf("github release repository must be in owner/name form: %q", repository)
 	}
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second}
+		client = &http.Client{Timeout: releaseHTTPTimeout}
 	}
 	return &githubReleaseProvider{repository: repository, baseURL: githubWebURL, client: client}, nil
 }

@@ -62,10 +62,10 @@ func TestQUICAuthenticatedStreamsCarryFrames(t *testing.T) {
 
 func TestQUICConfigAllowsConcurrentDataStreams(t *testing.T) {
 	config := quicConfig()
-	if config.MaxIncomingStreams < 512 {
+	if config.MaxIncomingStreams < 4096 {
 		t.Fatalf("MaxIncomingStreams=%d, want at least 512", config.MaxIncomingStreams)
 	}
-	if config.MaxIncomingUniStreams < 64 {
+	if config.MaxIncomingUniStreams < 256 {
 		t.Fatalf("MaxIncomingUniStreams=%d, want at least 64", config.MaxIncomingUniStreams)
 	}
 }

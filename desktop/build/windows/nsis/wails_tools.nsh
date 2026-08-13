@@ -5,7 +5,7 @@
 !include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
-    !define INFO_PROJECTNAME "NrynetDesktop"
+    !define INFO_PROJECTNAME "nrynet-desktop"
 !endif
 !ifndef INFO_COMPANYNAME
     !define INFO_COMPANYNAME "Nrynet"
@@ -14,7 +14,7 @@
     !define INFO_PRODUCTNAME "Nrynet"
 !endif
 !ifndef INFO_PRODUCTVERSION
-    !define INFO_PRODUCTVERSION "1.0.0"
+    !define INFO_PRODUCTVERSION "1.3.5"
 !endif
 !ifndef INFO_COPYRIGHT
     !define INFO_COPYRIGHT "(c) 2026 Nrynet"

@@ -17,17 +17,22 @@ const (
 )
 
 type UpdateService struct {
-	mu       sync.Mutex
-	runner   updateRunner
-	ready    bool
-	checking bool
-	last     UpdateResult
-	stop     chan struct{}
+	mu                sync.Mutex
+	flowMu            sync.Mutex
+	runner            updateRunner
+	ready             bool
+	checking          bool
+	last              UpdateResult
+	downloadedVersion string
+	downloadStarted   bool
+	stop              chan struct{}
 }
 
 type updateRunner interface {
 	Init(updater.Config) error
 	Check(context.Context) (*updater.Release, error)
+	DownloadAndInstall(context.Context) error
+	Restart(context.Context) error
 }
 
 func NewUpdateService(runner updateRunner) *UpdateService {
@@ -60,7 +65,10 @@ func (s *UpdateService) StopAutomaticChecks() {
 }
 
 func (s *UpdateService) checkLoop(stop chan struct{}, interval time.Duration) {
-	_, _ = s.checkOnce()
+	_, _ = s.runCheckAndDownload()
+	if interval <= 0 {
+		interval = automaticCheckInterval
+	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -68,7 +76,7 @@ func (s *UpdateService) checkLoop(stop chan struct{}, interval time.Duration) {
 		case <-stop:
 			return
 		case <-ticker.C:
-			_, _ = s.checkOnce()
+			_, _ = s.runCheckAndDownload()
 		}
 	}
 }
@@ -77,7 +85,70 @@ func (s *UpdateService) CheckForUpdate() (UpdateResult, error) {
 	if err := s.ensureConfigured(); err != nil {
 		return UpdateResult{}, err
 	}
-	return s.checkOnce()
+	return s.runCheckAndDownload()
+}
+
+func (s *UpdateService) ApplyUpdate() error {
+	if err := s.ensureConfigured(); err != nil {
+		return err
+	}
+	s.flowMu.Lock()
+	defer s.flowMu.Unlock()
+	return s.runner.Restart(context.Background())
+}
+
+func (s *UpdateService) runCheckAndDownload() (UpdateResult, error) {
+	s.flowMu.Lock()
+	defer s.flowMu.Unlock()
+	result, err := s.checkOnce()
+	if err != nil || !result.Available {
+		return result, err
+	}
+	return s.download(result)
+}
+
+func (s *UpdateService) download(result UpdateResult) (UpdateResult, error) {
+	s.mu.Lock()
+	if s.downloadedVersion == result.LatestVersion {
+		result.DownloadState = "ready"
+		result.Ready = true
+		result.Message = "新版本 " + result.LatestVersion + " 已下载，重启应用即可完成更新。"
+		s.last = result
+		s.mu.Unlock()
+		return result, nil
+	}
+	if s.downloadStarted {
+		result.DownloadState = "downloading"
+		result.Message = "正在下载更新版本 " + result.LatestVersion + "..."
+		s.last = result
+		s.mu.Unlock()
+		return result, nil
+	}
+	s.downloadStarted = true
+	result.DownloadState = "downloading"
+	result.Message = "正在下载更新版本 " + result.LatestVersion + "..."
+	s.last = result
+	s.mu.Unlock()
+
+	if err := s.runner.DownloadAndInstall(context.Background()); err != nil {
+		result.DownloadState = "error"
+		result.Message = "更新下载失败：" + err.Error()
+		s.mu.Lock()
+		s.downloadStarted = false
+		s.last = result
+		s.mu.Unlock()
+		return result, err
+	}
+
+	result.DownloadState = "ready"
+	result.Ready = true
+	result.Message = "新版本 " + result.LatestVersion + " 已下载，重启应用即可完成更新。"
+	s.mu.Lock()
+	s.downloadStarted = false
+	s.downloadedVersion = result.LatestVersion
+	s.last = result
+	s.mu.Unlock()
+	return result, nil
 }
 
 func (s *UpdateService) checkOnce() (result UpdateResult, err error) {
@@ -103,7 +174,18 @@ func (s *UpdateService) checkOnce() (result UpdateResult, err error) {
 		return UpdateResult{}, err
 	}
 	result = updateResultFromRelease(release)
+	if release == nil {
+		s.mu.Lock()
+		s.last = result
+		s.mu.Unlock()
+		return result, nil
+	}
 	s.mu.Lock()
+	if s.downloadedVersion == result.LatestVersion {
+		result.DownloadState = "ready"
+		result.Ready = true
+		result.Message = "新版本 " + result.LatestVersion + " 已下载，重启应用即可完成更新。"
+	}
 	s.last = result
 	s.mu.Unlock()
 	return result, nil
@@ -115,7 +197,7 @@ func (s *UpdateService) checkOnce() (result UpdateResult, err error) {
 func (s *UpdateService) LastResult() *UpdateResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.last.Available {
+	if !s.last.Available || s.last.DownloadState == "error" {
 		return nil
 	}
 	result := s.last
@@ -132,7 +214,7 @@ func updateResultFromRelease(release *updater.Release) UpdateResult {
 		Available:     true,
 		LatestVersion: release.Version,
 		DownloadURL:   downloadURL,
-		Message:       "发现新版本 " + release.Version + "，请前往 GitHub Release 下载。",
+		Message:       "发现新版本 " + release.Version,
 	}
 }
 

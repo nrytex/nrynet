@@ -1,5 +1,5 @@
 import { App, Button, Empty, Switch, Tooltip, Typography } from "antd";
-import { ArrowUpRight, CircleAlert, Copy, Database, MoreHorizontal, Power, Settings, SlidersHorizontal } from "lucide-react";
+import { CircleAlert, Copy, Database, MoreHorizontal, Power, Settings, SlidersHorizontal } from "lucide-react";
 import type { MouseEvent } from "react";
 import type { DesktopSnapshot } from "../bindings/github.com/nrytex/nrynet/desktop";
 import type { UpdateResult } from "../bindings/github.com/nrytex/nrynet/desktop";
@@ -17,7 +17,7 @@ interface HomeViewProps {
   snapshot?: DesktopSnapshot;
   loading: boolean;
   updateNotice?: UpdateResult;
-  onOpenUpdate: () => void;
+  onApplyUpdate: () => void;
   onConnect: () => void;
   onDisconnect: () => void;
   onSettings: (section?: SettingsSection) => void;
@@ -51,7 +51,8 @@ export function HomeView(props: HomeViewProps) {
 
       {props.updateNotice && <div className="update-banner">
         <div className="update-banner-text"><strong>发现新版本 {props.updateNotice.latestVersion}</strong><span>{props.updateNotice.message}</span></div>
-        <Button size="small" type="primary" icon={<ArrowUpRight size={14} />} onClick={props.onOpenUpdate}>去下载</Button>
+        {props.updateNotice.downloadState === "downloading" && <span className="update-progress">正在下载</span>}
+        {props.updateNotice.ready && <Button size="small" type="primary" onClick={props.onApplyUpdate}>立即重启更新</Button>}
       </div>}
 
       <section className="connection-panel">

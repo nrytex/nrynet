@@ -145,8 +145,8 @@ var visitorHTTPClientInstance = &http.Client{
 	Timeout: visitorHTTPTimeout,
 	Transport: &http.Transport{
 		Proxy:                 nil,
-		MaxIdleConns:          64,
-		MaxIdleConnsPerHost:   32,
+		MaxIdleConns:          1024,
+		MaxIdleConnsPerHost:   512,
 		MaxConnsPerHost:       visitorMaxTotalStreams,
 		IdleConnTimeout:       30 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,

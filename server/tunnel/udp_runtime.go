@@ -1,10 +1,10 @@
 package tunnel
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -12,15 +12,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/nrytex/nrynet/internal/model"
-	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 const (
 	udpIdleTimeout     = 2 * time.Minute
-	udpWorkerCount     = 32
-	udpPacketQueueSize = 256
-	udpMaxSessions     = 4096
-	udpMaxP2PSessions  = 128
+	udpPacketQueueSize = 8192
+	udpMaxSessions     = 65536
 )
 
 type udpVisitorPacket struct {
@@ -64,12 +61,20 @@ func (m *Manager) startUDP(tunnel model.Tunnel) error {
 	}
 	runtime := newUDPRuntime(m, tunnel, conn)
 	m.udpRuntimes[tunnel.ID] = runtime
-	for range udpWorkerCount {
+	for range udpWorkerCount() {
 		go runtime.workerLoop()
 	}
 	go runtime.readLoop()
 	go runtime.reapLoop()
 	return nil
+}
+
+func udpWorkerCount() int {
+	workers := runtime.GOMAXPROCS(0) * 8
+	if workers < 32 {
+		return 32
+	}
+	return workers
 }
 
 func listenUDP(port int) (*net.UDPConn, error) {
@@ -105,12 +110,18 @@ func (r *udpRuntime) readLoop() {
 			return
 		}
 		packet := udpVisitorPacket{addr: addr, payload: append([]byte(nil), buffer[:n]...)}
-		select {
-		case r.packets <- packet:
-		case <-r.done:
+		if !r.enqueuePacket(packet) {
 			return
-		default:
 		}
+	}
+}
+
+func (r *udpRuntime) enqueuePacket(packet udpVisitorPacket) bool {
+	select {
+	case r.packets <- packet:
+		return true
+	case <-r.done:
+		return false
 	}
 }
 
@@ -118,6 +129,9 @@ func (r *udpRuntime) workerLoop() {
 	for {
 		select {
 		case packet := <-r.packets:
+			if packet.addr == nil {
+				return
+			}
 			r.handleVisitorPacket(packet.addr, packet.payload)
 		case <-r.done:
 			return
@@ -170,11 +184,8 @@ func (r *udpRuntime) session(addr *net.UDPAddr) *udpVisitorSession {
 
 func (r *udpRuntime) acquireP2P() bool {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.p2pCount >= udpMaxP2PSessions {
-		return false
-	}
 	r.p2pCount++
+	r.mu.Unlock()
 	return true
 }
 
@@ -194,10 +205,9 @@ func (r *udpRuntime) sendToVisitor(sessionID string, payload []byte) error {
 	if _, err := r.conn.WriteToUDP(payload, session.addr); err != nil {
 		return err
 	}
-	// Do not hold the control reader on the single SQLite writer while
-	// forwarding UDP responses. The datagram is already on the wire; traffic
-	// accounting can finish independently.
-	go r.recordTraffic(0, int64(len(payload)))
+	// Traffic accounting is an in-memory delta; the recorder flushes SQLite in
+	// batches, so the control reader does not wait on a database write here.
+	r.recordTraffic(0, int64(len(payload)))
 	return nil
 }
 
@@ -277,33 +287,4 @@ func (m *Manager) disconnectUDPClient(clientID string) {
 	for _, runtime := range runtimes {
 		runtime.clearSessions()
 	}
-}
-
-func (r *udpRuntime) recordDenied(addr *net.UDPAddr) {
-	_ = r.manager.store.RecordEvent(context.Background(), "warn", "tunnel.denied",
-		"Visitor denied by IP allowlist", map[string]any{
-			"tunnel_id": r.tunnel.ID, "visitor": addr.String(),
-		})
-}
-
-func (r *udpRuntime) recordTraffic(upload, download int64) {
-	_ = r.manager.store.RecordTraffic(context.Background(), r.tunnel.ID, upload, download)
-	r.manager.broker.RecordBytes(upload + download)
-}
-
-func (r *udpRuntime) recordPath(event string, session *udpVisitorSession) {
-	r.mu.Lock()
-	if session.path == event {
-		r.mu.Unlock()
-		return
-	}
-	session.path = event
-	r.mu.Unlock()
-	_ = r.manager.store.RecordEvent(context.Background(), "info", event,
-		"UDP packet routed", map[string]any{"tunnel_id": r.tunnel.ID, "session_id": session.id})
-	path := protocol.TunnelPathRelay
-	if event == "p2p.direct" {
-		path = protocol.TunnelPathP2P
-	}
-	r.manager.notifyTunnelPath(r.tunnel, path)
 }

@@ -19,7 +19,6 @@ import (
 
 const (
 	p2pStreamSetupTimeout = 2 * time.Second
-	maxP2PStreamSessions  = 128
 	p2pRetryCooldown      = 30 * time.Second
 	p2pRuntimeCooldown    = 5 * time.Second
 )
@@ -57,10 +56,6 @@ func (m *Manager) tryP2PStream(tunnel model.Tunnel, visitor net.Conn) bool {
 	if !m.p2pRetryAllowed(tunnel.ID) {
 		return false
 	}
-	if !m.acquireP2PStream() {
-		return false
-	}
-	defer m.releaseP2PStream()
 	rendezvous := m.rendezvousAddress()
 	if rendezvous == "" {
 		return false
@@ -70,20 +65,20 @@ func (m *Manager) tryP2PStream(tunnel model.Tunnel, visitor net.Conn) bool {
 	cancel()
 	if err != nil {
 		m.deferP2PRetry(tunnel.ID)
-		_ = m.store.RecordEvent(context.Background(), "info", "p2p.tcp.fallback",
+		m.recordEvent(context.Background(), "info", "p2p.tcp.fallback",
 			"P2P stream setup failed; using relay", map[string]any{
 				"tunnel_id": tunnel.ID, "error": err.Error(),
 			})
 		return false
 	}
 	m.clearP2PRetry(tunnel.ID)
-	_ = m.store.RecordEvent(context.Background(), "info", "p2p.tcp.direct",
+	m.recordEvent(context.Background(), "info", "p2p.tcp.direct",
 		"P2P stream path established", map[string]any{"tunnel_id": tunnel.ID})
 	m.notifyTunnelPath(tunnel, protocol.TunnelPathP2P)
 	m.active.Add(1)
 	defer m.active.Add(-1)
 	err = m.broker.RelayStream(stream, visitor, func(upload, download int64) {
-		_ = m.store.RecordTraffic(context.Background(), tunnel.ID, upload, download)
+		m.recordTraffic(tunnel.ID, upload, download)
 	})
 	if err != nil {
 		// A stream can fail after ICE/QUIC setup succeeds. Keep the next
@@ -93,22 +88,6 @@ func (m *Manager) tryP2PStream(tunnel model.Tunnel, visitor net.Conn) bool {
 		m.recordConnectionFailure(tunnel.ID, "p2p", err)
 	}
 	return true
-}
-
-func (m *Manager) acquireP2PStream() bool {
-	for {
-		current := m.p2pStreams.Load()
-		if current >= maxP2PStreamSessions {
-			return false
-		}
-		if m.p2pStreams.CompareAndSwap(current, current+1) {
-			return true
-		}
-	}
-}
-
-func (m *Manager) releaseP2PStream() {
-	m.p2pStreams.Add(-1)
 }
 
 func (m *Manager) p2pRetryAllowed(tunnelID string) bool {

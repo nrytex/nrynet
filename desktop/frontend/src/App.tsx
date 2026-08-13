@@ -33,17 +33,19 @@ function DesktopApp() {
   const [snapshot, setSnapshot] = useState<DesktopSnapshot>();
   const [view, setView] = useState<View>({ name: "home" });
   const [loading, setLoading] = useState(false);
+  const [updateLoading, setUpdateLoading] = useState(false);
   const [form] = Form.useForm<AppConfig>();
   const previewTick = useRef(0);
-  const refreshInFlight = useRef(false);
+  const snapshotRefreshInFlight = useRef(false);
+  const statusRefreshInFlight = useRef(false);
 
   const showError = (error: unknown, action: FeedbackAction) => {
     message.error({ content: userErrorMessage(error, action), duration: 6 });
   };
 
-  const refresh = async () => {
-    if (refreshInFlight.current) return;
-    refreshInFlight.current = true;
+  const refreshSnapshot = async () => {
+    if (snapshotRefreshInFlight.current) return;
+    snapshotRefreshInFlight.current = true;
     try {
       let next: DesktopSnapshot;
       try {
@@ -54,14 +56,35 @@ function DesktopApp() {
       }
       setSnapshot(next);
     } finally {
-      refreshInFlight.current = false;
+      snapshotRefreshInFlight.current = false;
+    }
+  };
+
+  const refreshStatus = async () => {
+    if (statusRefreshInFlight.current) return;
+    statusRefreshInFlight.current = true;
+    try {
+      try {
+        const status = await DesktopService.Status();
+        setSnapshot((current) => current ? { ...current, status } : current);
+      } catch (error) {
+        if (!import.meta.env.DEV) throw error;
+        const preview = makePreviewSnapshot(previewTick.current++);
+        setSnapshot((current) => current ? { ...current, status: preview.status } : preview);
+      }
+    } finally {
+      statusRefreshInFlight.current = false;
     }
   };
 
   useEffect(() => {
-    refresh().catch((error) => showError(error, "load"));
-    const id = window.setInterval(() => refresh().catch(() => undefined), 1000);
-    return () => window.clearInterval(id);
+    refreshSnapshot().catch((error) => showError(error, "load"));
+	const snapshotID = window.setInterval(() => refreshSnapshot().catch(() => undefined), 3000);
+	const statusID = window.setInterval(() => refreshStatus().catch(() => undefined), 1000);
+    return () => {
+      window.clearInterval(snapshotID);
+      window.clearInterval(statusID);
+    };
   }, []);
 
   const runConnectionAction = async (action: "connect" | "disconnect") => {
@@ -75,7 +98,7 @@ function DesktopApp() {
     try {
       if (action === "connect") await DesktopService.Connect();
       else await DesktopService.Disconnect();
-      await refresh();
+      await refreshSnapshot();
     } catch (error) {
       if (!import.meta.env.DEV) showError(error, "connect");
       setSnapshot((current) => current ? {
@@ -106,27 +129,32 @@ function DesktopApp() {
   };
 
   const checkUpdate = async () => {
+    setUpdateLoading(true);
     try {
       const result = await DesktopService.CheckForUpdate();
-      if (result.available && result.downloadURL) {
+      if (result.ready) {
+        message.success(result.message);
+      } else if (result.available) {
         message.info(result.message);
       } else {
         message.success(result.message);
       }
-      await refresh();
+      await refreshSnapshot();
     } catch (error) {
       if (import.meta.env.DEV) message.info("当前已是最新版本");
       else showError(error, "update");
+    } finally {
+      setUpdateLoading(false);
     }
   };
 
-  const openUpdateDownload = async () => {
-    const url = snapshot?.update?.downloadURL;
-    if (!url) return;
+  const applyUpdate = async () => {
+    setLoading(true);
     try {
-      await DesktopService.OpenURL(url);
+      await DesktopService.ApplyUpdate();
     } catch (error) {
       showError(error, "update");
+      setLoading(false);
     }
   };
 
@@ -138,8 +166,8 @@ function DesktopApp() {
   if (view.name === "settings") {
     return <SettingsView
       form={form} config={config} status={status} logs={snapshot?.logs ?? []}
-      loading={loading} initialSection={view.section} onBack={() => setView({ name: "home" })}
-      onSave={saveConfig} onCheckUpdate={checkUpdate}
+      loading={loading} update={snapshot?.update ?? undefined} updateLoading={updateLoading} initialSection={view.section} onBack={() => setView({ name: "home" })}
+      onSave={saveConfig} onCheckUpdate={checkUpdate} onApplyUpdate={applyUpdate}
     />;
   }
   if (view.name === "tunnel" && selectedTunnel) {
@@ -148,7 +176,7 @@ function DesktopApp() {
   return <HomeView
     snapshot={snapshot} loading={loading}
     updateNotice={snapshot?.update ?? undefined}
-    onOpenUpdate={openUpdateDownload}
+    onApplyUpdate={applyUpdate}
     onConnect={() => runConnectionAction("connect")} onDisconnect={() => runConnectionAction("disconnect")}
     onSettings={(section = "general") => setView({ name: "settings", section })}
     onTunnel={(tunnelId) => setView({ name: "tunnel", tunnelId })}

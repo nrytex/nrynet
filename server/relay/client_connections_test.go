@@ -40,6 +40,29 @@ func TestBrokerDisconnectClientClosesActiveStream(t *testing.T) {
 	_ = visitorPeer.Close()
 }
 
+func TestBrokerFailClosesPendingVisitor(t *testing.T) {
+	store, authService, _, clientID := newBrokerStore(t)
+	broker := NewBroker(authService, store, time.Second)
+	visitorPeer, visitorBroker := net.Pipe()
+	defer visitorPeer.Close()
+	pending, err := broker.RegisterPending("failed-request", visitorBroker,
+		model.Tunnel{ID: "tun", ClientID: clientID}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- broker.Wait("failed-request", pending) }()
+	broker.Fail(clientID, "failed-request", errors.New("local service refused"))
+	select {
+	case err := <-done:
+		if err == nil || err.Error() != "local service refused" {
+			t.Fatalf("unexpected failure: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("pending visitor was not failed")
+	}
+}
+
 func TestBrokerDisconnectClientCancelsPendingVisitor(t *testing.T) {
 	store, authService, _, clientID := newBrokerStore(t)
 	broker := NewBroker(authService, store, time.Second)

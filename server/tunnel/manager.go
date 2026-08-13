@@ -10,8 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
-
 	netx "github.com/nrytex/nrynet/internal/advanced"
 	"github.com/nrytex/nrynet/internal/model"
 	"github.com/nrytex/nrynet/internal/protocol"
@@ -31,10 +29,11 @@ type Manager struct {
 	relayBinds  map[string]RelayBinding
 	registry    *netx.RelayRegistry
 	binder      RelayBinder
+	traffic     *trafficRecorder
+	events      *trafficEventRecorder
 	rdvAddress  string
 	p2pEnabled  bool
 	active      atomic.Int64
-	p2pStreams  atomic.Int64
 	p2pRetryAt  map[string]time.Time
 	tunnelPaths map[string]string
 }
@@ -51,8 +50,11 @@ func NewManager(store *storage.Store, hub *clienthub.Hub, broker *relay.Broker) 
 		p2pRetryAt:  make(map[string]time.Time),
 		tunnelPaths: make(map[string]string),
 	}
+	manager.traffic = newTrafficRecorder(store)
+	manager.events = newTrafficEventRecorder(store)
 	hub.SetUDPPacketHandler(manager.HandleUDPPacket)
 	hub.SetConnectHandler(manager.handleClientConnected)
+	hub.SetConnectionFailureHandler(manager.HandleConnectionFailure)
 	hub.SetDisconnectHandler(manager.handleClientDisconnected)
 	return manager
 }
@@ -89,7 +91,7 @@ func (m *Manager) StartTunnel(ctx context.Context, id string) error {
 		return err
 	}
 	m.notifyTunnelPath(tunnel, tunnelPathForProtocol(tunnel.Protocol))
-	_ = m.store.RecordEvent(ctx, "info", "tunnel.started", "Tunnel started", map[string]any{
+	m.recordEvent(ctx, "info", "tunnel.started", "Tunnel started", map[string]any{
 		"tunnel_id": tunnel.ID, "name": tunnel.Name, "remote_port": tunnel.RemotePort,
 	})
 	return m.SyncClient(ctx, tunnel.ClientID)
@@ -173,7 +175,7 @@ func (m *Manager) StopTunnel(ctx context.Context, id string) error {
 	if err := m.store.SetTunnelStatus(ctx, id, "stopped"); err != nil {
 		return err
 	}
-	_ = m.store.RecordEvent(ctx, "info", "tunnel.stopped", "Tunnel stopped", map[string]any{
+	m.recordEvent(ctx, "info", "tunnel.stopped", "Tunnel stopped", map[string]any{
 		"tunnel_id": tunnel.ID, "name": tunnel.Name,
 	})
 	return m.SyncClient(ctx, tunnel.ClientID)
@@ -263,37 +265,6 @@ func (m *Manager) BandwidthBPS() int64 {
 	return m.broker.BandwidthBPS()
 }
 
-func (m *Manager) Close() error {
-	m.mu.Lock()
-	listeners := make([]net.Listener, 0, len(m.listeners))
-	for _, listener := range m.listeners {
-		listeners = append(listeners, listener)
-	}
-	udpRuntimes := make([]*udpRuntime, 0, len(m.udpRuntimes))
-	for _, runtime := range m.udpRuntimes {
-		udpRuntimes = append(udpRuntimes, runtime)
-	}
-	m.listeners = make(map[string]net.Listener)
-	m.udpRuntimes = make(map[string]*udpRuntime)
-	relayBinds := make([]RelayBinding, 0, len(m.relayBinds))
-	for _, binding := range m.relayBinds {
-		relayBinds = append(relayBinds, binding)
-	}
-	m.relayBinds = make(map[string]RelayBinding)
-	m.mu.Unlock()
-	var errs []error
-	for _, listener := range listeners {
-		errs = append(errs, listener.Close())
-	}
-	for _, runtime := range udpRuntimes {
-		errs = append(errs, runtime.close())
-	}
-	for _, binding := range relayBinds {
-		errs = append(errs, binding.Close())
-	}
-	return errors.Join(errs...)
-}
-
 func (m *Manager) acceptLoop(tunnel model.Tunnel, listener net.Listener) {
 	for {
 		visitor, err := listener.Accept()
@@ -301,7 +272,7 @@ func (m *Manager) acceptLoop(tunnel model.Tunnel, listener net.Listener) {
 			return
 		}
 		if !visitorAllowed(visitor.RemoteAddr(), tunnel.IPAllowlist) {
-			_ = m.store.RecordEvent(context.Background(), "warn", "tunnel.denied",
+			m.recordEvent(context.Background(), "warn", "tunnel.denied",
 				"Visitor denied by IP allowlist", map[string]any{
 					"tunnel_id": tunnel.ID, "visitor": visitor.RemoteAddr().String(),
 				})
@@ -310,32 +281,4 @@ func (m *Manager) acceptLoop(tunnel model.Tunnel, listener net.Listener) {
 		}
 		go m.handleVisitor(tunnel, visitor)
 	}
-}
-
-func (m *Manager) handleVisitor(tunnel model.Tunnel, visitor net.Conn) {
-	if m.tryP2PStream(tunnel, visitor) {
-		return
-	}
-	m.notifyTunnelPath(tunnel, protocol.TunnelPathRelay)
-	m.handleRelayedVisitor(tunnel, visitor)
-}
-
-func (m *Manager) handleRelayedVisitor(tunnel model.Tunnel, visitor net.Conn) {
-	requestID := uuid.NewString()
-	pending, err := m.broker.RegisterPending(requestID, visitor, tunnel, func(upload, download int64) {
-		_ = m.store.RecordTraffic(context.Background(), tunnel.ID, upload, download)
-	})
-	if err != nil {
-		_ = visitor.Close()
-		return
-	}
-	if err := m.hub.OpenConnection(tunnel.ClientID, tunnel, requestID); err != nil {
-		m.broker.Cancel(requestID, pending)
-		m.recordConnectionFailure(tunnel.ID, requestID, err)
-		return
-	}
-	m.active.Add(1)
-	defer m.active.Add(-1)
-	err = m.broker.Wait(requestID, pending)
-	m.recordConnectionFailure(tunnel.ID, requestID, err)
 }

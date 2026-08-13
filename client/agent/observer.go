@@ -36,12 +36,6 @@ func (a *Agent) notifyTunnelSnapshot(tunnels []model.Tunnel) {
 	}
 }
 
-func (a *Agent) notifyTransfer(tunnelID, direction string, bytes int64) {
-	if a.options.Observer != nil && bytes > 0 {
-		a.options.Observer.Transfer(tunnelID, direction, bytes)
-	}
-}
-
 func (a *Agent) notifyTunnelPath(tunnelID, path string) {
 	observer, ok := a.options.Observer.(TunnelPathObserver)
 	if ok {
