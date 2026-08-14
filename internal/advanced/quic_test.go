@@ -70,6 +70,72 @@ func TestQUICConfigAllowsConcurrentDataStreams(t *testing.T) {
 	}
 }
 
+func TestQUICStreamFrameErrorDoesNotCloseSession(t *testing.T) {
+	cert, err := SelfSignedCertificate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := ListenQUIC("127.0.0.1:0", ServerTLSConfig(cert), testAuthenticator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	serverSessionCh := make(chan *QUICSession, 1)
+	serverErrCh := make(chan error, 1)
+	go func() {
+		session, acceptErr := server.Accept(ctx)
+		if acceptErr != nil {
+			serverErrCh <- acceptErr
+			return
+		}
+		serverSessionCh <- session
+	}()
+	client, err := DialQUIC(ctx, server.Addr().String(), ClientTLSConfig("localhost", true), AuthRequest{
+		Token: "secret", DeviceID: "agent-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	var serverSession *QUICSession
+	select {
+	case serverSession = <-serverSessionCh:
+	case err := <-serverErrCh:
+		t.Fatal(err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	defer serverSession.Close()
+
+	broken, err := client.conn.OpenStreamSync(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = broken.Write([]byte{0, 0, 0})
+	broken.CancelWrite(0)
+
+	if _, err := client.OpenStreamFrame(ctx, Frame{Kind: FrameData, RequestID: "healthy"}); err != nil {
+		t.Fatal(err)
+	}
+	var sawBroken, sawHealthy bool
+	for !sawBroken || !sawHealthy {
+		stream, acceptErr := serverSession.AcceptStream(ctx)
+		if acceptErr != nil {
+			if !IsStreamInitialError(acceptErr) {
+				t.Fatalf("accepting healthy stream failed: %v", acceptErr)
+			}
+			sawBroken = true
+			continue
+		}
+		if stream.Initial.RequestID == "healthy" {
+			sawHealthy = true
+		}
+		_ = stream.Close()
+	}
+}
+
 func testAuthenticator(_ context.Context, request AuthRequest, _ net.Addr) error {
 	if request.Token != "secret" || request.DeviceID != "agent-1" {
 		return errUnauthorizedForTest{}

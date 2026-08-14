@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -88,6 +89,9 @@ func (w countingWriter) Write(data []byte) (int, error) {
 func normalizeCopyError(err error) error {
 	if err == nil || err == io.EOF || errors.Is(err, io.ErrClosedPipe) ||
 		errors.Is(err, net.ErrClosed) || errors.Is(err, context.Canceled) || isExpectedSocketClose(err) {
+		return nil
+	}
+	if strings.Contains(err.Error(), "write on closed stream") {
 		return nil
 	}
 	return err

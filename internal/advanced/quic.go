@@ -32,6 +32,22 @@ type QUICStream struct {
 	Kind    string
 }
 
+// StreamInitialError means that one incoming stream could not provide its
+// protocol frame. This is a stream-local failure; the QUIC session may still
+// carry the control stream and other data streams.
+type StreamInitialError struct {
+	err error
+}
+
+func (e *StreamInitialError) Error() string { return fmt.Sprintf("read QUIC stream frame: %v", e.err) }
+
+func (e *StreamInitialError) Unwrap() error { return e.err }
+
+func IsStreamInitialError(err error) bool {
+	var target *StreamInitialError
+	return errors.As(err, &target)
+}
+
 func ListenQUIC(addr string, tlsConfig *tls.Config, auth Authenticator) (*QUICServer, error) {
 	if auth == nil {
 		return nil, errors.New("authenticator is required")
@@ -154,10 +170,17 @@ func (s *QUICSession) AcceptStream(ctx context.Context) (*QUICStream, error) {
 	if err != nil {
 		return nil, fmt.Errorf("accept quic stream: %w", err)
 	}
+	deadline := time.Now().Add(5 * time.Second)
+	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
+		deadline = contextDeadline
+	}
+	_ = stream.SetReadDeadline(deadline)
 	frame, err := ReadFrame(stream)
+	_ = stream.SetReadDeadline(time.Time{})
 	if err != nil {
+		stream.CancelRead(0)
 		_ = stream.Close()
-		return nil, err
+		return nil, &StreamInitialError{err: err}
 	}
 	return &QUICStream{Stream: stream, Initial: frame, Kind: frame.Kind}, nil
 }

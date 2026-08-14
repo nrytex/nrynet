@@ -108,6 +108,11 @@ func (q *queuedControlConn) openData(ctx context.Context, requestID string) (dat
 	return q.base.openData(ctx, requestID)
 }
 
+func (q *queuedControlConn) singleDataOpen() bool {
+	single, ok := q.base.(interface{ singleDataOpen() bool })
+	return ok && single.singleDataOpen()
+}
+
 func (q *queuedControlConn) ping() error {
 	pinger, ok := q.base.(interface{ ping() error })
 	if !ok {

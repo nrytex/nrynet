@@ -75,6 +75,12 @@ func needsDataHandshake(data dataConn) bool {
 }
 
 func openDataWithRetry(ctx context.Context, conn controlConn, requestID string) (dataConn, error) {
+	if single, ok := conn.(interface{ singleDataOpen() bool }); ok && single.singleDataOpen() {
+		// A failed QUIC stream open can already have reached the server. Do not
+		// create duplicate streams with the same request ID; QUIC's own data
+		// path performs the TCP fallback within this single attempt.
+		return conn.openData(ctx, requestID)
+	}
 	var lastErr error
 	for attempt := 0; attempt < dataChannelOpenAttempts; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -221,6 +227,9 @@ func normalizeCopyError(err error) error {
 		return nil
 	}
 	if isExpectedSocketClose(err) {
+		return nil
+	}
+	if strings.Contains(err.Error(), "write on closed stream") {
 		return nil
 	}
 	return err

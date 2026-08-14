@@ -65,6 +65,12 @@ func (s *QUICControlServer) handleSession(ctx context.Context, session *netx.QUI
 	for ctx.Err() == nil {
 		stream, err := session.AcceptStream(ctx)
 		if err != nil {
+			if netx.IsStreamInitialError(err) {
+				// A canceled or malformed data stream must not tear down the
+				// Agent's control session. The client may still have active
+				// visitors on other streams.
+				continue
+			}
 			return
 		}
 		go s.handleStream(ctx, session, stream, token.ID)

@@ -182,7 +182,9 @@ func (b *Broker) handleDataConn(conn net.Conn) {
 	handshake := protocol.DataHandshake{Token: initial.Token, DeviceID: initial.DeviceID, RequestID: initial.RequestID}
 	pending, err := b.claimPending(handshake)
 	if err != nil {
-		b.recordRejected("agent data channel rejected", fmt.Errorf("request_id=%s: %w", handshake.RequestID, err))
+		if !errors.Is(err, errRequestNotFound) {
+			b.recordRejected("agent data channel rejected", fmt.Errorf("request_id=%s: %w", handshake.RequestID, err))
+		}
 		_ = dataConn.Close()
 		return
 	}
@@ -193,7 +195,9 @@ func (b *Broker) handleDataConn(conn net.Conn) {
 func (b *Broker) HandleAuthenticatedStream(stream DataStream, handshake protocol.DataHandshake, tokenID string) {
 	pending, err := b.claimAuthenticatedPending(tokenID, handshake.DeviceID, handshake.RequestID)
 	if err != nil {
-		b.recordRejected("agent data stream rejected", fmt.Errorf("request_id=%s: %w", handshake.RequestID, err))
+		if !errors.Is(err, errRequestNotFound) {
+			b.recordRejected("agent data stream rejected", fmt.Errorf("request_id=%s: %w", handshake.RequestID, err))
+		}
 		_ = stream.Close()
 		return
 	}

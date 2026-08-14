@@ -16,6 +16,8 @@ type quicControl struct {
 	mu      sync.Mutex
 }
 
+func (*quicControl) singleDataOpen() bool { return true }
+
 func (c *quicControl) readJSON(value any) error {
 	frame, err := netx.ReadFrame(c.stream)
 	if err != nil {
