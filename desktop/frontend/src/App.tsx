@@ -100,11 +100,15 @@ function DesktopApp() {
       else await DesktopService.Disconnect();
       await refreshSnapshot();
     } catch (error) {
-      if (!import.meta.env.DEV) showError(error, "connect");
-      setSnapshot((current) => current ? {
-        ...current,
-        status: { ...current.status, connected: action === "connect", state: action === "connect" ? "connected" : "disconnected" },
-      } : current);
+      if (import.meta.env.DEV) {
+        setSnapshot((current) => current ? {
+          ...current,
+          status: { ...current.status, connected: action === "connect", state: action === "connect" ? "connected" : "disconnected" },
+        } : current);
+      } else {
+        showError(error, "connect");
+        await refreshSnapshot().catch(() => undefined);
+      }
     } finally {
       setLoading(false);
     }

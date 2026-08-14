@@ -102,6 +102,10 @@ func (a *Agent) dialWebSocketControl(ctx context.Context) (controlConn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dial WebSocket control: %w", err)
 	}
+	if err := configureWebSocketLiveness(conn, websocketLivenessTimeout(a.options.HeartbeatInterval)); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("configure WebSocket control keepalive: %w", err)
+	}
 	logger := a.logger
 	if logger == nil {
 		logger = slog.Default()

@@ -99,3 +99,12 @@ func TestNormalizeOptionsFillsMissingTimingValues(t *testing.T) {
 		t.Fatalf("invalid normalized timing options: %+v", options)
 	}
 }
+
+func TestWebSocketLivenessTimeoutAllowsHeartbeatJitter(t *testing.T) {
+	if got := websocketLivenessTimeout(10 * time.Second); got != 20*time.Second {
+		t.Fatalf("liveness timeout=%s, want 20s", got)
+	}
+	if got := websocketLivenessTimeout(time.Second); got != minimumWebSocketLivenessTimeout {
+		t.Fatalf("short liveness timeout=%s, want %s", got, minimumWebSocketLivenessTimeout)
+	}
+}

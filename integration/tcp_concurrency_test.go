@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/nrytex/nrynet/internal/storage"
 	clienthub "github.com/nrytex/nrynet/server/client"
 	"github.com/nrytex/nrynet/server/relay"
 	serverTunnel "github.com/nrytex/nrynet/server/tunnel"
@@ -72,5 +73,26 @@ func TestTCPTunnelServes256ConcurrentConnections(t *testing.T) {
 	close(errs)
 	for err := range errs {
 		t.Error(err)
+	}
+	assertNoConnectionFailures(t, store)
+	current, err := store.GetClient(context.Background(), client.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Status != "online" || hub.OnlineCount() != 1 {
+		t.Fatalf("client lost control session during concurrent relay: client=%+v online=%d", current, hub.OnlineCount())
+	}
+}
+
+func assertNoConnectionFailures(t *testing.T, store *storage.Store) {
+	t.Helper()
+	events, err := store.ListEvents(context.Background(), storage.EventFilter{Limit: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.Event == "connection.failed" {
+			t.Fatalf("high-concurrency relay recorded connection failure: %s", event.Message)
+		}
 	}
 }
