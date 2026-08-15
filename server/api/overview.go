@@ -29,6 +29,10 @@ func (h overviewHandler) get(c *gin.Context) {
 	}
 	connections := int64(0)
 	bandwidth := int64(0)
+	onlineClients := counts.OnlineClients
+	if metrics, ok := h.runtime.(interface{ OnlineClients() int }); ok {
+		onlineClients = metrics.OnlineClients()
+	}
 	if metrics, ok := h.runtime.(interface{ ActiveConnections() int64 }); ok {
 		connections = metrics.ActiveConnections()
 	}
@@ -37,7 +41,7 @@ func (h overviewHandler) get(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"status": "running", "uptime_seconds": int(time.Since(h.startedAt).Seconds()),
-		"online_clients": counts.OnlineClients, "total_clients": counts.TotalClients,
+		"online_clients": onlineClients, "total_clients": counts.TotalClients,
 		"active_tunnels": counts.ActiveTunnels, "total_tunnels": counts.TotalTunnels,
 		"connections": connections, "bandwidth_bps": bandwidth,
 		"today_upload": traffic.Upload, "today_download": traffic.Download,

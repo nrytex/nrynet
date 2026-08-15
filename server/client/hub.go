@@ -20,6 +20,8 @@ import (
 
 var errClientOffline = errors.New("client is not connected")
 
+const openConnectionRetryWindow = 5 * time.Second
+
 type Hub struct {
 	store    *storage.Store
 	auth     *auth.Service
@@ -103,7 +105,7 @@ func (h *Hub) OpenConnection(clientID string, tunnel model.Tunnel, requestID str
 	if err != nil {
 		return err
 	}
-	return h.send(clientID, message)
+	return h.sendOpenConnection(clientID, message)
 }
 
 func (h *Hub) SendUDPPacket(clientID string, tunnel model.Tunnel, requestID string, payload []byte) error {
@@ -160,6 +162,11 @@ func (h *Hub) send(clientID string, message protocol.ControlMessage) error {
 		return errClientOffline
 	}
 	if err := queue.enqueue(message); err != nil {
+		if errors.Is(err, errControlWriteQueueFull) {
+			// Queue pressure is not a dead control session. Let the
+			// OpenConnection caller retry without dropping the Agent.
+			return err
+		}
 		// A failed control write is a definitive transport failure. Remove the
 		// session now instead of waiting for the next heartbeat timeout.
 		_ = conn.Close()
@@ -168,4 +175,22 @@ func (h *Hub) send(clientID string, message protocol.ControlMessage) error {
 		return err
 	}
 	return nil
+}
+
+func (h *Hub) sendOpenConnection(clientID string, message protocol.ControlMessage) error {
+	deadline := time.Now().Add(openConnectionRetryWindow)
+	var lastErr error
+	for {
+		lastErr = h.send(clientID, message)
+		if lastErr == nil || !isRetryableOpenConnectionError(lastErr) || time.Now().After(deadline) {
+			return lastErr
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func isRetryableOpenConnectionError(err error) bool {
+	return errors.Is(err, errClientOffline) ||
+		errors.Is(err, errControlWriteQueueClosed) ||
+		errors.Is(err, errControlWriteQueueFull)
 }

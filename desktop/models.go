@@ -8,7 +8,7 @@ import (
 	"github.com/nrytex/nrynet/internal/model"
 )
 
-var appVersion = "1.3.5"
+var appVersion = "1.3.7"
 
 type AppConfig struct {
 	ServerURL          string `json:"serverUrl"`

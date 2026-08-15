@@ -137,6 +137,10 @@ func (s *DesktopService) onSessionStarted(runID uint64) {
 	s.status.State = "connected"
 	s.tunnelPaths = make(map[string]string)
 	s.status.Message = "已连接并通过身份验证。"
+	s.logs.append(LogEntry{
+		Time: time.Now(), Level: "INFO", Message: "agent control session connected",
+		Fields: map[string]any{"run_id": runID},
+	})
 }
 
 func (s *DesktopService) onSessionEnded(runID uint64, err error) {
@@ -152,6 +156,13 @@ func (s *DesktopService) onSessionEnded(runID uint64, err error) {
 	if err != nil {
 		s.status.Message = connectionErrorMessage(err)
 	}
+	fields := map[string]any{"run_id": runID}
+	if err != nil {
+		fields["error"] = err.Error()
+	}
+	s.logs.append(LogEntry{
+		Time: time.Now(), Level: "WARN", Message: "agent control session ended", Fields: fields,
+	})
 }
 
 func (s *DesktopService) onTunnelSnapshot(runID uint64, tunnels []model.Tunnel) {

@@ -35,6 +35,7 @@ func (h clientHandler) list(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.applyRuntimeStatuses(clients)
 	c.JSON(http.StatusOK, gin.H{"items": clients})
 }
 
@@ -44,6 +45,7 @@ func (h clientHandler) get(c *gin.Context) {
 		respondError(c, http.StatusNotFound, "client not found")
 		return
 	}
+	h.applyRuntimeStatus(&client)
 	tunnels, err := h.store.ListClientTunnels(c.Request.Context(), client.ID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, err.Error())
@@ -65,6 +67,24 @@ func (h clientHandler) get(c *gin.Context) {
 		"client": client, "tunnels": tunnels, "traffic": traffic,
 		"connected_at": connectedValue, "connected_seconds": connectedSeconds,
 	})
+}
+
+func (h clientHandler) applyRuntimeStatuses(clients []model.Client) {
+	for index := range clients {
+		h.applyRuntimeStatus(&clients[index])
+	}
+}
+
+func (h clientHandler) applyRuntimeStatus(client *model.Client) {
+	state, ok := h.runtime.(interface{ ClientConnected(string) bool })
+	if !ok {
+		return
+	}
+	if state.ClientConnected(client.ID) {
+		client.Status = "online"
+		return
+	}
+	client.Status = "offline"
 }
 
 func (h clientHandler) clientTraffic(c *gin.Context, clientID string) (clientTraffic, error) {
