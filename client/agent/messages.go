@@ -13,8 +13,12 @@ func (a *Agent) heartbeat(ctx context.Context, conn controlConn) error {
 	if interval <= 0 {
 		interval = defaultHeartbeatInterval
 	}
-	if err := a.sendHeartbeat(conn); err != nil {
+	requestID, err := a.sendHeartbeatRequest(conn)
+	if err != nil {
 		return err
+	}
+	if err := a.waitHeartbeatAckIfRequired(ctx, interval, requestID); err != nil {
+		return fmt.Errorf("wait for heartbeat acknowledgement: %w", err)
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -23,30 +27,81 @@ func (a *Agent) heartbeat(ctx context.Context, conn controlConn) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if err := a.sendHeartbeat(conn); err != nil {
+			requestID, err := a.sendHeartbeatRequest(conn)
+			if err != nil {
 				return err
+			}
+			if err := a.waitHeartbeatAckIfRequired(ctx, interval, requestID); err != nil {
+				return fmt.Errorf("wait for heartbeat acknowledgement: %w", err)
 			}
 		}
 	}
 }
 
+func (a *Agent) waitHeartbeatAckIfRequired(ctx context.Context, interval time.Duration, requestID string) error {
+	if !a.heartbeatAckRequired() {
+		return nil
+	}
+	return waitHeartbeatAck(ctx, heartbeatAckTimeout(interval), requestID, a.heartbeatAckChannel())
+}
+
+func (a *Agent) heartbeatAckChannel() <-chan string {
+	a.heartbeatMu.Lock()
+	defer a.heartbeatMu.Unlock()
+	return a.heartbeatAcks
+}
+
+func heartbeatAckTimeout(interval time.Duration) time.Duration {
+	timeout := interval * 3
+	if timeout < 15*time.Second {
+		return 15 * time.Second
+	}
+	return timeout
+}
+
+func waitHeartbeatAck(ctx context.Context, timeout time.Duration, requestID string, acks <-chan string) error {
+	if acks == nil {
+		return nil
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case acknowledgedID := <-acks:
+			if acknowledgedID == "" || acknowledgedID == requestID {
+				return nil
+			}
+		case <-timer.C:
+			return context.DeadlineExceeded
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
 func (a *Agent) sendHeartbeat(conn controlConn) error {
-	message, err := protocol.NewMessage(protocol.TypeHeartbeat, "", "", nil)
+	_, err := a.sendHeartbeatRequest(conn)
+	return err
+}
+
+func (a *Agent) sendHeartbeatRequest(conn controlConn) (string, error) {
+	requestID := fmt.Sprintf("heartbeat-%d", a.heartbeatSequence.Add(1))
+	message, err := protocol.NewMessage(protocol.TypeHeartbeat, requestID, "", nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if queued, ok := conn.(*queuedControlConn); ok && queued.isClosed() {
-		return errAgentControlWriteQueueClosed
+		return "", errAgentControlWriteQueueClosed
 	}
 	if err := a.writeControl(conn, message); err != nil {
-		return fmt.Errorf("send heartbeat: %w", err)
+		return "", fmt.Errorf("send heartbeat: %w", err)
 	}
 	if pinger, ok := conn.(interface{ ping() error }); ok {
 		if err := pinger.ping(); err != nil {
-			return fmt.Errorf("send WebSocket ping: %w", err)
+			return "", fmt.Errorf("send WebSocket ping: %w", err)
 		}
 	}
-	return nil
+	return requestID, nil
 }
 
 func (a *Agent) writeControl(conn controlConn, message protocol.ControlMessage) error {
@@ -59,6 +114,7 @@ func (a *Agent) handleTunnelSnapshot(message protocol.ControlMessage) error {
 		return err
 	}
 	a.notifyTunnelSnapshot(payload.Tunnels)
+	a.notifySessionReady()
 	a.logger.Info("received tunnel snapshot", "count", len(payload.Tunnels))
 	return nil
 }

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -20,6 +21,7 @@ const (
 type queuedControlMessage struct {
 	message protocol.ControlMessage
 	size    int
+	done    chan error
 }
 
 type controlWriteQueue struct {
@@ -28,6 +30,7 @@ type controlWriteQueue struct {
 
 	mu           sync.Mutex
 	condition    *sync.Cond
+	critical     []queuedControlMessage
 	urgent       []queuedControlMessage
 	normal       []queuedControlMessage
 	queuedCount  int
@@ -44,20 +47,43 @@ func newControlWriteQueue(conn ControlTransport, onError func()) *controlWriteQu
 }
 
 func (q *controlWriteQueue) enqueue(message protocol.ControlMessage) error {
+	return q.enqueueItem(queuedControlMessage{message: message, size: controlMessageSize(message)})
+}
+
+func (q *controlWriteQueue) enqueueWait(ctx context.Context, message protocol.ControlMessage) error {
+	done := make(chan error, 1)
+	if err := q.enqueueItem(queuedControlMessage{
+		message: message,
+		size:    controlMessageSize(message),
+		done:    done,
+	}); err != nil {
+		return err
+	}
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (q *controlWriteQueue) enqueueItem(item queuedControlMessage) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.closed {
 		return errControlWriteQueueClosed
 	}
-	item := queuedControlMessage{message: message, size: controlMessageSize(message)}
-	urgent := isUrgentControlMessage(message)
-	if q.queueFull(item.size) {
+	critical := isCriticalControlMessage(item.message)
+	urgent := isUrgentControlMessage(item.message)
+	if !critical && q.queueFull(item.size) {
 		return errControlWriteQueueFull
 	}
 	if q.closed {
 		return errControlWriteQueueClosed
 	}
-	if urgent {
+	if critical {
+		q.critical = append(q.critical, item)
+	} else if urgent {
 		q.urgent = append(q.urgent, item)
 	} else {
 		q.normal = append(q.normal, item)
@@ -70,13 +96,17 @@ func (q *controlWriteQueue) enqueue(message protocol.ControlMessage) error {
 
 func (q *controlWriteQueue) close() {
 	q.mu.Lock()
+	pending := append(q.critical, q.urgent...)
+	pending = append(pending, q.normal...)
 	q.closed = true
+	q.critical = nil
 	q.urgent = nil
 	q.normal = nil
 	q.queuedCount = 0
 	q.queuedBytes = 0
 	q.condition.Broadcast()
 	q.mu.Unlock()
+	completeQueuedMessages(pending, errControlWriteQueueClosed)
 }
 
 func (q *controlWriteQueue) run() {
@@ -85,24 +115,30 @@ func (q *controlWriteQueue) run() {
 		if !ok {
 			return
 		}
-		if err := q.conn.WriteJSON(message); err != nil {
-			q.fail()
+		err := q.conn.WriteJSON(message.message)
+		completeQueuedMessage(message, err)
+		if err != nil {
+			q.fail(err)
 			return
 		}
 	}
 }
 
-func (q *controlWriteQueue) next() (protocol.ControlMessage, bool) {
+func (q *controlWriteQueue) next() (queuedControlMessage, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	for len(q.urgent) == 0 && len(q.normal) == 0 && !q.closed {
+	for len(q.critical) == 0 && len(q.urgent) == 0 && len(q.normal) == 0 && !q.closed {
 		q.condition.Wait()
 	}
 	if q.closed {
-		return protocol.ControlMessage{}, false
+		return queuedControlMessage{}, false
 	}
 	var item queuedControlMessage
-	if len(q.urgent) > 0 && (q.urgentBudget < 32 || len(q.normal) == 0) {
+	if len(q.critical) > 0 {
+		item = q.critical[0]
+		q.critical[0] = queuedControlMessage{}
+		q.critical = q.critical[1:]
+	} else if len(q.urgent) > 0 && (q.urgentBudget < 32 || len(q.normal) == 0) {
 		item = q.urgent[0]
 		q.urgent[0] = queuedControlMessage{}
 		q.urgent = q.urgent[1:]
@@ -116,24 +152,40 @@ func (q *controlWriteQueue) next() (protocol.ControlMessage, bool) {
 	q.queuedCount--
 	q.queuedBytes -= item.size
 	q.condition.Broadcast()
-	return item.message, true
+	return item, true
 }
 
-func (q *controlWriteQueue) fail() {
+func (q *controlWriteQueue) fail(cause error) {
 	q.mu.Lock()
 	if q.closed {
 		q.mu.Unlock()
 		return
 	}
+	pending := append(q.critical, q.urgent...)
+	pending = append(pending, q.normal...)
 	q.closed = true
+	q.critical = nil
 	q.urgent = nil
 	q.normal = nil
 	q.queuedCount = 0
 	q.queuedBytes = 0
 	q.condition.Broadcast()
 	q.mu.Unlock()
+	completeQueuedMessages(pending, cause)
 	if q.onError != nil {
 		q.onError()
+	}
+}
+
+func completeQueuedMessage(message queuedControlMessage, err error) {
+	if message.done != nil {
+		message.done <- err
+	}
+}
+
+func completeQueuedMessages(messages []queuedControlMessage, err error) {
+	for _, message := range messages {
+		completeQueuedMessage(message, err)
 	}
 }
 
@@ -148,10 +200,15 @@ func controlMessageSize(message protocol.ControlMessage) int {
 func isUrgentControlMessage(message protocol.ControlMessage) bool {
 	switch message.Type {
 	case protocol.TypeHeartbeat, protocol.TypeHello, protocol.TypeOpenConnection,
+		protocol.TypeRequestWorkConn,
 		protocol.TypeP2PConnect, protocol.TypeTunnelSnapshot, protocol.TypeVisitorWebRTC,
-		protocol.TypeConnectionFailed:
+		protocol.TypeConnectionFailed, protocol.TypeHeartbeatAck:
 		return true
 	default:
 		return false
 	}
+}
+
+func isCriticalControlMessage(message protocol.ControlMessage) bool {
+	return message.Type == protocol.TypeHeartbeat || message.Type == protocol.TypeHeartbeatAck
 }

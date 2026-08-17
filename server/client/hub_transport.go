@@ -46,8 +46,8 @@ func (h *Hub) serveTransport(ctx context.Context, conn ControlTransport, tokenID
 		}
 		h.mu.Unlock()
 	}()
-	_ = h.store.SetClientStatus(ctx, client.ID, "online")
-	_ = h.store.RecordEvent(ctx, "info", "client.connected", "Client connected", map[string]any{
+	h.markClientOnline(client.ID, conn)
+	h.recordClientEvent("client.connected", "Client connected", map[string]any{
 		"client_id": client.ID, "device_id": client.DeviceID, "ip": client.IP,
 	})
 	// A WebSocket/QUIC handler owns the transport after the handshake. When
@@ -146,30 +146,22 @@ func (h *Hub) register(clientID string, conn ControlTransport, queue *controlWri
 
 func (h *Hub) unregister(clientID string, conn ControlTransport) {
 	h.mu.Lock()
-	isCurrent := h.conns[clientID] == conn
-	if !isCurrent {
+	if h.conns[clientID] != conn {
 		h.mu.Unlock()
 		return
 	}
-	// Keep the hub lock through the offline transition. A reconnect cannot
-	// register between this session's removal and the database write, which
-	// would otherwise let the old session overwrite the new session's online
-	// status.
 	handler := h.disconnectHandler
-	_ = h.store.SetClientStatus(context.Background(), clientID, "offline")
 	delete(h.conns, clientID)
 	delete(h.connected, clientID)
 	queue := h.writeQueues[clientID]
 	delete(h.writeQueues, clientID)
-	if handler != nil {
-		// The configured handler only closes broker/UDP state and must not call
-		// back into Hub while this lock is held.
-		handler(clientID)
-	}
 	h.mu.Unlock()
 	if queue != nil {
 		queue.close()
 	}
-	_ = h.store.RecordEvent(context.Background(), "info", "client.disconnected",
-		"Client disconnected", map[string]any{"client_id": clientID})
+	if handler != nil {
+		handler(clientID)
+	}
+	h.markClientOffline(clientID)
+	h.recordClientEvent("client.disconnected", "Client disconnected", map[string]any{"client_id": clientID})
 }

@@ -90,6 +90,24 @@ func TestBrokerDisconnectClientCancelsPendingVisitor(t *testing.T) {
 	}
 }
 
+func TestBrokerDisconnectActiveClientKeepsPendingVisitor(t *testing.T) {
+	store, authService, _, clientID := newBrokerStore(t)
+	broker := NewBroker(authService, store, time.Second)
+	visitorPeer, visitorBroker := net.Pipe()
+	defer visitorPeer.Close()
+	defer visitorBroker.Close()
+	if _, err := broker.RegisterPending("reconnect-request", visitorBroker,
+		model.Tunnel{ID: "tun", ClientID: clientID}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	broker.DisconnectActiveClient(clientID)
+	requests := broker.PendingRequests(clientID)
+	if len(requests) != 1 || requests[0].RequestID != "reconnect-request" {
+		t.Fatalf("pending requests after reconnectable disconnect=%+v", requests)
+	}
+}
+
 func TestBrokerRejectsWrongTokenForAuthenticatedQUICStream(t *testing.T) {
 	store, authService, _, clientID := newBrokerStore(t)
 	client, err := store.GetClient(context.Background(), clientID)

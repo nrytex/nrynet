@@ -20,7 +20,11 @@ import (
 
 var errClientOffline = errors.New("client is not connected")
 
-const openConnectionRetryWindow = 5 * time.Second
+const (
+	openConnectionRetryWindow  = 5 * time.Second
+	openConnectionWriteTimeout = 5 * time.Second
+	heartbeatWriteTimeout      = 5 * time.Second
+)
 
 type Hub struct {
 	store    *storage.Store
@@ -29,6 +33,7 @@ type Hub struct {
 	upgrader websocket.Upgrader
 
 	mu                       sync.RWMutex
+	statusMu                 sync.Mutex
 	conns                    map[string]ControlTransport
 	connected                map[string]time.Time
 	writeQueues              map[string]*controlWriteQueue
@@ -108,6 +113,11 @@ func (h *Hub) OpenConnection(clientID string, tunnel model.Tunnel, requestID str
 	return h.sendOpenConnection(clientID, message)
 }
 
+func (h *Hub) RequestWorkConnection(clientID string) error {
+	message := protocol.ControlMessage{Type: protocol.TypeRequestWorkConn}
+	return h.send(clientID, message)
+}
+
 func (h *Hub) SendUDPPacket(clientID string, tunnel model.Tunnel, requestID string, payload []byte) error {
 	packet := protocol.UDPPacketPayload{
 		LocalHost: tunnel.LocalHost,
@@ -181,12 +191,35 @@ func (h *Hub) sendOpenConnection(clientID string, message protocol.ControlMessag
 	deadline := time.Now().Add(openConnectionRetryWindow)
 	var lastErr error
 	for {
-		lastErr = h.send(clientID, message)
+		lastErr = h.sendOpenConnectionOnce(clientID, message)
 		if lastErr == nil || !isRetryableOpenConnectionError(lastErr) || time.Now().After(deadline) {
 			return lastErr
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+func (h *Hub) sendOpenConnectionOnce(clientID string, message protocol.ControlMessage) error {
+	h.mu.RLock()
+	conn := h.conns[clientID]
+	queue := h.writeQueues[clientID]
+	h.mu.RUnlock()
+	if conn == nil || queue == nil {
+		return errClientOffline
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), openConnectionWriteTimeout)
+	err := queue.enqueueWait(ctx, message)
+	cancel()
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, errControlWriteQueueFull) {
+		return err
+	}
+	_ = conn.Close()
+	h.unregister(clientID, conn)
+	slog.Default().Debug("agent control write failed", "client_id", clientID, "error", fmt.Sprint(err))
+	return err
 }
 
 func isRetryableOpenConnectionError(err error) bool {

@@ -5,16 +5,29 @@ import (
 	"time"
 )
 
-func TestBandwidthMeterUsesRollingWindow(t *testing.T) {
-	now := time.Unix(100, 0)
-	meter := newBandwidthMeter()
-	meter.clock = func() time.Time { return now }
-	meter.Add(500)
-	if got := meter.BytesPerSecond(); got != 100 {
-		t.Fatalf("rate=%d want=100", got)
+func TestBandwidthMeterReportsSampledRateWithoutFiveSecondDilution(t *testing.T) {
+	start := time.Unix(100, 0)
+	now := start
+	meter := &bandwidthMeter{clock: func() time.Time { return now }, lastSample: start}
+	meter.Add(64 * 1024)
+	now = now.Add(time.Second)
+	if got := meter.BytesPerSecond(); got != 64*1024 {
+		t.Fatalf("rate=%d, want %d", got, 64*1024)
 	}
-	now = now.Add(5 * time.Second)
-	if got := meter.BytesPerSecond(); got != 0 {
-		t.Fatalf("expired rate=%d", got)
+}
+
+func TestBandwidthMeterKeepsLastRateBetweenSamples(t *testing.T) {
+	start := time.Unix(200, 0)
+	now := start
+	meter := &bandwidthMeter{clock: func() time.Time { return now }, lastSample: start}
+	meter.Add(1000)
+	now = now.Add(time.Second)
+	if got := meter.BytesPerSecond(); got != 1000 {
+		t.Fatalf("first rate=%d", got)
+	}
+	meter.Add(1000)
+	now = now.Add(100 * time.Millisecond)
+	if got := meter.BytesPerSecond(); got != 1000 {
+		t.Fatalf("rate inside sample window=%d", got)
 	}
 }

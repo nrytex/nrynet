@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	localDialAttempts       = 8
+	localDialAttempts       = 16
 	localDialInitialBackoff = 100 * time.Millisecond
 	localDialMaxBackoff     = time.Second
 )

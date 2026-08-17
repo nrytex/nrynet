@@ -28,16 +28,19 @@ type Broker struct {
 	store   *storage.Store
 	timeout time.Duration
 
-	mu           sync.Mutex
-	pending      map[string]*pendingConn
-	connections  *clientConnections
-	meter        *bandwidthMeter
-	authCache    *relayAuthCache
-	rejectMu     sync.Mutex
-	rejectWindow time.Time
-	rejectCount  int
-	relayToken   string
-	relayVisitor func(nodeID, tunnelID, visitorAddr string, visitor net.Conn) error
+	mu            sync.Mutex
+	pending       map[string]*pendingConn
+	connections   *clientConnections
+	workers       *workConnectionPool
+	meter         *bandwidthMeter
+	authCache     *relayAuthCache
+	rejectMu      sync.Mutex
+	rejectWindow  time.Time
+	rejectCount   int
+	relayToken    string
+	relayVisitor  func(nodeID, tunnelID, visitorAddr string, visitor net.Conn) error
+	requestWorker func(clientID string) error
+	openDataPath  func(clientID string, tunnel model.Tunnel, requestID string) error
 }
 
 func (b *Broker) SetRelayVisitorHandler(token string, handler func(string, string, string, net.Conn) error) {
@@ -57,6 +60,7 @@ func NewBroker(authService *auth.Service, store *storage.Store, timeout time.Dur
 		timeout:     timeout,
 		pending:     make(map[string]*pendingConn),
 		connections: newClientConnections(),
+		workers:     newWorkConnectionPool(defaultWorkConnectionPoolSize),
 		meter:       newBandwidthMeter(),
 		authCache:   newRelayAuthCache(authService, store),
 	}
@@ -179,6 +183,10 @@ func (b *Broker) handleDataConn(conn net.Conn) {
 		b.handleRelayVisitor(dataConn, initial)
 		return
 	}
+	if initial.Role == protocol.DataRoleWorkConnection {
+		b.handleWorkConnection(dataConn, initial)
+		return
+	}
 	handshake := protocol.DataHandshake{Token: initial.Token, DeviceID: initial.DeviceID, RequestID: initial.RequestID}
 	pending, err := b.claimPending(handshake)
 	if err != nil {
@@ -206,19 +214,11 @@ func (b *Broker) HandleAuthenticatedStream(stream DataStream, handshake protocol
 }
 
 func (b *Broker) claimPending(handshake protocol.DataHandshake) (*pendingConn, error) {
-	client, err := b.authCache.clientByDevice(context.Background(), handshake.DeviceID)
+	clientID, generation, err := b.authenticateDataClient(handshake.Token, handshake.DeviceID)
 	if err != nil {
 		return nil, err
 	}
-	generation := b.connections.generationFor(client.ID)
-	token, err := b.authCache.authenticate(context.Background(), handshake.Token)
-	if err != nil {
-		return nil, err
-	}
-	if client.Disabled || client.TokenID != token.ID {
-		return nil, errors.New("client is not authorized")
-	}
-	return b.claimPendingForClient(client.ID, handshake.RequestID, generation)
+	return b.claimPendingForClient(clientID, handshake.RequestID, generation)
 }
 
 func (b *Broker) claimAuthenticatedPending(tokenID, deviceID, requestID string) (*pendingConn, error) {

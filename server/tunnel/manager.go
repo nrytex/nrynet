@@ -23,32 +23,36 @@ type Manager struct {
 	hub    *clienthub.Hub
 	broker *relay.Broker
 
-	mu          sync.Mutex
-	listeners   map[string]net.Listener
-	udpRuntimes map[string]*udpRuntime
-	relayBinds  map[string]RelayBinding
-	registry    *netx.RelayRegistry
-	binder      RelayBinder
-	traffic     *trafficRecorder
-	events      *trafficEventRecorder
-	rdvAddress  string
-	p2pEnabled  bool
-	active      atomic.Int64
-	p2pRetryAt  map[string]time.Time
-	tunnelPaths map[string]string
+	mu              sync.Mutex
+	listeners       map[string]net.Listener
+	udpRuntimes     map[string]*udpRuntime
+	relayBinds      map[string]RelayBinding
+	registry        *netx.RelayRegistry
+	binder          RelayBinder
+	traffic         *trafficRecorder
+	events          *trafficEventRecorder
+	rdvAddress      string
+	p2pEnabled      bool
+	active          atomic.Int64
+	p2pRetryAt      map[string]time.Time
+	tunnelPaths     map[string]string
+	reconnectTimers map[string]*time.Timer
+	reconnectEpochs map[string]uint64
 }
 
 func NewManager(store *storage.Store, hub *clienthub.Hub, broker *relay.Broker) *Manager {
 	manager := &Manager{
-		store:       store,
-		hub:         hub,
-		broker:      broker,
-		listeners:   make(map[string]net.Listener),
-		udpRuntimes: make(map[string]*udpRuntime),
-		relayBinds:  make(map[string]RelayBinding),
-		p2pEnabled:  true,
-		p2pRetryAt:  make(map[string]time.Time),
-		tunnelPaths: make(map[string]string),
+		store:           store,
+		hub:             hub,
+		broker:          broker,
+		listeners:       make(map[string]net.Listener),
+		udpRuntimes:     make(map[string]*udpRuntime),
+		relayBinds:      make(map[string]RelayBinding),
+		p2pEnabled:      true,
+		p2pRetryAt:      make(map[string]time.Time),
+		tunnelPaths:     make(map[string]string),
+		reconnectTimers: make(map[string]*time.Timer),
+		reconnectEpochs: make(map[string]uint64),
 	}
 	manager.traffic = newTrafficRecorder(store)
 	manager.events = newTrafficEventRecorder(store)
@@ -56,6 +60,7 @@ func NewManager(store *storage.Store, hub *clienthub.Hub, broker *relay.Broker) 
 	hub.SetConnectHandler(manager.handleClientConnected)
 	hub.SetConnectionFailureHandler(manager.HandleConnectionFailure)
 	hub.SetDisconnectHandler(manager.handleClientDisconnected)
+	broker.SetWorkConnectionHandlers(hub.RequestWorkConnection, hub.OpenConnection)
 	return manager
 }
 
@@ -220,16 +225,23 @@ func (m *Manager) DisconnectClient(clientID string) {
 	if !m.hub.Disconnect(clientID) {
 		m.handleClientDisconnected(clientID)
 	}
+	m.cancelReconnectCleanup(clientID)
+	m.broker.DisconnectActiveClient(clientID)
+	m.broker.FailPendingClient(clientID)
 }
 
 func (m *Manager) handleClientDisconnected(clientID string) {
-	// Keep the last observed route so a reconnecting Agent can render the same
-	// path immediately. Entries are removed when a tunnel is stopped.
-	m.broker.DisconnectClient(clientID)
+	// Keep active TCP streams alive briefly. A control WebSocket can flap while
+	// its independent data sockets are still healthy; the timer is the cleanup
+	// path when the Agent never reconnects.
+	m.scheduleReconnectCleanup(clientID)
 	m.disconnectUDPClient(clientID)
 }
 
 func (m *Manager) handleClientConnected(clientID string) {
+	m.cancelReconnectCleanup(clientID)
+	go m.retryPendingVisitors(clientID)
+	go m.broker.PrimeWorkConnections(clientID)
 	tunnels, err := m.store.ListClientTunnels(context.Background(), clientID)
 	if err != nil {
 		return

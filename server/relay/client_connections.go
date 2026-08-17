@@ -107,7 +107,22 @@ func (b *Broker) relayPending(data DataStream, pending *pendingConn) error {
 }
 
 func (b *Broker) DisconnectClient(clientID string) {
+	b.DisconnectActiveClient(clientID)
+	b.FailPendingClient(clientID)
+}
+
+// DisconnectActiveClient closes streams that cannot survive a dead Agent
+// session, but leaves visitors waiting for a data channel in the pending map.
+// A reconnect can then re-issue their open commands before the broker timeout.
+func (b *Broker) DisconnectActiveClient(clientID string) {
 	b.connections.disconnect(clientID)
+	b.workers.closeClient(clientID)
+}
+
+// FailPendingClient is used for an intentional administrator disconnect. A
+// transport flap should use DisconnectActiveClient so pending visitors can be
+// recovered by the next Agent session.
+func (b *Broker) FailPendingClient(clientID string) {
 	var pending []*pendingConn
 	b.mu.Lock()
 	for requestID, entry := range b.pending {

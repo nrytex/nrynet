@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nrytex/nrynet/internal/protocol"
@@ -17,7 +18,16 @@ type Agent struct {
 	udp                    *udpRelay
 	visitorMu              sync.Mutex
 	visitorSlots           chan struct{}
+	openMu                 sync.Mutex
+	openRequests           map[string]struct{}
 	controlMu              sync.Mutex
+	runMu                  sync.RWMutex
+	runCtx                 context.Context
+	heartbeatMu            sync.Mutex
+	heartbeatAcks          chan string
+	heartbeatAckEnabled    bool
+	heartbeatSequence      atomic.Uint64
+	sessionReady           bool
 	transferMu             sync.Mutex
 	transferPending        map[string]*transferCounters
 	transferLoopMu         sync.Mutex
@@ -53,6 +63,7 @@ func New(options Options, logger *slog.Logger) (*Agent, error) {
 		options:         options,
 		logger:          logger,
 		udp:             newUDPRelay(2 * time.Minute),
+		openRequests:    make(map[string]struct{}),
 		transferPending: make(map[string]*transferCounters),
 	}, nil
 }
@@ -97,6 +108,8 @@ func (a *Agent) startTransferFlushLoop(contexts ...context.Context) {
 }
 
 func (a *Agent) Run(ctx context.Context) error {
+	a.beginRun(ctx)
+	defer a.endRun()
 	a.startTransferFlushLoop(ctx)
 	defer a.waitTransferFlushLoop()
 	backoff := a.reconnectMin()
@@ -137,6 +150,7 @@ func (a *Agent) reconnectMin() time.Duration {
 
 func (a *Agent) runSession(ctx context.Context) (sessionErr error) {
 	a.clearSessionEstablished()
+	a.resetSessionReady()
 	baseConn, err := a.dialControl(ctx)
 	if err != nil {
 		a.notifySessionEnded(err)
@@ -155,11 +169,13 @@ func (a *Agent) runSession(ctx context.Context) (sessionErr error) {
 		a.notifySessionEnded(err)
 		return err
 	}
-	a.notifySessionStarted()
 	a.markSessionEstablished()
 	errCh := make(chan error, 2)
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	heartbeatAcks := make(chan string, 4)
+	a.setHeartbeatAcks(heartbeatAcks)
+	defer a.clearHeartbeatAcks(heartbeatAcks)
 	var workers sync.WaitGroup
 	workers.Add(2)
 	go func() {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -12,18 +13,42 @@ type Store struct {
 	db *sql.DB
 }
 
+const sqliteMaxOpenConnections = 8
+
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	dsn := sqliteDSN(path)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	db.SetMaxOpenConns(1)
+	if !isMemoryDatabase(path) {
+		if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("enable sqlite WAL: %w", err)
+		}
+		db.SetMaxOpenConns(sqliteMaxOpenConnections)
+		db.SetMaxIdleConns(sqliteMaxOpenConnections)
+	}
 	store := &Store{db: db}
 	if err := store.migrate(context.Background()); err != nil {
 		db.Close()
 		return nil, err
 	}
 	return store, nil
+}
+
+func sqliteDSN(path string) string {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	return path + separator + "_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)"
+}
+
+func isMemoryDatabase(path string) bool {
+	value := strings.ToLower(path)
+	return value == ":memory:" || strings.Contains(value, "mode=memory")
 }
 
 func (s *Store) DB() *sql.DB {

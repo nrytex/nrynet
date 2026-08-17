@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+
+	"github.com/nrytex/nrynet/internal/protocol"
 )
 
 type bufferedConn struct {
@@ -35,7 +37,8 @@ func readInitialHandshake(conn net.Conn) (net.Conn, initialHandshake, error) {
 	if handshake.Role == "relay_visitor" {
 		return bufferedConn{Conn: conn, reader: reader}, handshake, nil
 	}
-	if handshake.Token == "" || handshake.DeviceID == "" || handshake.RequestID == "" {
+	requestRequired := handshake.Role != protocol.DataRoleWorkConnection
+	if handshake.Token == "" || handshake.DeviceID == "" || (requestRequired && handshake.RequestID == "") {
 		return nil, initialHandshake{}, errors.New("invalid data handshake")
 	}
 	return bufferedConn{Conn: conn, reader: reader}, handshake, nil
@@ -43,4 +46,12 @@ func readInitialHandshake(conn net.Conn) (net.Conn, initialHandshake, error) {
 
 func (c bufferedConn) Read(p []byte) (int, error) {
 	return c.reader.Read(p)
+}
+
+func (c bufferedConn) readJSONLine(value any) error {
+	line, err := c.reader.ReadSlice('\n')
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(line, value)
 }

@@ -15,6 +15,8 @@ type websocketControl struct {
 	mu    sync.Mutex
 }
 
+func (*websocketControl) supportsWorkConnections() bool { return true }
+
 func (c *websocketControl) readJSON(value any) error {
 	if err := c.conn.ReadJSON(value); err != nil {
 		return fmt.Errorf("read WebSocket control message: %w", err)

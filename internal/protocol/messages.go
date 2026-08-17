@@ -9,9 +9,11 @@ import (
 const (
 	TypeHello              = "hello"
 	TypeHeartbeat          = "heartbeat"
+	TypeHeartbeatAck       = "heartbeat_ack"
 	TypeTunnelSnapshot     = "tunnel_snapshot"
 	TypeTunnelPath         = "tunnel_path"
 	TypeOpenConnection     = "open_connection"
+	TypeRequestWorkConn    = "request_work_connection"
 	TypeUDPPacket          = "udp_packet"
 	TypeP2PConnect         = "p2p_connect"
 	TypeVisitorWebRTC      = "visitor_webrtc"
@@ -99,6 +101,21 @@ type DataHandshake struct {
 	Token     string `json:"token"`
 	DeviceID  string `json:"device_id"`
 	RequestID string `json:"request_id"`
+	Role      string `json:"role,omitempty"`
+}
+
+const DataRoleWorkConnection = "work_connection"
+
+type WorkConnectionAssignment struct {
+	RequestID string `json:"request_id"`
+	TunnelID  string `json:"tunnel_id"`
+	LocalHost string `json:"local_host"`
+	LocalPort int    `json:"local_port"`
+}
+
+type WorkConnectionReady struct {
+	Ready bool   `json:"ready"`
+	Error string `json:"error,omitempty"`
 }
 
 // RelayHandshake is sent by a relay node before it forwards a visitor stream

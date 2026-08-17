@@ -31,6 +31,7 @@ type queuedControlConn struct {
 
 	mu              sync.Mutex
 	condition       *sync.Cond
+	critical        []queuedAgentMessage
 	urgent          []queuedAgentMessage
 	normal          []queuedAgentMessage
 	queuedCount     int
@@ -58,8 +59,9 @@ func (q *queuedControlConn) writeJSON(value any) error {
 		return errAgentControlWriteQueueClosed
 	}
 	item := queuedAgentMessage{value: value, size: agentControlMessageSize(value)}
+	critical := isCriticalAgentMessage(value)
 	urgent := isUrgentControlMessage(value)
-	if q.queueFull(item.size) {
+	if !critical && q.queueFull(item.size) {
 		return errAgentControlQueueFull
 	}
 	if valueIsHeartbeat(value) {
@@ -74,7 +76,9 @@ func (q *queuedControlConn) writeJSON(value any) error {
 		}
 		return errAgentControlWriteQueueClosed
 	}
-	if urgent {
+	if critical {
+		q.critical = append(q.critical, item)
+	} else if urgent {
 		q.urgent = append(q.urgent, item)
 	} else {
 		q.normal = append(q.normal, item)
@@ -88,6 +92,7 @@ func (q *queuedControlConn) writeJSON(value any) error {
 func (q *queuedControlConn) close() error {
 	q.mu.Lock()
 	q.closed = true
+	q.critical = nil
 	q.urgent = nil
 	q.normal = nil
 	q.queuedCount = 0
@@ -111,6 +116,11 @@ func (q *queuedControlConn) openData(ctx context.Context, requestID string) (dat
 func (q *queuedControlConn) singleDataOpen() bool {
 	single, ok := q.base.(interface{ singleDataOpen() bool })
 	return ok && single.singleDataOpen()
+}
+
+func (q *queuedControlConn) supportsWorkConnections() bool {
+	supported, ok := q.base.(interface{ supportsWorkConnections() bool })
+	return ok && supported.supportsWorkConnections()
 }
 
 func (q *queuedControlConn) ping() error {
@@ -137,31 +147,31 @@ func (q *queuedControlConn) run() {
 func (q *queuedControlConn) next() (any, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	for len(q.urgent) == 0 && len(q.normal) == 0 && !q.closed {
+	for len(q.critical) == 0 && len(q.urgent) == 0 && len(q.normal) == 0 && !q.closed {
 		q.condition.Wait()
 	}
 	if q.closed {
 		return nil, false
 	}
+	if len(q.critical) > 0 {
+		item := q.critical[0]
+		q.critical[0] = queuedAgentMessage{}
+		q.critical = q.critical[1:]
+		q.completeDequeue(item)
+		return item.value, true
+	}
 	if len(q.urgent) > 0 && (q.urgentBudget < 32 || len(q.normal) == 0) {
 		item := q.urgent[0]
 		q.urgent[0] = queuedAgentMessage{}
 		q.urgent = q.urgent[1:]
-		q.queuedCount--
-		q.queuedBytes -= item.size
-		if valueIsHeartbeat(item.value) {
-			q.heartbeatQueued = false
-		}
-		q.condition.Broadcast()
+		q.completeDequeue(item)
 		q.urgentBudget++
 		return item.value, true
 	}
 	item := q.normal[0]
 	q.normal[0] = queuedAgentMessage{}
 	q.normal = q.normal[1:]
-	q.queuedCount--
-	q.queuedBytes -= item.size
-	q.condition.Broadcast()
+	q.completeDequeue(item)
 	q.urgentBudget = 0
 	return item.value, true
 }
@@ -173,6 +183,7 @@ func (q *queuedControlConn) fail() {
 		return
 	}
 	q.closed = true
+	q.critical = nil
 	q.urgent = nil
 	q.normal = nil
 	q.queuedCount = 0
@@ -187,6 +198,7 @@ func isUrgentControlMessage(value any) bool {
 	message, ok := value.(protocol.ControlMessage)
 	return ok && (message.Type == protocol.TypeHeartbeat || message.Type == protocol.TypeHello ||
 		message.Type == protocol.TypeOpenConnection || message.Type == protocol.TypeP2PConnect ||
+		message.Type == protocol.TypeRequestWorkConn ||
 		message.Type == protocol.TypeTunnelSnapshot ||
 		message.Type == protocol.TypeVisitorWebRTC || message.Type == protocol.TypeConnectionFailed)
 }
@@ -206,4 +218,18 @@ func (q *queuedControlConn) queueFull(size int) bool {
 func valueIsHeartbeat(value any) bool {
 	message, ok := value.(protocol.ControlMessage)
 	return ok && message.Type == protocol.TypeHeartbeat
+}
+
+func isCriticalAgentMessage(value any) bool {
+	message, ok := value.(protocol.ControlMessage)
+	return ok && (message.Type == protocol.TypeHeartbeat || message.Type == protocol.TypeHeartbeatAck)
+}
+
+func (q *queuedControlConn) completeDequeue(item queuedAgentMessage) {
+	q.queuedCount--
+	q.queuedBytes -= item.size
+	if valueIsHeartbeat(item.value) {
+		q.heartbeatQueued = false
+	}
+	q.condition.Broadcast()
 }

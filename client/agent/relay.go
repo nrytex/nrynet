@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	openConnectionSetupTimeout = 10 * time.Second
+	openConnectionSetupTimeout = 20 * time.Second
 	dataChannelOpenAttempts    = 3
 	quicDataChannelTimeout     = 5 * time.Second
 )
@@ -30,7 +30,7 @@ var relayCopyBufferPool = sync.Pool{
 func (a *Agent) handleOpenConnection(ctx context.Context, conn controlConn, message protocol.ControlMessage) {
 	if err := a.openAndRelay(ctx, conn, message); err != nil {
 		a.logger.Warn("connection relay failed", "request_id", message.RequestID, "error", err)
-		a.reportConnectionFailure(ctx, conn, message, err)
+		a.reportConnectionFailure(a.relayContext(ctx), conn, message, err)
 		return
 	}
 }
@@ -40,7 +40,10 @@ func (a *Agent) openAndRelay(ctx context.Context, conn controlConn, message prot
 	if err != nil {
 		return err
 	}
-	setupCtx, cancel := context.WithTimeout(ctx, openConnectionSetupTimeout)
+	// A control WebSocket can flap while the Agent is still able to reach the
+	// data listener. Keep setup on the Agent run context so that a visitor does
+	// not lose a healthy data path merely because this control session ended.
+	setupCtx, cancel := context.WithTimeout(a.relayContext(ctx), openConnectionSetupTimeout)
 	defer cancel()
 	localAddress := net.JoinHostPort(payload.LocalHost, strconv.Itoa(payload.LocalPort))
 	localConn, err := a.dialLocalService(setupCtx, localAddress)
@@ -54,12 +57,12 @@ func (a *Agent) openAndRelay(ctx context.Context, conn controlConn, message prot
 	}
 	defer dataConn.Close()
 	if a.options.Config.Transport != "quic" || needsDataHandshake(dataConn) {
-		err = writeHandshake(dataConn, a.options.Config.Token, a.options.Config.DeviceID, message.RequestID)
+		err = writeHandshakeContext(setupCtx, dataConn, a.options.Config.Token, a.options.Config.DeviceID, message.RequestID)
 	}
 	if err != nil {
 		return normalizeSetupError("write data handshake", err)
 	}
-	return a.relay(ctx, message.TunnelID, dataConn, localConn)
+	return a.relay(a.relayContext(ctx), message.TunnelID, dataConn, localConn)
 }
 
 type dataChannel struct {
@@ -137,8 +140,24 @@ func (a *Agent) dialLegacyData(ctx context.Context) (dataConn, error) {
 }
 
 func writeHandshake(writer io.Writer, token, deviceID, requestID string) error {
-	buffered := bufio.NewWriter(writer)
+	return writeHandshakeContext(context.Background(), writer, token, deviceID, requestID)
+}
+
+func writeHandshakeContext(ctx context.Context, writer io.Writer, token, deviceID, requestID string) error {
 	handshake := protocol.DataHandshake{Token: token, DeviceID: deviceID, RequestID: requestID}
+	return writeDataHandshakeContext(ctx, writer, handshake)
+}
+
+func writeDataHandshakeContext(ctx context.Context, writer io.Writer, handshake protocol.DataHandshake) error {
+	if deadlineWriter, ok := writer.(interface{ SetWriteDeadline(time.Time) error }); ok {
+		deadline := time.Now().Add(openConnectionSetupTimeout)
+		if contextDeadline, hasDeadline := ctx.Deadline(); hasDeadline && contextDeadline.Before(deadline) {
+			deadline = contextDeadline
+		}
+		_ = deadlineWriter.SetWriteDeadline(deadline)
+		defer deadlineWriter.SetWriteDeadline(time.Time{})
+	}
+	buffered := bufio.NewWriter(writer)
 	if err := json.NewEncoder(buffered).Encode(handshake); err != nil {
 		return fmt.Errorf("write data handshake: %w", err)
 	}

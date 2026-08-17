@@ -2,49 +2,48 @@ package relay
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-const bandwidthWindowSeconds = int64(5)
+const bandwidthMinimumSample = 250 * time.Millisecond
 
 type bandwidthMeter struct {
-	mu      sync.Mutex
-	clock   func() time.Time
-	buckets map[int64]int64
+	total atomic.Int64
+	clock func() time.Time
+
+	mu         sync.Mutex
+	lastSample time.Time
+	lastBytes  int64
+	lastRate   int64
 }
 
 func newBandwidthMeter() *bandwidthMeter {
-	return &bandwidthMeter{clock: time.Now, buckets: make(map[int64]int64)}
+	now := time.Now()
+	return &bandwidthMeter{clock: time.Now, lastSample: now}
 }
 
 func (m *bandwidthMeter) Add(bytes int64) {
-	if bytes <= 0 {
-		return
+	if bytes > 0 {
+		m.total.Add(bytes)
 	}
-	now := m.clock().Unix()
-	m.mu.Lock()
-	m.buckets[now] += bytes
-	m.prune(now)
-	m.mu.Unlock()
 }
 
 func (m *bandwidthMeter) BytesPerSecond() int64 {
-	now := m.clock().Unix()
+	now := m.clock()
+	total := m.total.Load()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.prune(now)
-	var total int64
-	for _, bytes := range m.buckets {
-		total += bytes
+	elapsed := now.Sub(m.lastSample)
+	if elapsed < bandwidthMinimumSample {
+		return m.lastRate
 	}
-	return total / bandwidthWindowSeconds
-}
-
-func (m *bandwidthMeter) prune(now int64) {
-	oldest := now - bandwidthWindowSeconds + 1
-	for second := range m.buckets {
-		if second < oldest {
-			delete(m.buckets, second)
-		}
+	delta := total - m.lastBytes
+	if delta < 0 {
+		delta = 0
 	}
+	m.lastRate = int64(float64(delta) / elapsed.Seconds())
+	m.lastSample = now
+	m.lastBytes = total
+	return m.lastRate
 }

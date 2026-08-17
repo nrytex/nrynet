@@ -19,3 +19,20 @@ func (a *Agent) consumeSessionEstablished() bool {
 	a.sessionEstablished = false
 	return established
 }
+
+func (a *Agent) resetSessionReady() {
+	a.controlMu.Lock()
+	a.sessionReady = false
+	a.controlMu.Unlock()
+}
+
+func (a *Agent) notifySessionReady() {
+	a.controlMu.Lock()
+	if a.sessionReady {
+		a.controlMu.Unlock()
+		return
+	}
+	a.sessionReady = true
+	a.controlMu.Unlock()
+	a.notifySessionStarted()
+}

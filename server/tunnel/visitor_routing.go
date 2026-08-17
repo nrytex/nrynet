@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"log/slog"
 	"net"
 
 	"github.com/google/uuid"
@@ -25,10 +26,8 @@ func (m *Manager) handleRelayedVisitor(tunnel model.Tunnel, visitor net.Conn) {
 		_ = visitor.Close()
 		return
 	}
-	if err := m.hub.OpenConnection(tunnel.ClientID, tunnel, requestID); err != nil {
-		m.broker.Cancel(requestID, pending)
-		m.recordConnectionFailure(tunnel.ID, requestID, err)
-		return
+	if !m.broker.TryWorkConnection(requestID) {
+		m.openRelayedDataPath(tunnel, requestID)
 	}
 	m.active.Add(1)
 	defer m.active.Add(-1)
@@ -37,4 +36,15 @@ func (m *Manager) handleRelayedVisitor(tunnel model.Tunnel, visitor net.Conn) {
 	// this wait immediately. Keep the normal timeout as a final safety net for
 	// a disconnected or older Agent that cannot send the report.
 	m.recordConnectionFailure(tunnel.ID, requestID, err)
+}
+
+func (m *Manager) openRelayedDataPath(tunnel model.Tunnel, requestID string) {
+	if err := m.hub.OpenConnection(tunnel.ClientID, tunnel, requestID); err != nil {
+		// Keep the visitor pending. The Agent may be between WebSocket sessions;
+		// handleClientConnected will re-issue this command, and Broker.Wait still
+		// provides the final timeout when the Agent never returns.
+		slog.Default().Debug("visitor command pending during Agent reconnect",
+			"client_id", tunnel.ClientID, "tunnel_id", tunnel.ID, "request_id", requestID,
+			"error", err)
+	}
 }
