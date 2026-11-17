@@ -1,14 +1,14 @@
-# Changelog
+# 更新日志
 
 ## v1.3.9 - 2026-11-17
 
-### Fixed
+### 修复
 
-- Reset the tunnel editor when switching between tunnels or opening the create form, so fields do not retain another tunnel's values.
-- Preserve an HTTP tunnel's configured remote port when opening its editor.
-- Refresh client editor fields and server setting values when their selected records change.
-- Clear an unfinished token name when the create dialog is cancelled.
+- 切换隧道或打开新建表单时重新初始化字段，避免沿用上一个隧道的信息。
+- 编辑 HTTP 隧道时保留原有远端端口，避免将 `0` 误改为 `6000`。
+- 编辑不同客户端及刷新服务端设置时，显示对应的最新数据。
+- 取消新建令牌后清除未提交的名称。
 
-### Verification
+### 验证
 
-- Added dashboard interaction tests for tunnel, client, token, and setting forms.
+- 新增隧道、客户端、令牌和设置表单的后台交互测试。
