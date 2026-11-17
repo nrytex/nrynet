@@ -62,7 +62,7 @@ export function TunnelsPage() {
           { title: "操作", render: (_, t) => <Actions tunnel={t} onToggle={toggle} onEdit={setEditing} onRemove={remove} /> },
         ]}
       />
-      <TunnelEditor tunnel={editing} clients={clients} autoSubdomain={autoSubdomain} onCancel={() => setEditing(null)} onSave={submit} />
+      <TunnelEditor key={editing ? editing.id || "create" : "closed"} tunnel={editing} clients={clients} autoSubdomain={autoSubdomain} onCancel={() => setEditing(null)} onSave={submit} />
     </Page>
   );
 }
@@ -88,10 +88,10 @@ function TunnelEditor(props: { tunnel: Tunnel | null; clients: Client[]; autoSub
       form.setFieldValue("domain", "");
       return;
     }
-    if (form.getFieldValue("remote_port") === 0) form.setFieldValue("remote_port", 6000);
+    if (needsRemotePort(protocol) && form.getFieldValue("remote_port") === 0) form.setFieldValue("remote_port", 6000);
   }, [form, protocol]);
   return (
-    <Modal title={props.tunnel?.id ? "编辑隧道" : "创建隧道"} open={!!props.tunnel} onCancel={props.onCancel} onOk={() => document.getElementById("tunnel-save")?.click()} destroyOnClose width={720}>
+    <Modal title={props.tunnel?.id ? "编辑隧道" : "创建隧道"} open={!!props.tunnel} onCancel={props.onCancel} onOk={() => document.getElementById("tunnel-save")?.click()} destroyOnHidden width={720}>
       <Form form={form} layout="vertical" initialValues={initial} onFinish={props.onSave}>
         <div className="form-grid">
           <Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>

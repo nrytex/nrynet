@@ -63,7 +63,7 @@ export function ClientsPage() {
         ]}
       />
       <ClientDrawer detail={detail} onClose={closeDetail} />
-      <ClientEditor client={editing} onCancel={() => setEditing(undefined)} onSave={saveEdit} />
+      <ClientEditor key={editing?.id || "closed"} client={editing} onCancel={() => setEditing(undefined)} onSave={saveEdit} />
       <Modal title="新令牌" open={!!tokenValue} onCancel={() => setTokenValue(undefined)} footer={null}>
         <Typography.Text copyable code>{tokenValue}</Typography.Text>
       </Modal>
@@ -112,7 +112,7 @@ function ClientDrawer({ detail, onClose }: { detail?: ClientDetail; onClose: () 
 
 function ClientEditor({ client, onCancel, onSave }: { client?: Client; onCancel: () => void; onSave: (v: { name: string; disabled: boolean }) => void }) {
   return (
-    <Modal title="编辑客户端" open={!!client} onCancel={onCancel} onOk={() => document.getElementById("client-save")?.click()} destroyOnClose>
+    <Modal title="编辑客户端" open={!!client} onCancel={onCancel} onOk={() => document.getElementById("client-save")?.click()} destroyOnHidden>
       <Form layout="vertical" initialValues={client} onFinish={onSave}>
         <Form.Item name="name" label="名称" rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="disabled" label="禁用" valuePropName="checked"><Switch /></Form.Item>

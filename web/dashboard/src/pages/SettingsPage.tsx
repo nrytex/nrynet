@@ -23,7 +23,7 @@ export function SettingsPage() {
         pagination={false}
         columns={[
           { title: "配置项", dataIndex: "key" },
-          { title: "值", render: (_, item) => <ValueEditor item={item} onSaved={state.reload} /> },
+          { title: "值", render: (_, item) => <ValueEditor key={`${item.key}:${String(item.value)}`} item={item} onSaved={state.reload} /> },
           { title: "说明", dataIndex: "description", render: (v) => v || "-" },
         ]}
       />

@@ -23,6 +23,11 @@ export function TokensPage() {
     await state.reload();
   }
 
+  function closeCreate() {
+    setOpen(false);
+    form.resetFields();
+  }
+
   async function remove(token: Token) {
     modal.confirm({
       title: `删除 ${token.name}?`,
@@ -51,7 +56,7 @@ export function TokensPage() {
           { title: "操作", render: (_, t) => <Button danger icon={<Trash2 size={16} />} onClick={() => remove(t)} /> },
         ]}
       />
-      <Modal title="创建令牌" open={open} onOk={create} onCancel={() => setOpen(false)} destroyOnClose>
+      <Modal title="创建令牌" open={open} onOk={create} onCancel={closeCreate} destroyOnHidden>
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="名称" rules={[{ required: true, message: "请输入名称" }]}>
             <Input />
